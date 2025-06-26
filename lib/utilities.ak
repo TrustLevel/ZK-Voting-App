@@ -1,13 +1,14 @@
+use aiken/cbor
 use aiken/interval.{Interval}
 use aiken/collection/list.{ map}
-use types.{Ballot }
+use types.{Ballot, Options }
 
 
 pub fn is_interval_within(iv1: Interval<Int>,time_pair: (Int,Int)) -> Bool {
     interval.is_entirely_after(iv1, time_pair.1st) && interval.is_entirely_before(iv1, time_pair.2nd) 
 }
 
-pub fn simple_vote(options: Ballot, index: Int) -> Ballot {
+pub fn simple_vote(options: Options, index: Int) -> Options {
     map(options, fn (o) { 
         if o.1st == index {
              (o.1st, o.2nd + 1) 
@@ -15,4 +16,19 @@ pub fn simple_vote(options: Ballot, index: Int) -> Ballot {
             o 
         } 
     })
+}
+
+//pub fn weighted_vote(options: Ballot, index: List<Int>, power: Int) -> Ballot {
+//    
+//}
+
+pub fn deserialise_signal( message: ByteArray ) -> Ballot {
+    expect Some(data) = cbor.deserialise(message)
+    expect ballot: Ballot = data
+    ballot
+}
+
+pub fn serialise_signal( ballot: Ballot ) -> ByteArray {
+    let data = cbor.serialise(ballot)
+    data
 }

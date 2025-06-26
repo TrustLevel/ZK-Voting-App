@@ -1,2 +1,7 @@
 
-pub type Ballot = List<(Int,Int)> 
+pub type Options = List<(Int,Int)>
+
+pub type Ballot {
+    mode: Int,
+    options: Options,
+} 

@@ -1,3 +1,4 @@
+use aiken/cbor as cbor
 use aiken/interval as interval
 use utilities.{ is_interval_within, simple_vote}
 
@@ -81,4 +82,15 @@ test vote_5() {
 test vote_6() {
     let ballot = [(0,8), (1,7), (2,3), (3,4)]
     simple_vote(ballot, 3) ==  [(0,8), (1,7), (2,3), (3,5)]
+}
+
+// Serialization tests.
+
+type Hola {
+    int: Int
+}
+
+test cbor_1 () {
+    let data: Data = Hola {int: 42}
+    cbor.deserialise(cbor.serialise(data)) == Some(data)
 }
