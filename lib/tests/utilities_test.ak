@@ -1,6 +1,7 @@
-use aiken/cbor as cbor
+// use aiken/cbor as cbor
 use aiken/interval as interval
-use utilities.{ is_interval_within, simple_vote}
+use utilities.{ is_interval_within, simple_vote, serialise_signal, deserialise_signal}
+use types.{ Ballot }
 
 // Interval Tests
 
@@ -86,11 +87,45 @@ test vote_6() {
 
 // Serialization tests.
 
-type Hola {
-    int: Int
+test signal_serialization_1() {
+    
+    let ballot = Ballot {
+        mode: 0,
+        options: [(0,0)],
+    }
+
+    let serialized_signal: ByteArray = serialise_signal(ballot)
+
+    ballot == deserialise_signal(serialized_signal)
+
 }
 
-test cbor_1 () {
-    let data: Data = Hola {int: 42}
-    cbor.deserialise(cbor.serialise(data)) == Some(data)
+test signal_serialization_2() {
+    
+    let ballot = Ballot {
+        mode: 0,
+        options: [(0,0)],
+    }
+
+    deserialise_signal(#"d8799f009f9f0000ffffff") == ballot
+}
+
+test signal_serialization_3() {
+    
+    let ballot = Ballot {
+        mode: 0,
+        options: [(0,9), (1,7), (2,3), (3,4)],
+    }
+
+    serialise_signal(ballot) == #"d8799f009f9f0009ff9f0107ff9f0203ff9f0304ffffff"
+}
+
+test signal_serialization_4() {
+    
+    let ballot = Ballot {
+        mode: 0,
+        options: [(0,9), (1,7), (2,3), (3,4)],
+    }
+
+    deserialise_signal(#"d8799f009f9f0009ff9f0107ff9f0203ff9f0304ffffff") == ballot
 }
