@@ -1,7 +1,7 @@
 // use aiken/builtin
 use aiken/cbor
 use aiken/interval.{Interval}
-//use aiken/collection/list.{map}
+use aiken/collection/list as list
 use types.{ Options }
 
 //use types.{Ballot, Options }
@@ -20,6 +20,63 @@ pub fn is_interval_within(iv1: Interval<Int>,time_pair: (Int,Int)) -> Bool {
 //        } 
 //    })
 //}
+
+
+pub fn check_options_rec(options: Options, state: Int) -> Bool {
+    when options is {
+        [] -> True
+        [o, ..opts] -> {
+            o.1st == state && check_options_rec(opts, state + 1)
+        }
+    }
+}
+
+
+pub fn check_options(options: Options) -> Bool {
+    check_options_rec(options, 0)
+}
+
+test check_options_1() {
+    let options: Options = [(0,0)]
+    check_options(options)
+}
+
+test check_options_2() fail {
+    let options: Options = [(0,0), (2,0)]
+    check_options(options)
+}
+
+test check_options_3() {
+    let options: Options = [(0,0), (1,0), (2,0)]
+    check_options(options)
+}
+
+test check_options_4() {
+    let options: Options = [(0,0), (1,1), (2,3)]
+    check_options(options)
+}
+
+test check_options_5() fail {
+    let options: Options = [(3,0), (1,1), (2,3)]
+    check_options(options)
+}
+
+test check_options_6() {
+    let options: Options = [(0,0), (1,1), (2,3), (3,0), (4,0)]
+    check_options(options)
+}
+
+
+test check_options_7() fail {
+    let options: Options = [(0,0), (1,1), (2,3), (3,0), ((-4),0)]
+    check_options(options)
+}
+
+test check_options_8() fail {
+    let options: Options = [((-1),0), (1,1), (2,3), (3,0), (4,0)]
+    check_options(options)
+}
+
 
 
 
@@ -65,35 +122,41 @@ pub fn weighted_vote(options: Options, target_options: Options) -> Options {
     }
 }
 
-test weighted_vote_1() {
-    let options: Options = [(0,1), (1,1), (2,1)]
-    weighted_vote(options, []) == [(0,1), (1,1), (2,1)]
+pub fn check_weight(target_options: Options, allowed_weight: Int) -> Bool {
+    let weight: Int = list.foldr(target_options, 0, fn(to, total) { to.2nd + total } )
+    weight == allowed_weight
 }
 
-test weighted_vote_2() {
-    let options: Options = [(0,1), (1,1), (2,1)]
-    weighted_vote(options, [(0,3), (2,10)]) == [(0,4), (1,1), (2,11)]
+test check_weight_1() {
+    let target_options = [(0,1), (1,3)]
+    let allowed_weight = 4
+    check_weight(target_options, allowed_weight)
 }
 
-test weighted_vote_3() {
-    let options: Options = [(0,0), (1,1), (2,2), (3,3), (4,4)]
-    weighted_vote(options, [(0,1), (1,1), (2,1), (3,1), (4,1)]) == [(0,1), (1,2), (2,3), (3,4), (4,5)]
+test check_weight_2() fail {
+    let target_options = [(0,1), (1,3)]
+    let allowed_weight = 1
+    check_weight(target_options, allowed_weight)
 }
 
-test weighted_vote_4() {
-    let options: Options = [(0,0), (1,1), (2,2), (3,3), (4,4)]
-    weighted_vote(options, [(0,100000), (1,200000), (2,300000), (3,400000), (4,500000)]) == [(0,100000), (1,200001), (2,300002), (3,400003), (4,500004)]
+test check_weight_3() {
+    let target_options = [(0,5), (1,3), (2, 111)]
+    let allowed_weight = 119
+    check_weight(target_options, allowed_weight)
 }
 
-test weighted_vote_5() {
-    let options: Options = [(0,0), (1,0), (2,0)]
-    weighted_vote(options, [(1,10)]) == [(0,0), (1,10), (2,0)]
+test check_weight_4() {
+    let target_options = [(0,0), (1,0), (2, 1)]
+    let allowed_weight = 1
+    check_weight(target_options, allowed_weight)
 }
 
-test weighted_vote_6() {
-    let options: Options = [(0,9), (1,11), (2,2)]
-    weighted_vote(options, [(0,100), (1,89), (2,67)]) == [(0,109), (1,100), (2,69)]
+test check_weight_5() fail {
+    let target_options = [(0,0), (1,0), (2, 0)]
+    let allowed_weight = 1
+    check_weight(target_options, allowed_weight)
 }
+
 
 pub fn deserialise_signal( message: ByteArray ) -> Options {
     expect Some(data) = cbor.deserialise(message)
