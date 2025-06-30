@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/cbor
 use aiken/interval.{Interval}
 use aiken/collection/list.{ map}
@@ -18,17 +19,23 @@ pub fn simple_vote(options: Options, index: Int) -> Options {
     })
 }
 
-//pub fn weighted_vote(options: Ballot, index: List<Int>, power: Int) -> Ballot {
+//pub fn weighted_vote(options: Options, target_options: Options, power: Int) -> Ballot {
 //    
 //}
 
-pub fn deserialise_signal( message: ByteArray ) -> Ballot {
+pub fn deserialise_signal( message: ByteArray ) -> Options {
     expect Some(data) = cbor.deserialise(message)
-    expect ballot: Ballot = data
-    ballot
+    expect options: Options = data
+    options
 }
 
-pub fn serialise_signal( ballot: Ballot ) -> ByteArray {
-    let data = cbor.serialise(ballot)
+pub fn serialise_signal( options: Options ) -> ByteArray {
+    let data = cbor.serialise(options)
     data
 }
+
+//pub fn deserialise_signal_2(message: ByteArray) -> Ballot {
+//
+//}
+
+// 

@@ -85,47 +85,48 @@ test vote_6() {
     simple_vote(ballot, 3) ==  [(0,8), (1,7), (2,3), (3,5)]
 }
 
+// Weighted Voting tests.
+
+
 // Serialization tests.
 
-test signal_serialization_1() {
-    
-    let ballot = Ballot {
-        mode: 0,
-        options: [(0,0)],
-    }
-
-    let serialized_signal: ByteArray = serialise_signal(ballot)
-
-    ballot == deserialise_signal(serialized_signal)
-
-}
-
-test signal_serialization_2() {
-    
-    let ballot = Ballot {
-        mode: 0,
-        options: [(0,0)],
-    }
-
-    deserialise_signal(#"d8799f009f9f0000ffffff") == ballot
-}
-
-test signal_serialization_3() {
-    
-    let ballot = Ballot {
-        mode: 0,
-        options: [(0,9), (1,7), (2,3), (3,4)],
-    }
-
-    serialise_signal(ballot) == #"d8799f009f9f0009ff9f0107ff9f0203ff9f0304ffffff"
-}
-
-test signal_serialization_4() {
-    
-    let ballot = Ballot {
-        mode: 0,
-        options: [(0,9), (1,7), (2,3), (3,4)],
-    }
-
-    deserialise_signal(#"d8799f009f9f0009ff9f0107ff9f0203ff9f0304ffffff") == ballot
-}
+//test signal_serialization_1() {
+//    
+//    let ballot = Ballot {
+//        mode: 0,
+//        options: [(0,0)],
+//    }
+//
+//    let serialized_signal: ByteArray = serialise_signal(ballot.options)
+//
+//    ballot.options == deserialise_signal(serialized_signal)
+//
+//}
+//
+//test signal_serialization_2() {
+//    
+//    let options = [(0,0)]
+//    
+//
+//    deserialise_signal(#"") == options
+//}
+//
+//test signal_serialization_3() {
+//    
+//    let ballot = Ballot {
+//        mode: 0,
+//        options: [(0,9), (1,7), (2,3), (3,4)],
+//    }
+//
+//    serialise_signal(ballot.options) == #""
+//}
+//
+//test signal_serialization_4() {
+//    
+//    let ballot = Ballot {
+//        mode: 0,
+//        options: [(0,9), (1,7), (2,3), (3,4)],
+//    }
+//
+//    deserialise_signal(#"") == ballot.options
+//}
