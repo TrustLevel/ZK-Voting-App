@@ -1,7 +1,113 @@
 // use aiken/cbor as cbor
+//use aiken/collection/list
 use aiken/interval as interval
-use utilities.{ is_interval_within, simple_vote, weighted_vote}
+use utilities.{ is_interval_within, simple_vote, weighted_vote, check_options_index, check_initial_options_value}
 use types.{ Options }
+
+
+// Option checking
+
+test check_options_index_1() {
+    let options: Options = [(0,0)]
+    check_options_index(options)
+}
+
+test check_options_index_2() fail {
+    let options: Options = [(0,0), (2,0)]
+    check_options_index(options)
+}
+
+test check_options_index_3() {
+    let options: Options = [(0,0), (1,0), (2,0)]
+    check_options_index(options)
+}
+
+test check_options_index_4() {
+    let options: Options = [(0,0), (1,1), (2,3)]
+    check_options_index(options)
+}
+
+test check_options_index_5() fail {
+    let options: Options = [(3,0), (1,1), (2,3)]
+    check_options_index(options)
+}
+
+test check_options_index_6() {
+    let options: Options = [(0,0), (1,1), (2,3), (3,0), (4,0)]
+    check_options_index(options)
+}
+
+test check_options_index_7() fail {
+    let options: Options = [(0,0), (1,1), (2,3), (3,0), ((-4),0)]
+    check_options_index(options)
+}
+
+test check_options_index_8() fail {
+    let options: Options = [((-1),0), (1,1), (2,3), (3,0), (4,0)]
+    check_options_index(options)
+}
+
+test check_options_index_9() fail {
+    let options: Options = [(0,0), (1,1), (2,3), (3,0), (4,0), (6,0)]
+    check_options_index(options)
+}
+
+test check_options_index_10() fail {
+    let options: Options = [(0,0), (0,1), (0,3), (3,0), (4,0), (5,0)]
+    check_options_index(options)
+}
+
+
+test check_initial_options_value_1() {
+    let options: Options = [(0,0), (1,0), (2,0)]
+    check_initial_options_value(options)
+}
+
+test check_initial_options_value_2() fail{
+    let options: Options = [(0,1), (1,0), (2,0)]
+    check_initial_options_value(options)
+}
+
+test check_initial_options_value_3() fail{
+    let options: Options = [(0,0), (1,9), (2,0)]
+    check_initial_options_value(options)
+}
+
+test check_initial_options_value_4() fail{
+    let options: Options = [(0,0), (1,0), (2,8)]
+    check_initial_options_value(options)
+}
+
+test check_initial_options_value_5() fail{
+    let options: Options = [(0,1), (1,0), (2,8)]
+    check_initial_options_value(options)
+}
+
+test check_initial_options_value_6() fail{
+    let options: Options = [(0,20), (1,15), (2,8)]
+    check_initial_options_value(options)
+}
+
+test check_initial_options_value_7() {
+    let options: Options = [(0,0)]
+    check_initial_options_value(options)
+}
+
+test check_initial_options_value_8()  {
+    let options: Options = [(0,0), (1,0), (2,0), (3,0), (4,0), (5,0), (6,0)] 
+    check_initial_options_value(options)
+}
+
+test check_initial_options_value_9() {
+    let options: Options = [(6,0), (5,0), (4,0), (3,0), (2,0), (1,0), (0,0)] 
+    check_initial_options_value(options)
+}
+
+test check_initial_options_value_10() {
+    let options: Options = [(0,0), (1,0), (2,0), (3,0), (4,0), (5,0), (6,0)] 
+    check_initial_options_value(options)
+}
+
 
 // Interval Tests
 
@@ -116,6 +222,7 @@ test weighted_vote_6() {
     let options: Options = [(0,9), (1,11), (2,2)]
     weighted_vote(options, [(0,100), (1,89), (2,67)]) == [(0,109), (1,100), (2,69)]
 }
+
 
 
 // Serialization tests.

@@ -105,28 +105,28 @@ validator voting(utxo: OutputReference) {
     expect [Pair(Spend(_input), semaphore_redeemer)] = list.filter(redeemers, fn(r) { r.1st == Spend(semaphore_input.output_reference) })
     expect semaphore_redeemer: SemaphoreRedeemer = semaphore_redeemer
     expect Signal(_zk_proof, _mpf_proof, _signal_hash, signal_message) = semaphore_redeemer
-    let converted_signal: ByteArray = integer_to_bytearray(True, 10, signal_message)
+    let converted_signal: ByteArray = integer_to_bytearray(True, 10, signal_message) // Todo: Have to check the legnth and endianness of the signal_message.
     let vote: Options = deserialise_signal(converted_signal)
 
 
   // Condition 4: Is vote within the time event?
-  let is_within_time_event: Bool = is_interval_within(validity_range, dat.event_date)
+    let is_within_time_event: Bool = is_interval_within(validity_range, dat.event_date)
 
   // Condition 5: Is UrnaDatum preserved?
-  expect InlineDatum(out_datum) = output_to_script.datum
-  expect out_dat: UrnaDatum = out_datum
-  let is_datum_preserved: Bool = and {
-    dat.weight == out_dat.weight,
-    dat.event_date == out_dat.event_date,
-    dat.semaphore_nft == out_dat.semaphore_nft,
-  }
+    expect InlineDatum(out_datum) = output_to_script.datum
+    expect out_dat: UrnaDatum = out_datum
+    let is_datum_preserved: Bool = and {
+      dat.weight == out_dat.weight,
+      dat.event_date == out_dat.event_date,
+      dat.semaphore_nft == out_dat.semaphore_nft,
+    }
 
   // expect urna_datum: UrnaDatum = semaphore_redeemer
-  let validator_conditions: Bool = and {
-      is_value_returned,
-      is_within_time_event,
-      is_datum_preserved,
-  }
+    let validator_conditions: Bool = and {
+        is_value_returned,
+        is_within_time_event,
+        is_datum_preserved,
+    }
 
     if dat.weight > 0 {
       // Weighted voting Condition: Is the vote correct?
