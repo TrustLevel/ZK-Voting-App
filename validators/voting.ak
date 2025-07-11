@@ -1,10 +1,11 @@
+use aiken/builtin.{integer_to_bytearray}
 use aiken/collection/list
 use aiken/collection/dict
 use aiken/interval.{is_entirely_after}
 use cardano/address.{Script}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{Transaction, OutputReference, find_input, InlineDatum}
-use utilities.{check_initial_options_value, is_policy_on_value}
+use cardano/transaction.{Transaction, OutputReference, find_input, InlineDatum, Spend}
+use utilities.{check_initial_options_value, check_options_index, is_policy_on_value, deserialise_signal, is_interval_within, simple_vote, weighted_vote}
 use types.{Options}
 
 pub type UrnaDatum {
@@ -65,7 +66,7 @@ validator voting(utxo: OutputReference) {
     let are_options_values_correct: Bool = check_initial_options_value(urna_datum.options)
 
   // Condition 6: Are the options indexes in ascending order?
-    let are_options_indexes_correct: Bool = check_options_index(options)
+    let are_options_indexes_correct: Bool = check_options_index(urna_datum.options)
 
     // Observation: Conditions from 3 to 6 are optional - The datum construction could be trusted at the tx creation.
 
@@ -81,16 +82,16 @@ validator voting(utxo: OutputReference) {
   spend(datum: Option<UrnaDatum>, _redeemer: UrnaRedeemer, _utxo: OutputReference, self: Transaction) {
 
     let Transaction { inputs, outputs, redeemers, validity_range, .. } = self
+    expect Some(dat) = datum
 
-    let semaphore_input = list.filter(inputs, fn(i) {is_policy_on_value(i.output.value, datum.semaphore_nft)})
+    expect [semaphore_input] = list.filter(inputs, fn(i) {is_policy_on_value(i.output.value, dat.semaphore_nft)})
     
   // Condition 1: Does spent the Semaphore token.
-
-    let is_there_semaphore_nft: Bool = !(semaphore_input == [])
+  //let is_there_semaphore_nft: Bool = !(semaphore_input == [])
 
   // Condition 2: Is Vote NFT sent back to script?
 
-    // Find script input
+    // Finvoted script input
     expect Some(this_script_input) = find_input(inputs, utxo)
 
     // Find output sent back to script
@@ -99,32 +100,44 @@ validator voting(utxo: OutputReference) {
 
     let is_value_returned: Bool = assets.without_lovelace(output_to_script.value) == assets.without_lovelace(this_script_input.output.value) 
 
-  // Condition 3: Is the signal is correct (deserialise - order verificate.)
+  // Condition 3: Is the signal is correct (deserialise - order verificate.)?
 
-    expect [Spend(_input), semaphore_redeemer] = list.filter(redeemers, fn(r) { r.1st == Spend(semaphore_input.output_reference) })
+    expect [Pair(Spend(_input), semaphore_redeemer)] = list.filter(redeemers, fn(r) { r.1st == Spend(semaphore_input.output_reference) })
     expect semaphore_redeemer: SemaphoreRedeemer = semaphore_redeemer
-    let Signal(zk_proof, mpf_proof, signal_hash, signal_message) = semaphore_redeemer
-    let semaphore_message: ByteArray = semaphore_redeemer.signal_message
-    let vote = deserialise_signal(semaphore_message)
+    expect Signal(_zk_proof, _mpf_proof, _signal_hash, signal_message) = semaphore_redeemer
+    let converted_signal: ByteArray = integer_to_bytearray(True, 10, signal_message)
+    let vote: Options = deserialise_signal(converted_signal)
 
 
   // Condition 4: Is vote within the time event?
-
-    let is_within_time_event: Bool = is_interval_within(validity_range, dat.event_date)
+  let is_within_time_event: Bool = is_interval_within(validity_range, dat.event_date)
 
   // Condition 5: Is UrnaDatum preserved?
+  expect InlineDatum(out_datum) = output_to_script.datum
+  expect out_dat: UrnaDatum = out_datum
+  let is_datum_preserved: Bool = and {
+    dat.weight == out_dat.weight,
+    dat.event_date == out_dat.event_date,
+    dat.semaphore_nft == out_dat.semaphore_nft,
+  }
+
   // expect urna_datum: UrnaDatum = semaphore_redeemer
-
-  // Conditional - If weight > 0  { // Implement weighted logic } else { Implement simple vote logic }
-
   let validator_conditions: Bool = and {
-      is_there_semaphore_nft,
       is_value_returned,
       is_within_time_event,
+      is_datum_preserved,
   }
 
     if dat.weight > 0 {
+      // Weighted voting Condition: Is the vote correct?
+      let is_vote_correct: Bool = weighted_vote(dat.options, vote) == out_dat.options
+      is_vote_correct && validator_conditions
       
+    } else {
+      // Simple voting Condition: Is the vote correct?
+      expect Some(vote_target) = list.head(vote)
+      let is_vote_correct: Bool = simple_vote(dat.options, vote_target.1st) == out_dat.options
+      is_vote_correct && validator_conditions
     }
-
+  }
 }
