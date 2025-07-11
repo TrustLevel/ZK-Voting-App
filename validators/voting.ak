@@ -5,7 +5,7 @@ use aiken/interval.{is_entirely_after}
 use cardano/address.{Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Transaction, OutputReference, find_input, InlineDatum, Spend}
-use utilities.{check_initial_options_value, check_options_index, is_policy_on_value, deserialise_signal, is_interval_within, simple_vote, weighted_vote}
+use utilities.{check_initial_options_value, check_options_index, is_policy_on_value, deserialise_signal, is_interval_within, simple_vote, weighted_vote, check_weight}
 use types.{Options}
 
 pub type UrnaDatum {
@@ -131,7 +131,8 @@ validator voting(utxo: OutputReference) {
     if dat.weight > 0 {
       // Weighted voting Condition: Is the vote correct?
       let is_vote_correct: Bool = weighted_vote(dat.options, vote) == out_dat.options
-      is_vote_correct && validator_conditions
+      let is_weight_correct: Bool = check_weight(vote, dat.weight)
+      is_vote_correct && is_weight_correct && validator_conditions
       
     } else {
       // Simple voting Condition: Is the vote correct?
