@@ -22,7 +22,12 @@ pub fn check_options_index_rec(options: Options, state: Int) -> Bool {
 }
 
 pub fn check_options_index(options: Options) -> Bool {
-    check_options_index_rec(options, 0)
+    if options == [] {
+        error "Empty options"
+    } else {
+        check_options_index_rec(options, 0)
+    }
+    
 }
 
 
@@ -46,8 +51,19 @@ pub fn update_option(options: Options, index: Int, quantity: Int) -> Options {
 }
 
 
+// Should fail if options is empty, index is negative or index is bigger than options list.
+
 pub fn simple_vote(options: Options, index: Int) -> Options {
-    update_option(options, index, 1)
+    if options == [] {
+        error "Empty options"
+    } else if index < 0 {
+        error "Negative index"
+    } else if list.length(options) < index + 1 {
+        error "Index out of range"
+    } else {
+        update_option(options, index, 1)
+    }
+    
 }
 
 
