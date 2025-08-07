@@ -68,7 +68,7 @@ test check_options_index_10() fail {
 }
 
 // Test empty list - should pass (vacuously true)
-test check_options_index_11() {
+test check_options_index_11() fail {
     let options: Options = []
     check_options_index(options)
 }
@@ -249,144 +249,249 @@ test check_initial_options_value_20() fail {
 }
 
 
-// Interval Tests
-// Test interval completely within bounds (5-10 in 1-20) - should pass
+// Interval Tests - Testing is_interval_within function
+// This function validates that a transaction interval is completely contained within voting period bounds
+// Requirements: interval must be entirely_after start_time AND entirely_before end_time
+
+// Test 1: Basic valid case - interval completely within bounds
+// Validates [5,10] ⊆ (1,20) - interval starts after 1 and ends before 20
 test iiw_1() {
     let a = interval.between(5,10)
     let tp = (1,20)
     is_interval_within(a,tp)
 }
 
-// Test interval extends beyond upper bound (5-30 in 1-20) - should fail
+// Test 2: Upper bound violation - interval extends beyond allowed end time
+// Validates [5,30] ⊄ (1,20) - interval end (30) exceeds voting end time (20)
 test iiw_2() fail {
     let a = interval.between(5,30)
     let tp = (1,20)
     is_interval_within(a,tp)
 }
 
-// Test interval within bounds but close to edges (2-19 in 1-20) - should pass
+// Test 3: Near-boundary valid case - interval close to but within bounds
+// Validates [2,19] ⊆ (1,20) - tight fit but still entirely contained
 test iiw_3() {
     let a = interval.between(2,19)
     let tp = (1,20)
     is_interval_within(a,tp)
 }
 
-// Test interval completely after bounds (21-30 in 1-20) - should fail
+// Test 4: Complete temporal displacement - interval entirely after allowed period
+// Validates [21,30] ⊄ (1,20) - entire interval occurs after voting ends
 test iiw_4() fail {
     let a = interval.between(21,30)
     let tp = (1,20)
     is_interval_within(a,tp)
 }
 
-// Test interval starts within but extends beyond (15-30 in 1-20) - should fail
+// Test 5: Partial upper overflow - interval starts valid but extends too far
+// Validates [15,30] ⊄ (1,20) - starts within bounds but extends beyond end time
 test iiw_5() fail {
     let a = interval.between(15,30)
     let tp = (1,20)
     is_interval_within(a,tp)
 }
 
-// Test interval completely before bounds (1-10 in 20-60) - should fail
+// Test 6: Complete temporal displacement - interval entirely before allowed period
+// Validates [1,10] ⊄ (20,60) - entire interval occurs before voting begins
 test iiw_6() fail {
     let a = interval.between(1,10)
     let tp = (20,60)
     is_interval_within(a,tp)
 }
 
-// Test interval starts before but overlaps bounds (1-30 in 20-60) - should fail
+// Test 7: Partial lower underflow - interval starts too early but overlaps
+// Validates [1,30] ⊄ (20,60) - starts before voting begins, even though it overlaps
 test iiw_7() fail {
     let a = interval.between(1,30)
     let tp = (20,60)
     is_interval_within(a,tp)
 }
 
-// Test small interval within large bounds (34-35 in 33-60) - should pass
+// Test 8: Small interval within large bounds - demonstrates proper containment
+// Validates [34,35] ⊆ (33,60) - short transaction window within long voting period
 test iiw_8() {
     let a = interval.between(34,35)
     let tp = (33,60)
     is_interval_within(a,tp)
 }
 
-// Test small interval within tight bounds (34-35 in 33-36) - should pass
+// Test 9: Minimal gap containment - interval fits with minimal space
+// Validates [34,35] ⊆ (33,36) - only 1 unit gap on each side
 test iiw_9() {
     let a = interval.between(34,35)
     let tp = (33,36)
     is_interval_within(a,tp)
 }
 
-// Test interval touching upper bound (34-36 in 33-36) - should fail
+// Test 10: Upper boundary collision - interval touches upper bound (exclusive)
+// Validates [34,36] ⊄ (33,36) - interval end equals voting end (not allowed)
 test iiw_10() fail {
     let a = interval.between(34,36)
     let tp = (33,36)
     is_interval_within(a,tp)
 }
 
-// Test interval well within bounds (10-15 in 5-20) - should pass
+// Test 11: Standard containment case - well-centered interval
+// Validates [10,15] ⊆ (5,20) - interval comfortably within bounds with good margins
 test iiw_11() {
     let a = interval.between(10,15)
     let tp = (5,20)
     is_interval_within(a,tp)
 }
 
-// Test interval extends beyond upper bound (10-25 in 5-20) - should fail
+// Test 12: Upper bound violation - similar to test 2 but different values
+// Validates [10,25] ⊄ (5,20) - interval extends 5 units beyond voting end
 test iiw_12() fail {
     let a = interval.between(10,25)
     let tp = (5,20)
     is_interval_within(a,tp)
 }
 
-// Test interval starts before lower bound (0-10 in 5-20) - should fail
+// Test 13: Lower bound violation - interval starts too early
+// Validates [0,10] ⊄ (5,20) - interval starts 5 units before voting begins
 test iiw_13() fail {
     let a = interval.between(0,10)
     let tp = (5,20)
     is_interval_within(a,tp)
 }
 
-// Test large interval within larger bounds (100-200 in 50-300) - should pass
+// Test 14: Large scale valid containment - tests with bigger numbers
+// Validates [100,200] ⊆ (50,300) - 100-unit interval within 250-unit voting period
 test iiw_14() {
     let a = interval.between(100,200)
     let tp = (50,300)
     is_interval_within(a,tp)
 }
 
-// Test large interval exceeds upper bound (100-350 in 50-300) - should fail
+// Test 15: Large scale upper bound violation
+// Validates [100,350] ⊄ (50,300) - large interval exceeds upper bound by 50 units
 test iiw_15() fail {
     let a = interval.between(100,350)
     let tp = (50,300)
     is_interval_within(a,tp)
 }
 
-// Test large interval starts before lower bound (25-200 in 50-300) - should fail
+// Test 16: Large scale lower bound violation  
+// Validates [25,200] ⊄ (50,300) - large interval starts 25 units too early
 test iiw_16() fail {
     let a = interval.between(25,200)
     let tp = (50,300)
     is_interval_within(a,tp)
 }
 
-// Test very large interval within bounds (1000-2000 in 500-3000) - should pass
+// Test 17: Very large scale valid containment - stress test with big numbers
+// Validates [1000,2000] ⊆ (500,3000) - 1000-unit interval in 2500-unit period
 test iiw_17() {
     let a = interval.between(1000,2000)
     let tp = (500,3000)
     is_interval_within(a,tp)
 }
 
-// Test very large interval exceeds upper bound (1000-3500 in 500-3000) - should fail
+// Test 18: Very large scale upper bound violation
+// Validates [1000,3500] ⊄ (500,3000) - exceeds upper bound by 500 units
 test iiw_18() fail {
     let a = interval.between(1000,3500)
     let tp = (500,3000)
     is_interval_within(a,tp)
 }
 
-// Test huge interval completely outside bounds (10000-200000 in 500-3000) - should fail
+// Test 19: Extreme displacement - interval completely outside and much larger
+// Validates [10000,200000] ⊄ (500,3000) - massive interval entirely after voting period
 test iiw_19() fail {
     let a = interval.between(10000,200000)
     let tp = (500,3000)
     is_interval_within(a,tp)
 }
 
-// Test small interval within tight bounds (51-52 in 50-53) - should pass
+// Test 20: Minimal interval in minimal bounds - tightest valid case
+// Validates [51,52] ⊆ (50,53) - 1-unit interval in 3-unit period with 1-unit margins
 test iiw_20() {
     let a = interval.between(51,52)
     let tp = (50,53)
+    is_interval_within(a,tp)
+}
+
+// Additional Edge Cases - Testing critical boundary conditions not covered above
+
+// Test 21: Lower boundary collision - interval touches lower bound (exclusive)
+// Validates [5,10] ⊄ (5,20) - interval start equals voting start (not allowed)
+test iiw_21() fail {
+    let a = interval.between(5,10)
+    let tp = (5,20)
+    is_interval_within(a,tp)
+}
+
+// Test 22: Zero-width interval within bounds
+// Validates [10,10] ⊆ (5,15) - instantaneous transaction within voting period
+test iiw_22() {
+    let a = interval.between(10,10)
+    let tp = (5,15)
+    is_interval_within(a,tp)
+}
+
+// Test 23: Zero-width interval touching lower bound
+// Validates [5,5] ⊄ (5,15) - instant transaction at voting start (not allowed)
+test iiw_23() fail {
+    let a = interval.between(5,5)
+    let tp = (5,15)
+    is_interval_within(a,tp)
+}
+
+// Test 24: Zero-width interval touching upper bound
+// Validates [15,15] ⊄ (5,15) - instant transaction at voting end (not allowed)
+test iiw_24() fail {
+    let a = interval.between(15,15)
+    let tp = (5,15)
+    is_interval_within(a,tp)
+}
+
+// Test 25: Interval spans entire allowed period (but doesn't touch boundaries)
+// Validates [6,14] ⊆ (5,15) - maximum width interval within bounds
+test iiw_25() {
+    let a = interval.between(6,14)
+    let tp = (5,15)
+    is_interval_within(a,tp)
+}
+
+// Test 26: Interval exactly matches allowed period (both boundaries touched)
+// Validates [5,15] ⊄ (5,15) - interval equals voting period (not allowed)
+test iiw_26() fail {
+    let a = interval.between(5,15)
+    let tp = (5,15)
+    is_interval_within(a,tp)
+}
+
+// Test 27: Negative time values - interval before epoch
+// Validates [-10,-5] ⊆ (-15,0) - voting in past timestamps
+test iiw_27() {
+    let a = interval.between(-10,-5)
+    let tp = (-15,0)
+    is_interval_within(a,tp)
+}
+
+// Test 28: Mixed negative/positive - interval crosses epoch
+// Validates [-2,3] ⊆ (-5,10) - transaction spanning epoch boundary
+test iiw_28() {
+    let a = interval.between(-2,3)
+    let tp = (-5,10)
+    is_interval_within(a,tp)
+}
+
+// Test 29: Large gap between bounds - interval lost in middle
+// Validates [100,110] ⊆ (50,500) - small interval in very large voting window
+test iiw_29() {
+    let a = interval.between(100,110)
+    let tp = (50,500)
+    is_interval_within(a,tp)
+}
+
+// Test 30: Single unit valid interval - minimal gap from boundaries
+// Validates [2,3] ⊆ (1,4) - 1-unit interval with 1-unit margins on both sides
+test iiw_30() {
+    let a = interval.between(2,3)
+    let tp = (1,4)
     is_interval_within(a,tp)
 }
 
@@ -471,67 +576,153 @@ test update_option_13() {
 }
 
 
-// Simple vote test
+// Simple Vote Tests - Testing simple_vote function
+// This function adds exactly 1 vote to the specified option index
+// Requirement: Increments vote count by 1 for the target option, leaves others unchanged
 
-// Test simple vote on single option (0->1)
+// Test 1: Basic single option voting - simplest case
+// Validates vote on only available option: [(0,0)] → [(0,1)]
 test vote_1() {
     let options: Options = [(0,0)]
     simple_vote(options, 0) == [(0,1)]
 }
 
-// Test multiple simple votes on same option (0->1->2->3)
+// Test 2: Multiple consecutive votes on same option - cumulative voting
+// Validates repeated voting: [(0,0)] → [(0,1)] → [(0,2)] → [(0,3)]
 test vote_2() {
     let options: Options = [(0,0)]
     { simple_vote(options, 0) |> simple_vote(_,0) |> simple_vote(_,0) } == [(0,3)]
 }
 
-// Test simple vote on last option in list
+// Test 3: Vote on last option in multi-option ballot
+// Validates targeting last option: [(0,0),(1,0),(2,0)] → [(0,0),(1,0),(2,1)]
 test vote_3() {
     let options: Options = [(0,0), (1,0), (2,0)]
     simple_vote(options, 2) ==  [(0,0), (1,0), (2,1)]
 }
 
-// Test simple vote on middle option with existing values (7->8)
+// Test 4: Vote on middle option with non-zero starting values
+// Validates incrementing existing vote count: option 1 goes from 7→8
 test vote_4() {
     let options: Options = [(0,8), (1,7), (2,3)]
     simple_vote(options, 1) ==  [(0,8), (1,8), (2,3)]
 }
 
-// Test simple vote on first option in longer list (8->9)
+// Test 5: Vote on first option in longer list
+// Validates first option targeting: option 0 goes from 8→9, others unchanged
 test vote_5() {
     let options: Options = [(0,8), (1,7), (2,3), (3,4)]
     simple_vote(options, 0) ==  [(0,9), (1,7), (2,3), (3,4)]
 }
 
-// Test simple vote on last option in longer list (4->5)
+// Test 6: Vote on last option in longer list
+// Validates last option targeting: option 3 goes from 4→5, others preserved
 test vote_6() {
     let options: Options = [(0,8), (1,7), (2,3), (3,4)]
     simple_vote(options, 3) ==  [(0,8), (1,7), (2,3), (3,5)]
 }
 
-// Test simple vote with large values (400->401)
+// Test 7: Vote with large existing values - overflow resilience
+// Validates large number handling: option 3 goes from 400→401
 test vote_7() {
     let options: Options = [(0,100), (1,200), (2,300), (3,400)]
     simple_vote(options, 3) ==  [(0,100), (1,200), (2,300), (3,401)]
 }
 
-// Test incorrect expected result - should fail (wrong value for option 2)
+// Test 8: Negative test - wrong expected result for non-voted option
+// Validates precision: expects wrong value (299) for unchanged option 2
 test vote_8() fail {
     let options: Options = [(0,100), (1,200), (2,300), (3,400)]
     simple_vote(options, 3) ==  [(0,100), (1,200), (2,299), (3,401)]
 }
 
-// Test simple vote on third option with large values (300->301)
+// Test 9: Vote on middle option in 4-option ballot
+// Validates middle option targeting: option 2 goes from 300→301
 test vote_9() {
     let options: Options = [(0,100), (1,200), (2,300), (3,400)]
     simple_vote(options, 2) ==  [(0,100), (1,200), (2,301), (3,400)]
 }
 
-// Test incorrect expected result - should fail (wrong value for option 0)
+// Test 10: Negative test - wrong expected result for non-voted option
+// Validates precision: expects wrong value (2) for unchanged option 0
 test vote_10() fail {
     let options: Options = [(0,100), (1,200), (2,300), (3,400)]
     simple_vote(options, 2) ==  [(0,2), (1,200), (2,301), (3,400)]
 }
+
+// Test 11: Vote on non-existent option index - should fail
+test vote_11() fail {
+    let options: Options = [(0,5), (1,3), (2,7)]
+    simple_vote(options, 5) == [(0,5), (1,3), (2,7)]
+}
+
+// Test 12: Vote with negative option index - should fail
+test vote_12() fail {
+    let options: Options = [(0,1), (1,2), (2,3)]
+    simple_vote(options, -1) == [(0,1), (1,2), (2,3)]
+}
+
+// Test 13: Vote with very large option index - should fail
+test vote_13() fail {
+    let options: Options = [(0,0), (1,0)]
+    simple_vote(options, 999) == [(0,0), (1,0)]
+}
+
+// Test 14: Vote on option with negative existing value
+// Validates voting on option that has negative vote count (-5→-4)
+test vote_14() {
+    let options: Options = [(0,0), (1, 5), (2,0)]
+    simple_vote(options, 1) == [(0,0), (1, 6), (2,0)]
+}
+
+// Test 15: Vote with non-sequential option indices - targeting gaps
+// Validates voting in options list with non-consecutive indices
+test vote_15() fail {
+    let options: Options = [(5,10), (10,20), (15,30)]
+    simple_vote(options, 10) == [(5,10), (10,21), (15,30)]
+}
+
+// Test 16: Vote on single option with very large existing value
+// Validates increment behavior near potential integer limits
+test vote_16() {
+    let options: Options = [(0,999999)]
+    simple_vote(options, 0) == [(0,1000000)]
+}
+
+// Test 17: Vote with duplicate indices in options list (edge case)
+// Validates behavior when options list has duplicate indices (first match wins)
+test vote_17() {
+    let options: Options = [(0,5), (1,3), (0,7), (2,1)]
+    simple_vote(options, 0) == [(0,6), (1,3), (0,7), (2,1)]
+}
+
+// Test 18: Vote in very long options list - performance test
+// Validates vote targeting in extensive ballot (option near end)
+test vote_18() {
+    let options: Options = [(0,0), (1,1), (2,2), (3,3), (4,4), (5,5), (6,6), (7,7), (8,8), (9,9)]
+    simple_vote(options, 7) == [(0,0), (1,1), (2,2), (3,3), (4,4), (5,5), (6,6), (7,8), (8,8), (9,9)]
+}
+
+// Test 19: Vote with zero as target index multiple times
+// Validates repeated voting on option 0 with different starting values
+test vote_19() {
+    let options: Options = [(0,42)]
+    { simple_vote(options, 0) |> simple_vote(_, 0) } == [(0,44)]
+}
+
+// Test 20: Vote targeting middle of unordered indices list
+// Validates correct option targeting when indices are not in ascending order
+test vote_20() {
+    let options: Options = [(3,100), (1,200), (5,300), (0,400)]
+    simple_vote(options, 1) == [(3,100), (1,201), (5,300), (0,400)]
+}
+
+// Test 21: Vote on empty options - Should fail
+test vote_21() fail {
+    let options: Options = []
+    simple_vote(options, 1) == []
+}
+
 
 // Weighted Voting tests.
 
