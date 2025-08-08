@@ -1,0 +1,81 @@
+use aiken/fuzz
+use aiken/primitive/int
+use utilities.{ serialise_signal, deserialise_signal }
+use types.{ Options }
+
+
+// Serialization tests.
+
+test signal_serialization_1() {
+    
+    let option: Options = [(0,0)]
+
+    let serialized_signal: ByteArray = serialise_signal(option)
+
+    option == deserialise_signal(serialized_signal)
+}
+
+test signal_serialization_2() {
+    
+    let option: Options = [(0,0),(1,0),(2,0)]
+
+    let serialized_signal: ByteArray = serialise_signal(option)
+
+    option == deserialise_signal(serialized_signal)
+}
+
+test signal_serialization_3() {
+    
+    let option: Options = [(0,1),(1,1),(2,1)]
+
+    let serialized_signal: ByteArray = serialise_signal(option)
+
+    option == deserialise_signal(serialized_signal)
+}
+
+fn random_options() -> Fuzzer<Options> {
+    fuzz.list(fuzz.tuple(fuzz.int(), fuzz.int()))
+}
+
+test signal_serialization_equivalence_property(msg: Options via random_options()) {
+    let serialized_msg = serialise_signal(msg) 
+    msg == deserialise_signal(serialized_msg)
+}
+
+//test signal_transformation_1() {
+//    let msg: Options = [(0,0)]
+//    let serialized_msg = serialise_signal(msg)
+//
+//
+//
+//    bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
+//    let signal_options = int.from_bytearray_big_endian(padded_signal)
+//}
+
+//test signal_serialization_2() {
+//    
+//    let options = [(0,0)]
+//    
+//
+//    deserialise_signal(#"") == options
+//}
+//
+//test signal_serialization_3() {
+//    
+//    let ballot = Ballot {
+//        mode: 0,
+//        options: [(0,9), (1,7), (2,3), (3,4)],
+//    }
+//
+//    serialise_signal(ballot.options) == #""
+//}
+//
+//test signal_serialization_4() {
+//    
+//    let ballot = Ballot {
+//        mode: 0,
+//        options: [(0,9), (1,7), (2,3), (3,4)],
+//    }
+//
+//    deserialise_signal(#"") == ballot.options
+//} use aiken/fuzz
