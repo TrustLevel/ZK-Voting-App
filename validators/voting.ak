@@ -1,7 +1,7 @@
 use aiken/builtin.{integer_to_bytearray}
 use aiken/collection/list
 use aiken/collection/dict
-use aiken/interval.{is_entirely_after}
+use aiken/interval.{is_entirely_before}
 use cardano/address.{Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Transaction, OutputReference, find_input, InlineDatum, Spend}
@@ -33,7 +33,7 @@ pub type SemaphoreRedeemer {
 
 validator voting(utxo: OutputReference) {
 
-  mint(_redeemer: UrnaDatum, policy_id: PolicyId, self: Transaction) {
+  mint(_redeemer: UrnaRedeemer, policy_id: PolicyId, self: Transaction) {
 
     // A unique id for the voting is needed - This could be the policy ID.
     let Transaction { inputs, outputs, mint, validity_range, .. } = self
@@ -60,7 +60,7 @@ validator voting(utxo: OutputReference) {
 
   // Condition 4: Is voting event correctly set?
     let (event_start, event_end) = urna_datum.event_date
-    let is_event_time_set: Bool = event_start < event_end && is_entirely_after(validity_range, event_start)
+    let is_event_time_set: Bool = event_start < event_end && is_entirely_before(validity_range, event_start)
 
   // Condition 5: Are all options set at 0?
     let are_options_values_correct: Bool = check_initial_options_value(urna_datum.options)
