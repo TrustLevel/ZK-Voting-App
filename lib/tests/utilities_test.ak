@@ -1,7 +1,8 @@
-// use aiken/cbor as cbor
-//use aiken/collection/list
+//use aiken/cbor as cbor
+use aiken/fuzz
+ //use aiken/collection/list
 use aiken/interval as interval
-use utilities.{ is_interval_within, simple_vote, weighted_vote, check_options_index, check_initial_options_value, check_weight, update_option}
+use utilities.{ is_interval_within, simple_vote, weighted_vote, check_options_index, check_initial_options_value, check_weight, update_option, serialise_signal, deserialise_signal}
 use types.{ Options }
 
 
@@ -827,19 +828,42 @@ test check_weight_5() fail {
 
 // Serialization tests.
 
-//test signal_serialization_1() {
-//    
-//    let ballot = Ballot {
-//        mode: 0,
-//        options: [(0,0)],
-//    }
-//
-//    let serialized_signal: ByteArray = serialise_signal(ballot.options)
-//
-//    ballot.options == deserialise_signal(serialized_signal)
-//
-//}
-//
+test signal_serialization_1() {
+    
+    let option = [(0,0)]
+
+    let serialized_signal: ByteArray = serialise_signal(option)
+
+    option == deserialise_signal(serialized_signal)
+}
+
+test signal_serialization_2() {
+    
+    let option = [(0,0),(1,0),(2,0)]
+
+    let serialized_signal: ByteArray = serialise_signal(option)
+
+    option == deserialise_signal(serialized_signal)
+}
+
+test signal_serialization_3() {
+    
+    let option = [(0,1),(1,1),(2,1)]
+
+    let serialized_signal: ByteArray = serialise_signal(option)
+
+    option == deserialise_signal(serialized_signal)
+}
+
+fn random_options() -> Fuzzer<Options> {
+    fuzz.list(fuzz.tuple(fuzz.int(), fuzz.int()))
+}
+
+test signal_serialization_equivalence_property(msg: Options via random_options()) {
+    let serialized_msg = serialise_signal(msg) 
+    msg == deserialise_signal(serialized_msg)
+}
+
 //test signal_serialization_2() {
 //    
 //    let options = [(0,0)]
@@ -866,4 +890,4 @@ test check_weight_5() fail {
 //    }
 //
 //    deserialise_signal(#"") == ballot.options
-//}
+//} use aiken/fuzz

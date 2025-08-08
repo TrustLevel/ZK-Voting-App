@@ -101,13 +101,11 @@ validator voting(oref: OutputReference) {
     let is_value_returned: Bool = assets.without_lovelace(output_to_script.value) == assets.without_lovelace(this_script_input.output.value) 
 
   // Condition 3: Is the signal is correct (deserialise - order verificate.)?
-
     expect [Pair(Spend(_input), semaphore_redeemer)] = list.filter(redeemers, fn(r) { r.1st == Spend(semaphore_input.output_reference) })
     expect semaphore_redeemer: SemaphoreRedeemer = semaphore_redeemer
     expect Signal(_zk_proof, _mpf_proof, _signal_hash, signal_message) = semaphore_redeemer
-    let converted_signal: ByteArray = integer_to_bytearray(True, 10, signal_message) // Todo: Have to check the legnth and endianness of the signal_message.
+    let converted_signal: ByteArray = integer_to_bytearray(True, 10, signal_message) // Todo: Have to check the length and endianness of the signal_message.
     let vote: Options = deserialise_signal(converted_signal)
-
 
   // Condition 4: Is vote within the time event?
     let is_within_time_event: Bool = is_interval_within(validity_range, dat.event_date)
@@ -136,7 +134,7 @@ validator voting(oref: OutputReference) {
       
     } else {
       // Simple voting Condition: Is the vote correct?
-      expect Some(vote_target) = list.head(vote)
+      expect [vote_target] = vote
       let is_vote_correct: Bool = simple_vote(dat.options, vote_target.1st) == out_dat.options
       is_vote_correct && validator_conditions
     }
