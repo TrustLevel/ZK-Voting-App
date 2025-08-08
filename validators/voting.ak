@@ -31,7 +31,7 @@ pub type SemaphoreRedeemer {
 }
 
 
-validator voting(utxo: OutputReference) {
+validator voting(oref: OutputReference) {
 
   mint(_redeemer: UrnaRedeemer, policy_id: PolicyId, self: Transaction) {
 
@@ -39,7 +39,7 @@ validator voting(utxo: OutputReference) {
     let Transaction { inputs, outputs, mint, validity_range, .. } = self
 
   // Condition 0: Is expected UTxO spent?
-    expect Some(_nft_utxo) = find_input(inputs, utxo) 
+    expect Some(_nft_utxo) = find_input(inputs, oref) 
 
   // Condition 1: Is only one Group NFT minted?
     expect [Pair(_asset_name, amount)] =
@@ -79,7 +79,7 @@ validator voting(utxo: OutputReference) {
     }
   }
 
-  spend(datum: Option<UrnaDatum>, _redeemer: UrnaRedeemer, _utxo: OutputReference, self: Transaction) {
+  spend(datum: Option<UrnaDatum>, _redeemer: UrnaRedeemer, utxo: OutputReference, self: Transaction) {
 
     let Transaction { inputs, outputs, redeemers, validity_range, .. } = self
     expect Some(dat) = datum
