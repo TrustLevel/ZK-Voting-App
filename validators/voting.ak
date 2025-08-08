@@ -98,13 +98,14 @@ validator voting(oref: OutputReference) {
     let this_script_address = this_script_input.output.address
     expect [output_to_script] = list.filter(outputs, fn (o) { o.address == this_script_address})
 
+    // TODO: Check more precisely if prevents value preservation. It may be empty_value == empty_value too.
     let is_value_returned: Bool = assets.without_lovelace(output_to_script.value) == assets.without_lovelace(this_script_input.output.value) 
 
   // Condition 3: Is the signal is correct (deserialise - order verificate.)?
     expect [Pair(Spend(_input), semaphore_redeemer)] = list.filter(redeemers, fn(r) { r.1st == Spend(semaphore_input.output_reference) })
     expect semaphore_redeemer: SemaphoreRedeemer = semaphore_redeemer
     expect Signal(_zk_proof, _mpf_proof, _signal_hash, signal_message) = semaphore_redeemer
-    let converted_signal: ByteArray = integer_to_bytearray(True, 10, signal_message) // Todo: Have to check the length and endianness of the signal_message.
+    let converted_signal: ByteArray = integer_to_bytearray(True, 0, signal_message) // Todo: Have to check the length and endianness of the signal_message.
     let vote: Options = deserialise_signal(converted_signal)
 
   // Condition 4: Is vote within the time event?

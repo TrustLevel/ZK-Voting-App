@@ -1,3 +1,4 @@
+use aiken/primitive/bytearray
 use aiken/fuzz
 use aiken/primitive/int
 use utilities.{ serialise_signal, deserialise_signal }
@@ -42,15 +43,18 @@ test signal_serialization_equivalence_property(msg: Options via random_options()
     msg == deserialise_signal(serialized_msg)
 }
 
-//test signal_transformation_1() {
-//    let msg: Options = [(0,0)]
-//    let serialized_msg = serialise_signal(msg)
-//
-//
-//
-//    bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-//    let signal_options = int.from_bytearray_big_endian(padded_signal)
-//}
+test signal_transformation_1() {
+    let msg: Options = [(0,0)]
+    let serialized_msg = serialise_signal(msg)
+
+    
+
+    // bytearray.concat(#"0000000000000000", signal_bytes)
+    let signal_to_int: Int = int.from_bytearray_big_endian(serialized_msg)
+    let signal_to_byte_array: ByteArray = bytearray.from_int_big_endian(signal_to_int, 0)
+
+    msg == deserialise_signal(signal_to_byte_array)
+}
 
 //test signal_serialization_2() {
 //    
