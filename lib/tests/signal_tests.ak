@@ -56,30 +56,12 @@ test signal_transformation_1() {
     msg == deserialise_signal(signal_to_byte_array)
 }
 
-//test signal_serialization_2() {
-//    
-//    let options = [(0,0)]
-//    
-//
-//    deserialise_signal(#"") == options
-//}
-//
-//test signal_serialization_3() {
-//    
-//    let ballot = Ballot {
-//        mode: 0,
-//        options: [(0,9), (1,7), (2,3), (3,4)],
-//    }
-//
-//    serialise_signal(ballot.options) == #""
-//}
-//
-//test signal_serialization_4() {
-//    
-//    let ballot = Ballot {
-//        mode: 0,
-//        options: [(0,9), (1,7), (2,3), (3,4)],
-//    }
-//
-//    deserialise_signal(#"") == ballot.options
-//} use aiken/fuzz
+test signal_transformation_property(msg: Options via random_options()) {
+    let serialized_msg = serialise_signal(msg)
+
+    let signal_to_int: Int = int.from_bytearray_big_endian(serialized_msg)
+    let signal_to_byte_array: ByteArray = bytearray.from_int_big_endian(signal_to_int, 0)
+
+    msg == deserialise_signal(signal_to_byte_array)
+}
+
