@@ -1,0 +1,23 @@
+name = "agustinbadi/zk-voting-app"
+version = "0.0.0"
+compiler = "v1.1.19"
+plutus = "v3"
+license = "Apache-2.0"
+description = "Aiken contracts for project 'agustinbadi/zk-voting-app'"
+
+[repository]
+user = "agustinbadi"
+project = "zk-voting-app"
+platform = "github"
+
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "v2.2.0"
+source = "github"
+
+[[dependencies]]
+name = "aiken-lang/fuzz"
+version = "v2"
+source = "github"
+
+[config]
