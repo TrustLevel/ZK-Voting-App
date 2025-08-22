@@ -35,5 +35,5 @@ requirements = []
 source = "github"
 
 [etags]
-"aiken-lang/fuzz@v2" = [{ secs_since_epoch = 1755897272, nanos_since_epoch = 539519572 }, "9843473958e51725a9274b487d2d4aac0395ec1a2e30f090724fa737226bc127"]
-"modulo-p/cardano-semaphore@dev" = [{ secs_since_epoch = 1755897273, nanos_since_epoch = 151862116 }, "3c5bc1ac3b43aef0bf601c6c7989fb37196c723b5612ec7ca35ee9cd4c95ff9e"]
+"aiken-lang/fuzz@v2" = [{ secs_since_epoch = 1755903161, nanos_since_epoch = 763447345 }, "9843473958e51725a9274b487d2d4aac0395ec1a2e30f090724fa737226bc127"]
+"modulo-p/cardano-semaphore@dev" = [{ secs_since_epoch = 1755903162, nanos_since_epoch = 298804220 }, "88c44a4733d070b5a578ab59cc0684d6dbe21c768eb5fd890e918b9aee2ee139"]
