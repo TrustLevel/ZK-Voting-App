@@ -20,4 +20,9 @@ name = "aiken-lang/fuzz"
 version = "v2"
 source = "github"
 
+[[dependencies]]
+name = "modulo-p/cardano-semaphore"
+version = "dev"
+source = "github"
+
 [config]

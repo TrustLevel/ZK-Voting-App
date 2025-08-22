@@ -1,5 +1,5 @@
  //use aiken/collection/list
-use utilities.{ simple_vote, weighted_vote, check_weight, update_option }
+use voting_utilities.{ simple_vote, weighted_vote, check_weight, update_option }
 use types.{ Options }
 
 // Update option

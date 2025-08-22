@@ -1,4 +1,4 @@
-use utilities.{ check_options_index, check_initial_options_value}
+use voting_utilities.{ check_options_index, check_initial_options_value}
 use types.{ Options }
 
 

@@ -5,8 +5,9 @@ use aiken/interval.{is_entirely_before}
 use cardano/address.{Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Transaction, OutputReference, find_input, InlineDatum, Spend}
-use utilities.{check_initial_options_value, check_options_index, is_policy_on_value, deserialise_signal, is_interval_within, simple_vote, weighted_vote, check_weight}
+use voting_utilities.{check_initial_options_value, check_options_index, is_policy_on_value, deserialise_signal, is_interval_within, simple_vote, weighted_vote, check_weight}
 use types.{Options}
+//use cardano_semaphore.{ Redeemer }
 
 pub type UrnaDatum {
     weight: Int,
@@ -29,7 +30,6 @@ pub type SemaphoreRedeemer {
     Create
     Signal(Bool, Bool, Int, Int)
 }
-
 
 validator voting(oref: OutputReference) {
 

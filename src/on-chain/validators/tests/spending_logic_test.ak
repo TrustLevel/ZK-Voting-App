@@ -5,7 +5,7 @@ use aiken/interval.{between, Interval}
 use cardano/address.{from_script}
 use cardano/assets.{from_lovelace, from_asset, merge, Value}
 use cardano/transaction.{Input, NoDatum, InlineDatum, Output, OutputReference, Transaction, Spend} as transaction
-use utilities.{serialise_signal}
+use voting_utilities.{serialise_signal}
 use voting.{ UrnaDatum, Vote, SemaphoreRedeemer, Signal, }
 
 const validator_policy_id = bytearray.from_string(@"policy_id")

@@ -1,5 +1,5 @@
 use aiken/interval as interval
-use utilities.{ is_interval_within}
+use voting_utilities.{ is_interval_within}
 
 // Interval Tests - Testing is_interval_within function
 // This function validates that a transaction interval is completely contained within voting period bounds
