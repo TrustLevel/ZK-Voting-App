@@ -6,7 +6,9 @@ use cardano/address.{from_script}
 use cardano/assets.{from_lovelace, from_asset, merge, Value}
 use cardano/transaction.{Input, NoDatum, InlineDatum, Output, OutputReference, Transaction, Spend} as transaction
 use voting_utilities.{serialise_signal}
-use voting.{ UrnaDatum, Vote, SemaphoreRedeemer, Signal, }
+use voting.{ UrnaDatum, Vote }
+use semaphore_types.{ Signal, SemaphoreRedeemer }
+use ak_381/groth16.{Proof}
 
 const validator_policy_id = bytearray.from_string(@"policy_id")
 const semaphore_policy_id = bytearray.from_string(@"semaphore_policy_id")
@@ -70,11 +72,17 @@ test cast_simple_vote() {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(2,1)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 38625149408878199693830158794989919308150121977174408046140837150457929803892
+    let signal_hash = 25050711957853089676855563252373407134946460892559238457710929576024828641940
+    let signal_message = serialise_signal([(2,1)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(5, 95)
@@ -153,11 +161,17 @@ test cast_simple_vote_1() {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(3,1)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(3,1)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(5, 95)
@@ -236,11 +250,17 @@ test cast_simple_vote_3() {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(1,1)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(1,1)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(5, 95)
@@ -319,11 +339,17 @@ test cast_weighted_vote() {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(1,5)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(1,5)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(5, 95)
@@ -402,11 +428,17 @@ test cast_weighted_vote_2() {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(0,1), (1,2), (2,2)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(0,1), (1,2), (2,2)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(5, 95)
@@ -485,11 +517,17 @@ test cast_weighted_vote_3() {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(0,10), (1,50), (3,39), (4,1)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(0,10), (1,50), (3,39), (4,1)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(5, 95)
@@ -570,11 +608,17 @@ test wrong_option_format() fail {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(0,1), (2,1)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(0,1), (2,1)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(5, 95)
@@ -654,11 +698,17 @@ test wrong_option_format_2() fail {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(5, 95)
@@ -738,11 +788,17 @@ test vote_out_of_time() fail {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(2,1)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(2,1)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(101, 200)
@@ -822,11 +878,17 @@ test vote_out_of_time_2() fail {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(2,1)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(2,1)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(1, 49)
@@ -906,11 +968,17 @@ test vote_out_of_time_3() fail {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(35,60)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(35,60)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(1, 49)
@@ -990,11 +1058,17 @@ test has_not_semaphore_input() fail {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(2,1)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(2,1)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(5, 95)
@@ -1074,11 +1148,17 @@ test group_token_has_not_been_returned() fail {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(2,1)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(2,1)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(5, 95)
@@ -1157,11 +1237,17 @@ test datum_not_preserved() fail {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(2,1)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(2,1)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(5, 95)
@@ -1241,11 +1327,17 @@ test datum_not_preserved_2() fail {
     }
 
     // Create Semaphore Redeemer in way that the signal is correct
-    let signal_bytes = serialise_signal([(2,1)])
-    // Pad ByteArray to minimum 18 bytes for int conversion, but keep result small enough for 10-byte conversion
-    let padded_signal = bytearray.concat(#"0000000000000000", signal_bytes)  // Pad with 8 zero bytes at start
-    let signal_options = int.from_bytearray_big_endian(padded_signal)
-    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
+    let zk_proof: Proof =
+        Proof {
+            piA: #"88f1a3db3a777e3909a2416c1eaa1a4753959e25ea8e6d314d83508ecb25644a7a49c84d9e0e48ffbb12f0f3620f348a",
+            piB: #"8319df022fb874b81e0def688fe3158125682fa9ec0a010f302774a0ecf9087788b3e377da1316170102583d8db8159213fa7138dbabc34655162951f33c7e8a75e3de9e4f8431950f43a792634b09fcec324849cca3ec964f98a44ec500429b",
+            piC: #"98c19d179b2cca1526dd3b2ca64f7284bc66229b0b2a470857882e38dfcecedac22a4849231018aea4c193072e76dadc",
+        }
+    let mpf_proof = []
+    let nullifier = 0
+    let signal_hash = 0
+    let signal_message = serialise_signal([(2,1)])
+    let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
     
     // Set a time event within the voting time. 
     let time_range: Interval<Int> = between(5, 95)
@@ -1267,9 +1359,6 @@ test datum_not_preserved_2() fail {
 
     voting.voting.spend(parameter_utxo, Some(urna_datum_0), Vote, script_oref, tx)
 }
-
-
-
 
 // Weighted vote tests
 
@@ -1329,9 +1418,9 @@ test datum_not_preserved_2() fail {
 //    }
 //
 //    // Create Semaphore Redeemer in way that the signal is correct
-//    let signal_bytes = serialise_signal([(0,0), (1,0), (2,1)])
+//    let signal_message = serialise_signal([(0,0), (1,0), (2,1)])
 //    // Pad ByteArray to minimum 14 bytes for int conversion
-//    let padded_signal = bytearray.concat(signal_bytes, #"00000000")  // Add 4 zero bytes
+//    let padded_signal = bytearray.concat(signal_message, #"00000000")  // Add 4 zero bytes
 //    let signal_options = int.from_bytearray_big_endian(padded_signal)
 //    let semaphore_redeemer: SemaphoreRedeemer = Signal(True, True, 1, signal_options)
 //    
@@ -1351,7 +1440,6 @@ test datum_not_preserved_2() fail {
 //    }
 //
 //    let parameter_utxo = OutputReference { transaction_id: "#00", output_index: 0 }
-//
 //
 //    voting.voting.spend(parameter_utxo, Some(urna_datum_0), Vote, script_oref, tx)
 //}

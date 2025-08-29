@@ -1,13 +1,12 @@
-use aiken/builtin.{integer_to_bytearray}
 use aiken/collection/list
 use aiken/collection/dict
 use aiken/interval.{is_entirely_before}
 use cardano/address.{Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Transaction, OutputReference, find_input, InlineDatum, Spend}
-use voting_utilities.{check_initial_options_value, check_options_index, is_policy_on_value, deserialise_signal, is_interval_within, simple_vote, weighted_vote, check_weight}
+use voting_utilities.{check_initial_options_value, check_options_index, deserialise_signal, is_interval_within, simple_vote, weighted_vote, check_weight, is_policy_on_value}
 use types.{Options}
-//use cardano_semaphore.{ Redeemer }
+use semaphore_types.{SemaphoreRedeemer, Signal}
 
 pub type UrnaDatum {
     weight: Int,
@@ -21,15 +20,6 @@ pub type UrnaRedeemer {
   Vote
 }
 
-// pub type Redeemer {
-//     Create
-//     Signal(groth16.Proof, mpf.Proof, Int, Int)
-// }
-
-pub type SemaphoreRedeemer {
-    Create
-    Signal(Bool, Bool, Int, Int)
-}
 
 validator voting(oref: OutputReference) {
 
@@ -84,11 +74,10 @@ validator voting(oref: OutputReference) {
     let Transaction { inputs, outputs, redeemers, validity_range, .. } = self
     expect Some(dat) = datum
 
+  // Condition 1: Does spent the Semaphore token.
+
     expect [semaphore_input] = list.filter(inputs, fn(i) {is_policy_on_value(i.output.value, dat.semaphore_nft)})
     
-  // Condition 1: Does spent the Semaphore token.
-  //let is_there_semaphore_nft: Bool = !(semaphore_input == [])
-
   // Condition 2: Is Vote NFT sent back to script?
 
     // Finvoted script input
@@ -104,9 +93,8 @@ validator voting(oref: OutputReference) {
   // Condition 3: Is the signal is correct (deserialise - order verificate.)?
     expect [Pair(Spend(_input), semaphore_redeemer)] = list.filter(redeemers, fn(r) { r.1st == Spend(semaphore_input.output_reference) })
     expect semaphore_redeemer: SemaphoreRedeemer = semaphore_redeemer
-    expect Signal(_zk_proof, _mpf_proof, _signal_hash, signal_message) = semaphore_redeemer
-    let converted_signal: ByteArray = integer_to_bytearray(True, 0, signal_message) // Todo: Have to check the length and endianness of the signal_message.
-    let vote: Options = deserialise_signal(converted_signal)
+    expect Signal(_zk_proof, _mpf_proof, _nullifier, _signal_hash, signal_message) = semaphore_redeemer
+    let vote: Options = deserialise_signal(signal_message)
 
   // Condition 4: Is vote within the time event?
     let is_within_time_event: Bool = is_interval_within(validity_range, dat.event_date)
