@@ -31,7 +31,7 @@ validator voting(oref: OutputReference) {
   // Condition 0: Is expected UTxO spent?
     expect Some(_nft_utxo) = find_input(inputs, oref) 
 
-  // Condition 1: Is only one Group NFT minted?
+  // Condition 1: Is only one Voting NFT minted?
     expect [Pair(_asset_name, amount)] =
         mint
         |> assets.tokens(policy_id)

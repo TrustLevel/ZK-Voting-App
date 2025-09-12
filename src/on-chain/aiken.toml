@@ -22,7 +22,17 @@ source = "github"
 
 [[dependencies]]
 name = "modulo-p/cardano-semaphore"
-version = "dev"
+version = "v0.9.1"
+source = "github"
+
+[[dependencies]]
+name = "aiken-lang/merkle-patricia-forestry"
+version = "v2.1.0"
+source = "github"
+
+[[dependencies]]
+name = "modulo-p/ak-381"
+version = "v0.1.1"
 source = "github"
 
 [config]

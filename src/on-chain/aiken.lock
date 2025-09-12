@@ -13,7 +13,17 @@ source = "github"
 
 [[requirements]]
 name = "modulo-p/cardano-semaphore"
-version = "dev"
+version = "v0.9.1"
+source = "github"
+
+[[requirements]]
+name = "aiken-lang/merkle-patricia-forestry"
+version = "v2.1.0"
+source = "github"
+
+[[requirements]]
+name = "modulo-p/ak-381"
+version = "v0.1.1"
 source = "github"
 
 [[packages]]
@@ -30,10 +40,21 @@ source = "github"
 
 [[packages]]
 name = "modulo-p/cardano-semaphore"
-version = "dev"
+version = "v0.9.1"
+requirements = []
+source = "github"
+
+[[packages]]
+name = "aiken-lang/merkle-patricia-forestry"
+version = "v2.1.0"
+requirements = []
+source = "github"
+
+[[packages]]
+name = "modulo-p/ak-381"
+version = "v0.1.1"
 requirements = []
 source = "github"
 
 [etags]
-"aiken-lang/fuzz@v2" = [{ secs_since_epoch = 1755903161, nanos_since_epoch = 763447345 }, "9843473958e51725a9274b487d2d4aac0395ec1a2e30f090724fa737226bc127"]
-"modulo-p/cardano-semaphore@dev" = [{ secs_since_epoch = 1755903162, nanos_since_epoch = 298804220 }, "88c44a4733d070b5a578ab59cc0684d6dbe21c768eb5fd890e918b9aee2ee139"]
+"aiken-lang/fuzz@v2" = [{ secs_since_epoch = 1757691079, nanos_since_epoch = 944071907 }, "9843473958e51725a9274b487d2d4aac0395ec1a2e30f090724fa737226bc127"]

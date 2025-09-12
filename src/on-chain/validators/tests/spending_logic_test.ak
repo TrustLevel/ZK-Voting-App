@@ -1,6 +1,5 @@
 //use aiken/builtin.{as_data}
 use aiken/primitive/bytearray
-use aiken/primitive/int
 use aiken/interval.{between, Interval}
 use cardano/address.{from_script}
 use cardano/assets.{from_lovelace, from_asset, merge, Value}

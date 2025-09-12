@@ -7,6 +7,7 @@ use voting_utilities.{ serialise_signal, deserialise_signal }
 use types.{ Options }
 
 
+
 // Serialization tests.
 
 test signal_serialization_1() {
