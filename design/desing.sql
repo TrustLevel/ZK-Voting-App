@@ -4,7 +4,8 @@
 -- User Table
 CREATE TABLE User (
     user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_email TEXT NOT NULL UNIQUE
+    user_email TEXT NOT NULL UNIQUE,
+    event_permissions TEXT NOT NULL DEFAULT '[]'  -- Stored as JSON: [(event_id, commitment_hash), ...] where commitment_hash is null if not committed yet
 );
 
 -- Voting Event Table
@@ -21,6 +22,7 @@ CREATE TABLE VotingEvent (
     group_nft TEXT NOT NULL,
     group_validator_address TEXT NOT NULL,
     group_merkle_root_hash TEXT NOT NULL,
+    group_leaf_commitments TEXT NOT NULL DEFAULT '[]',  -- Stored as JSON: [commitment_hash, ...] collection of leaf commitments to reconstruct merkle tree
     group_size INTEGER NOT NULL,
     semaphore_nft TEXT NOT NULL,
     semaphore_address TEXT NOT NULL,
