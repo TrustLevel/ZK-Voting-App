@@ -27,6 +27,7 @@ CREATE TABLE VotingEvent (
     semaphore_nft TEXT NOT NULL,
     semaphore_address TEXT NOT NULL,
     nullifier_merkle_tree TEXT NOT NULL,
+    nullifier_leaf_commitments TEXT NOT NULL DEFAULT '[]',  -- Stored as JSON: [nullifier_commitment, ...] collection of nullifier commitments to construct nullifier root hash
     verification_reference_input TEXT NOT NULL,
     current_vote_count TEXT NOT NULL,  -- Stored as JSON: [(int, int, string), ...]
     FOREIGN KEY (admin_user_id) REFERENCES User(user_id) ON DELETE CASCADE
