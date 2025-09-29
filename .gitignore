@@ -54,3 +54,8 @@ Thumbs.db
 tmp/
 temp/
 
+# Database files (exclude actual db files, keep schema files)
+*.db
+*.sqlite
+*.sqlite3
+
