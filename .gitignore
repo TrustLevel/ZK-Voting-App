@@ -22,7 +22,7 @@ out/
 *.tsbuildinfo
 
 # Next.js specific
-/.next/
+.next/
 
 # Logs
 logs
