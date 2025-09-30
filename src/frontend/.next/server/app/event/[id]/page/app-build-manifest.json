@@ -1,0 +1,22 @@
+{
+  "pages": {
+    "/event/[id]/page": [
+      "static/chunks/b8057_next_dist_9dae7ccc._.js",
+      "static/chunks/ZK-Voting-App_src_frontend_app_favicon_ico_mjs_9e20e660._.js",
+      "static/chunks/[root-of-the-server]__24f3f86a._.css",
+      "static/chunks/ZK-Voting-App_src_frontend_app_layout_tsx_aef10f93._.js",
+      "static/chunks/b8057_next_dist_client_components_builtin_global-error_f84cebe0.js",
+      "static/chunks/ZK-Voting-App_src_frontend_8fb8435d._.js",
+      "static/chunks/ZK-Voting-App_src_frontend_app_event_[id]_page_tsx_f84cebe0._.js",
+      "static/chunks/[turbopack]_browser_dev_hmr-client_hmr-client_ts_01b953b5._.js",
+      "static/chunks/b8057_next_dist_compiled_react-dom_c415ca47._.js",
+      "static/chunks/b8057_next_dist_compiled_next-devtools_index_ead8eea6.js",
+      "static/chunks/b8057_next_dist_compiled_51c5b5c5._.js",
+      "static/chunks/b8057_next_dist_client_6d76514c._.js",
+      "static/chunks/b8057_next_dist_1e3ae41b._.js",
+      "static/chunks/b8057_@swc_helpers_cjs_d6713f63._.js",
+      "static/chunks/ZK-Voting-App_src_frontend_a0ff3932._.js",
+      "static/chunks/turbopack-ZK-Voting-App_src_frontend_404a18af._.js"
+    ]
+  }
+}
