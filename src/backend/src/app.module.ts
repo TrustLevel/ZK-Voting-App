@@ -17,7 +17,8 @@ import { VotingEventModule } from './voting-event/voting-event.module';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         type: 'sqlite',
-        database: configService.get<string>('DATABASE_PATH', 'db/voting-app.db'),
+        database:
+          configService.get<string>('DATABASE_PATH') ?? 'db/voting-app.db',
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         synchronize: configService.get<string>('NODE_ENV') !== 'production',
       }),
