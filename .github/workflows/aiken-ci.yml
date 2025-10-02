@@ -1,9 +1,12 @@
-name: Continuous Integration
+name: Aiken CI
 
 on:
   push:
     branches: ["main"]
+    paths: ["src/on-chain/**"]
   pull_request:
+    branches: ["main"]
+    paths: ["src/on-chain/**"]
 
 jobs:
   build:
