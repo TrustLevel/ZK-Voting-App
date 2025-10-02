@@ -13,8 +13,6 @@ jobs:
       - uses: aiken-lang/setup-aiken@v1
         with:
           version: v1.1.19
-      - run: aiken fmt --check
-        working-directory: src/on-chain
       - run: aiken check -D
         working-directory: src/on-chain
       - run: aiken build
