@@ -8,6 +8,6 @@ import { VotingEvent } from './voting-event.entity';
   imports: [TypeOrmModule.forFeature([VotingEvent])],
   controllers: [VotingEventController],
   providers: [VotingEventService],
-  exports: [TypeOrmModule]
+  exports: [TypeOrmModule],
 })
 export class VotingEventModule {}

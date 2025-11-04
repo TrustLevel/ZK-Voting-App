@@ -1,0 +1,22 @@
+name: Aiken CI
+
+on:
+  push:
+    branches: ["main"]
+    paths: ["src/on-chain/**"]
+  pull_request:
+    branches: ["main"]
+    paths: ["src/on-chain/**"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aiken-lang/setup-aiken@v1
+        with:
+          version: v1.1.19
+      - run: aiken check -D
+        working-directory: src/on-chain
+      - run: aiken build
+        working-directory: src/on-chain

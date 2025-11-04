@@ -25,6 +25,8 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+This is the backend for the ZK Voting Application.
+
 ## Project setup
 
 ```bash
