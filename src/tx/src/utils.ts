@@ -1,7 +1,7 @@
 import { BlockfrostProvider, MeshWallet, TxOutRef, txOutRef } from "@meshsdk/core";
 import { applyParamsToScript } from "@meshsdk/core-csl";
 import fs, { read } from 'fs';
-import { PlutusValidatorBlueprint } from '../types/common.js';
+import { PlutusValidatorBlueprint } from './types.js';
 
 //const secretKey: string = process.env.SECRET_KEY || "";
 //const mnemonic = secretKey.split(" ");
@@ -12,6 +12,18 @@ import { PlutusValidatorBlueprint } from '../types/common.js';
 const apiKey: string = process.env.API_KEY || "";
 
 export const provider = new BlockfrostProvider(apiKey);
+
+// Utility function to parse mnemonic string into array
+export function parseMnemonic(mnemonicString: string): string[] {
+    if (!mnemonicString || mnemonicString.trim() === "") {
+        throw new Error("Mnemonic string is empty or undefined");
+    }
+    const words = mnemonicString.trim().split(/\s+/);
+    if (words.length !== 24) {
+        throw new Error(`Invalid mnemonic: expected 24 words, got ${words.length}`);
+    }
+    return words;
+}
 
 export async function createWallet(blockchainProvider: BlockfrostProvider, seed: string[], networkId: 0 | 1) {
     const wallet = new MeshWallet({

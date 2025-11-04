@@ -4,7 +4,7 @@
 
 
 import { BlockfrostProvider, MeshWallet, TxOutRef, txOutRef } from "@meshsdk/core";
-import { cborOfValidatorWith } from "../utils"
+import { cborOfValidatorWith } from "./utils.js"
 
 /* 
 

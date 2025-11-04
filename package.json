@@ -18,6 +18,7 @@
     "@nestjs/config": "^4.0.2"
   },
   "devDependencies": {
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "dotenv": "^16.0.3"
   }
 }
