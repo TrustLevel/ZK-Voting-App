@@ -24,3 +24,10 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Change datetime-local accent color from blue to black */
+input[type="datetime-local"] {
+  accent-color: #111827;
+  color-scheme: light;
+}
+
