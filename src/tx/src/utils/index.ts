@@ -1,6 +1,7 @@
 import { BlockfrostProvider, MeshWallet, TxOutRef, txOutRef } from "@meshsdk/core";
 import { applyParamsToScript } from "@meshsdk/core-csl";
 import fs, { read } from 'fs';
+import { PlutusValidatorBlueprint } from '../types/common.js';
 
 //const secretKey: string = process.env.SECRET_KEY || "";
 //const mnemonic = secretKey.split(" ");
@@ -32,20 +33,23 @@ export function walletBaseAddress(wallet: MeshWallet) {
 
 
 
-export function cborOfValidatorWith(path: string, name: string, purpose: string) {
+export function cborOfValidatorWith(path: string, name: string, purpose: string): PlutusValidatorBlueprint {
     const blueprint = JSON.parse(fs.readFileSync(path, "utf-8"));
-    // TODO: define the type for the parameter
-    const validatorWithName = blueprint.validators.find((validator: any) => {
-          const title = name + "." + name + "." + purpose;
-          return validator.title == title;
-    })
+    const targetTitle = name + "." + name + "." + purpose;
+    const validatorWithName = blueprint.validators.find((validator: PlutusValidatorBlueprint) => {
+        return validator.title === targetTitle;
+    });
+    
+    if (!validatorWithName) {
+        const availableValidators = blueprint.validators.map((v: PlutusValidatorBlueprint) => v.title).join(', ');
+        throw new Error(`Validator '${targetTitle}' not found. Available validators: ${availableValidators}`);
+    }
+    
     return validatorWithName;
 }
 
 
-export function generateScriptCbor(path: string, name: string, purpose: string, oref: TxOutRef) {
-    const validator = cborOfValidatorWith(path, name, purpose);
-    const scriptCbor = applyParamsToScript(validator.compiledCode, [oref], "JSON");
-    return scriptCbor;
+// Remove incomplete function - causing build error
+export function applyOrefParamToScript(validator: PlutusValidatorBlueprint, oref: TxOutRef): string {
+  return applyParamsToScript(validator.compiledCode, [oref], "JSON");
 }
-
