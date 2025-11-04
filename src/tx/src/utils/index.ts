@@ -45,7 +45,7 @@ export function cborOfValidatorWith(path: string, name: string, purpose: string)
 
 export function generateScriptCbor(path: string, name: string, purpose: string, oref: TxOutRef) {
     const validator = cborOfValidatorWith(path, name, purpose);
-    const scriptCbor =  applyParamsToScript(validator.compiledCode, [oref]);
-    return scriptCbor
+    const scriptCbor = applyParamsToScript(validator.compiledCode, [oref], "JSON");
+    return scriptCbor;
 }
 
