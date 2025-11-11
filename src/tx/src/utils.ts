@@ -9,9 +9,6 @@ import { PlutusValidatorBlueprint } from './types.js';
 
 //export const provider = new BlockfrostProvider(apiKey);
 
-const apiKey: string = process.env.API_KEY || "";
-
-export const provider = new BlockfrostProvider(apiKey);
 
 // Utility function to parse mnemonic string into array
 export function parseMnemonic(mnemonicString: string): string[] {
@@ -44,6 +41,18 @@ export function walletBaseAddress(wallet: MeshWallet) {
 }
 
 
+export function textToHex(text: string): string {
+    return Array.from(text)
+        .map(character => character.charCodeAt(0).toString(16).padStart(2, '0'))
+        .join('');
+}
+
+
+//export function paymentKeyHashForWallet(wallet: MeshWallet) {
+//    const walletAddr = walletBaseAddress(wallet)
+//    const pubKeyHash = Address.from_bech32(walletAddr!);
+//    return pubKeyHash!.payment_cred()!.to_keyhash();
+//}
 
 export function cborOfValidatorWith(path: string, name: string, purpose: string): PlutusValidatorBlueprint {
     const blueprint = JSON.parse(fs.readFileSync(path, "utf-8"));
@@ -62,6 +71,9 @@ export function cborOfValidatorWith(path: string, name: string, purpose: string)
 
 
 // Remove incomplete function - causing build error
-export function applyOrefParamToScript(validator: PlutusValidatorBlueprint, oref: TxOutRef): string {
+export function applyOrefParamToScript(validator: PlutusValidatorBlueprint, oref: any): string {
   return applyParamsToScript(validator.compiledCode, [oref], "JSON");
 }
+
+
+
