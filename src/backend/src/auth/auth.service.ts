@@ -1,7 +1,8 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
-import { generateNonce, checkSignature, DataSignature } from '@meshsdk/core';
+import { DataSignature } from '../types/cardano.types';
+const { generateNonce, checkSignature } = require('@meshsdk/core');
 
 @Injectable()
 export class AuthService {
@@ -65,7 +66,7 @@ export class AuthService {
     this.logger.debug(`Using last nonce for verification: ${nonce.substring(0, 8)}...`);
 
     // Verify the signature using Mesh SDK
-    const isValidSignature = await checkSignature(nonce, signature, userAddress);
+    const isValidSignature = checkSignature(nonce, signature, userAddress);
 
     this.logger.debug(`Signature verification result: ${isValidSignature}`);
 
