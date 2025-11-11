@@ -38,7 +38,7 @@ export class VotingEventService {
     options: string[], // Changed to array of option strings
     startingDate: number,
     endingDate: number,
-    votingPower: number,
+    votingPower: number, // 1 = simple vote (one vote per user), >1 = weighted vote (distribute voting power across options)
     adminUserId: number,
   ): Promise<VotingEvent> {
     // Create a new Group to get the zero value merkle root
