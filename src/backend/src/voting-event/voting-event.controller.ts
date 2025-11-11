@@ -8,18 +8,18 @@ export class VotingEventController {
   @Post()
   async createBasicVotingEvent(
     @Body('eventName') eventName: string,
+    @Body('options') options: string[],
     @Body('startingDate') startingDate: number,
     @Body('endingDate') endingDate: number,
     @Body('votingPower') votingPower: number,
-    @Body('options') options: string,
     @Body('adminUserId') adminUserId: number,
   ) {
     return await this.votingEventService.createBasicVotingEvent(
       eventName,
+      options,
       startingDate,
       endingDate,
       votingPower,
-      options,
       adminUserId,
     );
   }

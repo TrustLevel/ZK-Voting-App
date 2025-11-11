@@ -35,10 +35,10 @@ export class VotingEventService {
 
   async createBasicVotingEvent(
     eventName: string,
+    options: string[], // Changed to array of option strings
     startingDate: number,
     endingDate: number,
     votingPower: number,
-    options: string,
     adminUserId: number,
   ): Promise<VotingEvent> {
     // Create a new Group to get the zero value merkle root
@@ -46,12 +46,17 @@ export class VotingEventService {
     const group = new Group(BigInt(1), defaultGroupSize); // Using groupId = 1 and default size
     const zeroMerkleRoot = group.zeroValue.toString();
 
+    // Format options as JSON string with initial vote counts
+    const formattedOptions = JSON.stringify(
+      options.map((option, index) => ({ index, text: option, votes: 0 }))
+    );
+
     const votingEvent = this.votingEventRepository.create({
       eventName,
       startingDate,
       endingDate,
       votingPower,
-      options,
+      options: formattedOptions,
       adminUserId,
       // Set required non-nullable fields with defaults
       groupMerkleRootHash: zeroMerkleRoot,
