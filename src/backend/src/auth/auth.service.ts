@@ -1,12 +1,16 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
-import { generateNonce } from '@meshsdk/core';
+import { generateNonce, checkSignature, DataSignature } from '@meshsdk/core';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly jwtService: JwtService,
+  ) {}
 
   async generateCardanoNonce(userAddress: string) {
     this.logger.log(`Generating Cardano nonce for address: ${userAddress.substring(0, 8)}...`);
@@ -35,5 +39,51 @@ export class AuthService {
     this.logger.debug(`Generated and stored unique nonce for address: ${userAddress.substring(0, 8)}...`);
 
     return { nonce };
+  }
+
+  async verifyCardanoSignature(
+    userAddress: string,
+    nonce: string,
+    signature: DataSignature,
+  ) {
+    this.logger.log(`Verifying Cardano signature for address: ${userAddress.substring(0, 8)}...`);
+
+    // Get the last generated nonce for this user
+    const lastNonce = await this.usersService.getLastNonceForUser(userAddress);
+    
+    if (!lastNonce) {
+      this.logger.warn(`No nonces found for address: ${userAddress.substring(0, 8)}...`);
+      throw new BadRequestException('No nonce found for this address');
+    }
+
+    // Check if the provided nonce matches the last generated nonce
+    if (nonce !== lastNonce) {
+      this.logger.warn(`Nonce mismatch for address: ${userAddress.substring(0, 8)}...`);
+      throw new BadRequestException('Invalid nonce - must use the last generated nonce');
+    }
+
+    this.logger.debug(`Using last nonce for verification: ${nonce.substring(0, 8)}...`);
+
+    // Verify the signature using Mesh SDK
+    const isValidSignature = await checkSignature(nonce, signature, userAddress);
+
+    this.logger.debug(`Signature verification result: ${isValidSignature}`);
+
+    if (!isValidSignature) {
+      this.logger.warn(`Invalid signature for address: ${userAddress.substring(0, 8)}...`);
+      throw new BadRequestException('Invalid signature provided');
+    }
+
+    // Signature is valid, create or find user
+    let finalUser = await this.usersService.findOrCreateUserByWallet(userAddress);
+
+    // Generate JWT token
+    const jwt = await this.jwtService.signAsync({ user: finalUser });
+
+    this.logger.log(
+      `Cardano authentication successful for address: ${userAddress.substring(0, 8)}...`,
+    );
+    
+    return { user: finalUser, jwt };
   }
 }

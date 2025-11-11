@@ -75,4 +75,17 @@ export class UsersService {
       where: { walletAddress },
     });
   }
+
+  async getLastNonceForUser(walletAddress: string): Promise<string | null> {
+    const user = await this.userRepository.findOne({
+      where: { walletAddress },
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    const nonces = JSON.parse(user.nonces) as string[];
+    return nonces.length > 0 ? nonces[nonces.length - 1] : null;
+  }
 }
