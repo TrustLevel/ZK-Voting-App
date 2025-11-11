@@ -15,32 +15,32 @@ export class VotingEvent {
   @Column({ name: 'event_name', type: 'text' })
   eventName: string;
 
-  @Column({ name: 'voting_nft', type: 'text' })
-  votingNft: string;
+  @Column({ name: 'voting_nft', type: 'text', nullable: true })
+  votingNft: string | null;
 
-  @Column({ name: 'voting_validator_address', type: 'text' })
-  votingValidatorAddress: string;
+  @Column({ name: 'voting_validator_address', type: 'text', nullable: true })
+  votingValidatorAddress: string | null;
 
-  @Column({ name: 'voting_power', type: 'integer' })
-  votingPower: number;
+  @Column({ name: 'voting_power', type: 'integer', nullable: true })
+  votingPower: number | null;
 
-  @Column({ name: 'options', type: 'text' })
-  options: string;
+  @Column({ name: 'options', type: 'text', nullable: true })
+  options: string | null;
 
-  @Column({ name: 'admin_user_id', type: 'integer' })
-  adminUserId: number;
+  @Column({ name: 'admin_user_id', type: 'integer', nullable: true })
+  adminUserId: number | null;
 
-  @Column({ name: 'starting_date', type: 'integer' })
-  startingDate: number;
+  @Column({ name: 'starting_date', type: 'integer', nullable: true })
+  startingDate: number | null;
 
-  @Column({ name: 'ending_date', type: 'integer' })
-  endingDate: number;
+  @Column({ name: 'ending_date', type: 'integer', nullable: true })
+  endingDate: number | null;
 
-  @Column({ name: 'group_nft', type: 'text' })
-  groupNft: string;
+  @Column({ name: 'group_nft', type: 'text', nullable: true })
+  groupNft: string | null;
 
-  @Column({ name: 'group_validator_address', type: 'text' })
-  groupValidatorAddress: string;
+  @Column({ name: 'group_validator_address', type: 'text', nullable: true })
+  groupValidatorAddress: string | null;
 
   @Column({ name: 'group_merkle_root_hash', type: 'text' })
   groupMerkleRootHash: string;
@@ -51,23 +51,23 @@ export class VotingEvent {
   @Column({ name: 'group_size', type: 'integer' })
   groupSize: number;
 
-  @Column({ name: 'semaphore_nft', type: 'text' })
-  semaphoreNft: string;
+  @Column({ name: 'semaphore_nft', type: 'text', nullable: true })
+  semaphoreNft: string | null;
 
-  @Column({ name: 'semaphore_address', type: 'text' })
-  semaphoreAddress: string;
+  @Column({ name: 'semaphore_address', type: 'text', nullable: true })
+  semaphoreAddress: string | null;
 
-  @Column({ name: 'nullifier_merkle_tree', type: 'text' })
-  nullifierMerkleTree: string;
+  @Column({ name: 'nullifier_merkle_tree', type: 'text', nullable: true })
+  nullifierMerkleTree: string | null;
 
-  @Column({ name: 'nullifier_leaf_commitments', type: 'text', default: '[]' })
-  nullifierLeafCommitments: string;
+  @Column({ name: 'nullifier_leaf_commitments', type: 'text', nullable: true, default: '[]' })
+  nullifierLeafCommitments: string | null;
 
-  @Column({ name: 'verification_reference_input', type: 'text' })
-  verificationReferenceInput: string;
+  @Column({ name: 'verification_reference_input', type: 'text', nullable: true })
+  verificationReferenceInput: string | null;
 
-  @Column({ name: 'current_vote_count', type: 'text' })
-  currentVoteCount: string;
+  @Column({ name: 'current_vote_count', type: 'text', nullable: true })
+  currentVoteCount: string | null;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'admin_user_id' })
