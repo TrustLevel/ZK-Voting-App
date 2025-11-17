@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ZK-Voting-App Frontend
+
+Modern web interface for the ZK-Voting-App - a secure, anonymous voting platform built on Cardano blockchain with zero-knowledge proofs.
+
+## Tech Stack
+
+- **Framework:** Next.js 15.5.4 with App Router
+- **React:** 19.1.0
+- **Styling:** Tailwind CSS 4
+- **Blockchain Integration:** Mesh SDK (Cardano wallet integration)
+- **TypeScript:** Full type safety
+
+## Features
+
+### Current Implementation
+
+- **Wallet Integration**
+  - Cardano wallet connect (Eternl, Lace, Yoroi)
+  - Mesh SDK provider setup
+  - Wallet state management
+
+- **Create Voting Event**
+  - Modern, clean UI with minimal design
+  - Event configuration (name, voting type, dates, options)
+  - Custom form validation with yellow accent colors
+  - Simple and weighted voting support
+  - Native datetime picker integration
+
+- **Pages**
+  - Homepage with navigation
+  - Create Event flow (form + wallet signature)
+  - Join Event (mockup)
+  - Manage Event (mockup)
+  - Info page (mockup)
+
+### Upcoming Features
+
+- Vote submission with ZK proofs
+- Event management dashboard
+- Results visualization
+- Participant invitation system
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 20+
+- npm or yarn
+- A Cardano wallet (Eternl, Lace, or Yoroi) for testing
+
+### Installation
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Install dependencies
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Development
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# Run development server on port 3002
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open [http://localhost:3002](http://localhost:3002) in your browser.
 
-## Learn More
+### Build
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# Create production build
+npm run build
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Start production server
+npm start
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project Structure
 
-## Deploy on Vercel
+```
+app/
+├── create/
+│   ├── form/          # Event creation form
+│   ├── verify/        # Email verification (legacy)
+│   └── page.tsx       # Create event entry
+├── providers/
+│   └── wallet-provider.tsx  # Mesh SDK wallet provider
+├── event/[id]/
+│   └── manage/        # Event management page
+├── join/              # Join event page
+├── manage/            # Manage events page
+├── info/              # Info/about page
+├── page.tsx           # Homepage
+├── layout.tsx         # Root layout with wallet provider
+└── globals.css        # Global styles
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+public/
+├── TrustLevel_JPG_LOGO.jpg
+├── cf-logo.svg        # Cardano logo
+└── trustlevel_logo.svg
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Configuration
+
+The app runs on port 3002 (configured in `package.json`):
+
+```json
+{
+  "scripts": {
+    "dev": "next dev --turbopack -p 3002"
+  }
+}
+```
+
+## Wallet Integration
+
+The app uses Mesh SDK for Cardano wallet integration. Supported wallets:
+
+- **Eternl** - Full support
+- **Lace** - Full support
+- **Yoroi** - Full support
+
+Make sure to have at least one wallet extension installed and configured for Preprod testnet.
+
+## Environment
+
+Currently configured for **Cardano Preprod Testnet**.
+
+## Contributing
+
+This is part of the ZK-Voting-App monorepo. See the main README for contribution guidelines.
