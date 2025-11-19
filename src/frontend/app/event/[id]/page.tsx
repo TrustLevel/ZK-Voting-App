@@ -14,9 +14,9 @@ export default function EventDetail() {
     votingType: 'simple',
     endDate: '2025-01-31',
     options: [
-      { index: 0, name: 'Dark Mode Support', votes: 42 },
-      { index: 1, name: 'Mobile App', votes: 38 },
-      { index: 2, name: 'Advanced Analytics', votes: 25 },
+      { index: 0, text: 'Dark Mode Support', votes: 42 },
+      { index: 1, text: 'Mobile App', votes: 38 },
+      { index: 2, text: 'Advanced Analytics', votes: 25 },
     ],
   };
 
@@ -110,7 +110,7 @@ export default function EventDetail() {
                 }`}
               >
                 <div className="flex justify-between items-center">
-                  <span className="font-medium">{option.name}</span>
+                  <span className="font-medium">{option.text}</span>
                   <span className="text-gray-600">{option.votes} votes</span>
                 </div>
               </div>
