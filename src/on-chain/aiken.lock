@@ -13,7 +13,7 @@ source = "github"
 
 [[requirements]]
 name = "modulo-p/cardano-semaphore"
-version = "v0.9.1"
+version = "v0.9.2"
 source = "github"
 
 [[requirements]]
@@ -40,7 +40,7 @@ source = "github"
 
 [[packages]]
 name = "modulo-p/cardano-semaphore"
-version = "v0.9.1"
+version = "v0.9.2"
 requirements = []
 source = "github"
 
@@ -57,4 +57,4 @@ requirements = []
 source = "github"
 
 [etags]
-"aiken-lang/fuzz@v2" = [{ secs_since_epoch = 1757691079, nanos_since_epoch = 944071907 }, "9843473958e51725a9274b487d2d4aac0395ec1a2e30f090724fa737226bc127"]
+"aiken-lang/fuzz@v2" = [{ secs_since_epoch = 1762275500, nanos_since_epoch = 42677955 }, "9843473958e51725a9274b487d2d4aac0395ec1a2e30f090724fa737226bc127"]
