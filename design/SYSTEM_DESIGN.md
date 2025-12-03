@@ -572,85 +572,7 @@ X-Admin-Token: <admin_token>
 
 ## Smart Contract Design
 
-### Voting Validator (`voting.ak`)
-
-#### Mint Policy
-
-**Purpose**: Create unique voting event NFT (Urna)
-
-**Parameters:**
-- `oref: OutputReference` - Unique UTxO to consume (ensures one-shot minting)
-- `policy_id: PolicyId` - This minting policy's ID
-- `self: Transaction` - Current transaction
-
-**Validation Logic:**
-1. ✅ Expected UTxO (`oref`) is spent
-2. ✅ Exactly one NFT minted
-3. ✅ NFT sent to script address (locked)
-4. ✅ Valid `UrnaDatum` attached
-5. ✅ Event time correctly set: `event_start < event_end` and `validity_range < event_start`
-6. ✅ All option vote counts initialized to 0
-7. ✅ Option indexes in ascending order
-
-**Output:**
-- Urna NFT locked at script address
-- Initial datum with zero vote counts
-
-#### Spend Validator
-
-**Purpose**: Process votes and update tallies
-
-**Parameters:**
-- `datum: Option<UrnaDatum>` - Current voting event state
-- `redeemer: UrnaRedeemer` - Action (Vote)
-- `utxo: OutputReference` - Urna UTxO being spent
-- `self: Transaction` - Current transaction
-
-**Validation Logic:**
-1. ✅ Semaphore NFT is spent (proves ZK-proof is verified)
-2. ✅ Urna NFT returned to script (value preservation)
-3. ✅ Valid signal deserialization (vote data from ZK-proof)
-4. ✅ Vote within event time window
-5. ✅ Datum preservation: `weight`, `event_date`, `semaphore_nft` unchanged
-6. ✅ **Simple Voting** (`weight == 1`): Exactly one option selected, increment by 1
-7. ✅ **Weighted Voting** (`weight > 1`): Total distributed weight equals voter's weight
-
-**Output:**
-- Urna NFT returned to script
-- Updated datum with incremented vote counts
-
-#### Helper Functions
-
-**`simple_vote(options, vote_index)`**
-- Increments vote count for specified option index
-- Returns updated options list
-
-**`weighted_vote(options, vote_distribution)`**
-- Increments vote counts for multiple options
-- Returns updated options list
-
-**`check_weight(vote, weight)`**
-- Validates total distributed weight equals voter's assigned weight
-- Prevents over-voting or under-voting
-
-**`deserialise_signal(signal_message)`**
-- Extracts vote data from Semaphore signal
-- Parses vote distribution from encrypted message
-
-### Semaphore Validator (External)
-
-**Purpose**: Verify zero-knowledge proofs and prevent double-voting
-
-**Key Responsibilities:**
-1. Verify ZK-proof correctness (group membership)
-2. Check nullifier is unique (not previously used)
-3. Validate signal hash matches vote data
-4. Update nullifier Merkle tree
-
-**Integration:**
-- Referenced by `semaphore_nft` field in `UrnaDatum`
-- Must be spent alongside Urna NFT when voting
-- Redeemer contains: `zk_proof`, `mpf_proof`, `nullifier`, `signal_hash`, `signal_message`
+See smart_contract_specification.md document!
 
 ---
 
@@ -734,31 +656,6 @@ Separate Path:
 Users → MeshSDK → Cardano Node → Blockchain
                   (Blockfrost API)
 ```
-
----
-
-## Development Roadmap
-
-### Phase 1: Core Functionality (Current)
-- ✅ Event creation with configuration
-- ✅ Participant management
-- ✅ Basic voting flow
-- ✅ Semaphore ZK-proof integration
-- ✅ Smart contract deployment
-
-### Phase 2: Enhanced Features (Planned)
-- ⏳ Email notifications for event milestones
-- ⏳ Event analytics dashboard
-- ⏳ Multi-choice and ranked-choice voting
-- ⏳ Voter eligibility verification (token-gated)
-- ⏳ Mobile app (React Native)
-
-### Phase 3: Scalability (Future)
-- ⏳ Layer 2 scaling solution (Hydra)
-- ⏳ IPFS for large event metadata
-- ⏳ Multi-chain support (Ethereum, Polygon)
-- ⏳ DAO governance integration
-
 ---
 
 ## Appendix
