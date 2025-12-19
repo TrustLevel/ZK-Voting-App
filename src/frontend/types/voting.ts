@@ -1,4 +1,13 @@
-// Backend-aligned types matching VotingEvent entity from dev/ash
+// Backend-aligned types matching VotingEvent entity
+
+// User entity matching backend User table
+export interface User {
+  userId: number;
+  userEmail: string | null; // Nullable for wallet-only users
+  walletAddress: string | null; // Nullable for email-only users
+  eventPermissions: string; // JSON string: [event_id, ...]
+  nonces: string; // JSON string: [nonce_string, ...] for wallet authentication
+}
 
 export interface VotingEvent {
   // Core fields
@@ -9,7 +18,7 @@ export interface VotingEvent {
   votingNft?: string | null;
   votingValidatorAddress?: string | null;
   votingPower: number | null; // 1 = simple vote, >1 = weighted (distribute X points)
-  options: string | null; // JSON string of string array: ["Option 1", "Option 2", ...]
+  options: string | null; // JSON string: [{index: number, text: string, votes: number}, ...]
   adminUserId: number | null;
   startingDate: number | null; // POSIX timestamp
   endingDate: number | null; // POSIX timestamp
@@ -39,10 +48,11 @@ export interface Participant {
   registeredAt?: Date; // Optional: for frontend display
 }
 
-// Frontend helper types for options parsing
+// Frontend helper types for options parsing (matches backend format)
 export interface VotingOption {
   index: number;
-  name: string;
+  text: string; // Changed from 'name' to 'text' to match backend
+  votes: number; // Vote count for this option
 }
 
 // User secrets for ZK proof generation
@@ -58,9 +68,42 @@ export interface VoteSubmission {
   votingPower?: number; // For weighted voting: how many points to assign
 }
 
-// Helper type for create event payload (minimal fields needed)
+// Create event payload matching backend API (POST /voting-event)
 export interface CreateEventPayload {
   eventName: string;
-  adminUserId?: number | null; // TODO: Will be set after User auth is implemented
-  groupSize?: number; // Optional: backend sets default 20
+  options: string[]; // Array of option strings that backend will format
+  startingDate: number; // POSIX timestamp
+  endingDate: number; // POSIX timestamp
+  votingPower: number; // 1 = simple vote, >1 = weighted voting
+  adminUserId: number;
+}
+
+// API Response types
+
+// Response from POST /voting-event
+export interface CreateEventResponse extends VotingEvent {}
+
+// Response from GET /voting-event/:eventId/participants
+export type GetParticipantsResponse = number[]; // Array of user IDs
+
+// Response from POST /voting-event/:eventId/participants
+export interface AddParticipantResponse extends VotingEvent {}
+
+// Response from DELETE /voting-event/:eventId/participants/:userId
+export interface RemoveParticipantResponse extends VotingEvent {}
+
+// Helper types for parsing JSON fields
+export interface ParsedEventPermissions {
+  eventIds: number[];
+}
+
+export interface ParsedNonces {
+  nonces: string[];
+}
+
+export interface ParsedGroupLeafCommitments {
+  participants: Array<{
+    userId: number;
+    commitment: string;
+  }>;
 }
