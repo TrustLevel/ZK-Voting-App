@@ -1,3 +1,5 @@
+// not used at the moment
+
 'use client';
 
 import { useState } from 'react';
@@ -27,7 +29,7 @@ export default function JoinEvent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-linear-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 md:p-10 border border-gray-100">
         {/* Logo */}
         <div className="text-center mb-8">
