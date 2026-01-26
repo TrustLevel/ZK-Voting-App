@@ -88,4 +88,10 @@ export class UsersService {
     const nonces = JSON.parse(user.nonces) as string[];
     return nonces.length > 0 ? nonces[nonces.length - 1] : null;
   }
+
+  async findById(userId: number): Promise<User | null> {
+    return await this.userRepository.findOne({
+      where: { userId },
+    });
+  }
 }

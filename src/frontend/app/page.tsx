@@ -3,12 +3,8 @@
 import Image from 'next/image';
 
 export default function Home() {
-  const handleJoinEvent = () => {
-    window.location.href = '/join';
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-linear-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="max-w-xl w-full bg-white rounded-3xl shadow-2xl p-8 md:p-12 border border-gray-100">
         {/* Logo Section */}
         <div className="text-center mb-12">
@@ -28,26 +24,16 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Button */}
         <div className="space-y-3 max-w-sm mx-auto">
-          <button
-            onClick={handleJoinEvent}
-            className="w-full bg-gray-900 text-white py-3 px-5 rounded-xl hover:bg-gray-800 transition-all font-semibold text-base flex items-center justify-center gap-2 border border-gray-800"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-            </svg>
-            Join Event
-          </button>
-
           <a
             href="/create"
-            className="w-full bg-white text-gray-900 py-3 px-5 rounded-xl hover:bg-gray-50 transition-all font-semibold text-base flex items-center justify-center gap-2 border-2 border-gray-300"
+            className="w-full bg-gray-900 text-white py-3 px-5 rounded-xl hover:bg-gray-800 transition-all font-semibold text-base flex items-center justify-center gap-2 border border-gray-800"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            Create Event
+            Create New Event
           </a>
 
           <a

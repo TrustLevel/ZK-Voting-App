@@ -9,7 +9,7 @@ import { User } from '../users/user.entity';
 
 @Entity('VotingEvent')
 export class VotingEvent {
-  @PrimaryGeneratedColumn({ name: 'event_id' })
+  @Column({ name: 'event_id', type: 'bigint', primary: true })
   eventId: number;
 
   @Column({ name: 'event_name', type: 'text' })
@@ -29,6 +29,9 @@ export class VotingEvent {
 
   @Column({ name: 'admin_user_id', type: 'integer', nullable: true })
   adminUserId: number | null;
+
+  @Column({ name: 'admin_token', type: 'text', nullable: true })
+  adminToken: string | null;
 
   @Column({ name: 'starting_date', type: 'integer', nullable: true })
   startingDate: number | null;
@@ -68,6 +71,15 @@ export class VotingEvent {
 
   @Column({ name: 'current_vote_count', type: 'text', nullable: true })
   currentVoteCount: string | null;
+
+  @Column({ name: 'invited_participants', type: 'text', nullable: true, default: '[]' })
+  invitedParticipants: string | null;
+
+  @Column({ name: 'invitations_sent_at', type: 'integer', nullable: true })
+  invitationsSentAt: number | null;
+
+  @Column({ name: 'blockchain_data', type: 'text', nullable: true })
+  blockchainData: string | null;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'admin_user_id' })
