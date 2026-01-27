@@ -114,36 +114,62 @@ export class VotingEventService {
     return await this.votingEventRepository.save(votingEvent);
   }
 
-  async addParticipant(eventId: number, userId: number, commitment: string): Promise<VotingEvent> {
+  async addParticipant(eventId: number, token: string, commitment: string): Promise<VotingEvent> {
+    // 1. Validate invitation token
+    const invitationToken = await this.invitationTokenRepository.findOne({ where: { token } });
+
+    if (!invitationToken) {
+      throw new Error('Invalid invitation token');
+    }
+
+    if (invitationToken.eventId !== eventId) {
+      throw new Error('Invitation token is not valid for this event');
+    }
+
+    const currentTime = Math.floor(Date.now() / 1000);
+    if (invitationToken.expiresAt < currentTime) {
+      throw new Error('Invitation token has expired');
+    }
+
+    // 2. Extract userId from validated token (cannot be faked by frontend)
+    const userId = invitationToken.userId;
+
+    // 3. Load event from database
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
     if (!event) {
       throw new Error('Voting event not found');
     }
 
+    // 4. Parse participants from group_leaf_commitments (source of truth)
     const participants = JSON.parse(event.groupLeafCommitments) as Array<{userId: number, commitment: string}>;
-    
-    // Check if user is already a participant
-    if (!participants.some(p => p.userId === userId)) {
-      // Recreate the group with current state
-      const group = new Group(BigInt(eventId), event.groupSize);
-      
-      // Add existing commitments back to the group
-      if (participants.length > 0) {
-        for (const participant of participants) {
-          group.addMember(BigInt(participant.commitment));
-        }
-      }
-      
-      // Add the new member
-      group.addMember(BigInt(commitment));
-      
-      // Update participants list with userId-commitment object
-      const updatedParticipants = [...participants, { userId, commitment }];
-      event.groupLeafCommitments = JSON.stringify(updatedParticipants);
-      event.groupMerkleRootHash = group.root.toString();
-      
-      return await this.votingEventRepository.save(event);
+
+    // Check if user has already committed
+    if (participants.some(p => p.userId === userId)) {
+      throw new Error('User has already committed to this event');
     }
+
+    // 5. Reconstruct Semaphore group with existing members
+    const existingCommitments = participants.map(p => BigInt(p.commitment));
+    const group = new Group(BigInt(eventId), event.groupSize, existingCommitments);
+
+    // Verify reconstructed root matches stored root (data integrity check)
+    if (participants.length > 0 && group.root.toString() !== event.groupMerkleRootHash) {
+      throw new Error('Data integrity error: merkle root mismatch');
+    }
+
+    // 6. Add new member using addMember method from the library
+    group.addMember(BigInt(commitment));
+
+    // 7. Update database with new participant and updated merkle root
+    const updatedParticipants = [...participants, { userId, commitment }];
+    event.groupLeafCommitments = JSON.stringify(updatedParticipants);
+    event.groupMerkleRootHash = group.root.toString();
+
+    await this.votingEventRepository.save(event);
+
+    // 8. Mark invitation token as used (for audit purposes)
+    invitationToken.used = true;
+    await this.invitationTokenRepository.save(invitationToken);
 
     return event;
   }
