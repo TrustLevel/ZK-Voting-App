@@ -49,18 +49,18 @@ export class VotingEventService {
     votingPower: number, // 1 = simple vote (one vote per user), >1 = weighted vote (distribute voting power across options)
     adminUserId: number | null,
   ): Promise<VotingEvent> {
-    // Create a new Group to get the zero value merkle root
-    const defaultGroupSize = 20; // Default group size
-    const group = new Group(BigInt(1), defaultGroupSize); // Using groupId = 1 and default size
-    const zeroMerkleRoot = group.zeroValue.toString();
+    // Generate random event ID (between 1 billion and 9 billion)
+    const randomEventId = Math.floor(Math.random() * 8000000000) + 1000000000;
+
+    // Create an empty Semaphore Group to get the initial merkle root
+    const treeDepth = 20; // Tree depth (supports up to 2^20 members)
+    const group = new Group(BigInt(randomEventId), treeDepth); // Empty group (no members)
+    const emptyMerkleRoot = group.root.toString();
 
     // Format options as JSON string with initial vote counts
     const formattedOptions = JSON.stringify(
       options.map((option, index) => ({ index, text: option, votes: 0 }))
     );
-
-    // Generate random event ID (between 1 billion and 9 billion)
-    const randomEventId = Math.floor(Math.random() * 8000000000) + 1000000000;
 
     // Generate admin token for secure access to /manage page
     const adminToken = uuidv4();
@@ -75,9 +75,9 @@ export class VotingEventService {
       adminUserId,
       adminToken,
       // Set required non-nullable fields with defaults
-      groupMerkleRootHash: zeroMerkleRoot,
+      groupMerkleRootHash: emptyMerkleRoot,
       groupLeafCommitments: '[]',
-      groupSize: defaultGroupSize,
+      groupSize: treeDepth, // Store tree depth for recreating groups
       // All other nullable fields will be null by default
     });
 
@@ -140,7 +140,7 @@ export class VotingEventService {
       // Update participants list with userId-commitment object
       const updatedParticipants = [...participants, { userId, commitment }];
       event.groupLeafCommitments = JSON.stringify(updatedParticipants);
-      event.groupMerkleRootHash = group.merkleTree.root.toString();
+      event.groupMerkleRootHash = group.root.toString();
       
       return await this.votingEventRepository.save(event);
     }
@@ -167,7 +167,7 @@ export class VotingEventService {
     
     // Update group commitments and merkle root
     event.groupLeafCommitments = JSON.stringify(filteredParticipants);
-    event.groupMerkleRootHash = group.merkleTree.root.toString();
+    event.groupMerkleRootHash = group.root.toString();
 
     return await this.votingEventRepository.save(event);
   }
