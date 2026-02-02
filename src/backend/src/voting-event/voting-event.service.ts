@@ -49,18 +49,18 @@ export class VotingEventService {
     votingPower: number, // 1 = simple vote (one vote per user), >1 = weighted vote (distribute voting power across options)
     adminUserId: number | null,
   ): Promise<VotingEvent> {
-    // Create a new Group to get the zero value merkle root
-    const defaultGroupSize = 20; // Default group size
-    const group = new Group(BigInt(1), defaultGroupSize); // Using groupId = 1 and default size
-    const zeroMerkleRoot = group.zeroValue.toString();
+    // Generate random event ID (between 1 billion and 9 billion)
+    const randomEventId = Math.floor(Math.random() * 8000000000) + 1000000000;
+
+    // Create an empty Semaphore Group to get the initial merkle root
+    const treeDepth = 20; // Tree depth (supports up to 2^20 members)
+    const group = new Group(BigInt(randomEventId), treeDepth); // Empty group (no members)
+    const emptyMerkleRoot = group.root.toString();
 
     // Format options as JSON string with initial vote counts
     const formattedOptions = JSON.stringify(
       options.map((option, index) => ({ index, text: option, votes: 0 }))
     );
-
-    // Generate random event ID (between 1 billion and 9 billion)
-    const randomEventId = Math.floor(Math.random() * 8000000000) + 1000000000;
 
     // Generate admin token for secure access to /manage page
     const adminToken = uuidv4();
@@ -75,9 +75,9 @@ export class VotingEventService {
       adminUserId,
       adminToken,
       // Set required non-nullable fields with defaults
-      groupMerkleRootHash: zeroMerkleRoot,
+      groupMerkleRootHash: emptyMerkleRoot,
       groupLeafCommitments: '[]',
-      groupSize: defaultGroupSize,
+      groupSize: treeDepth, // Store tree depth for recreating groups
       // All other nullable fields will be null by default
     });
 
@@ -114,36 +114,62 @@ export class VotingEventService {
     return await this.votingEventRepository.save(votingEvent);
   }
 
-  async addParticipant(eventId: number, userId: number, commitment: string): Promise<VotingEvent> {
+  async addParticipant(eventId: number, token: string, commitment: string): Promise<VotingEvent> {
+    // 1. Validate invitation token
+    const invitationToken = await this.invitationTokenRepository.findOne({ where: { token } });
+
+    if (!invitationToken) {
+      throw new Error('Invalid invitation token');
+    }
+
+    if (invitationToken.eventId !== eventId) {
+      throw new Error('Invitation token is not valid for this event');
+    }
+
+    const currentTime = Math.floor(Date.now() / 1000);
+    if (invitationToken.expiresAt < currentTime) {
+      throw new Error('Invitation token has expired');
+    }
+
+    // 2. Extract userId from validated token (cannot be faked by frontend)
+    const userId = invitationToken.userId;
+
+    // 3. Load event from database
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
     if (!event) {
       throw new Error('Voting event not found');
     }
 
+    // 4. Parse participants from group_leaf_commitments (source of truth)
     const participants = JSON.parse(event.groupLeafCommitments) as Array<{userId: number, commitment: string}>;
-    
-    // Check if user is already a participant
-    if (!participants.some(p => p.userId === userId)) {
-      // Recreate the group with current state
-      const group = new Group(BigInt(eventId), event.groupSize);
-      
-      // Add existing commitments back to the group
-      if (participants.length > 0) {
-        for (const participant of participants) {
-          group.addMember(BigInt(participant.commitment));
-        }
-      }
-      
-      // Add the new member
-      group.addMember(BigInt(commitment));
-      
-      // Update participants list with userId-commitment object
-      const updatedParticipants = [...participants, { userId, commitment }];
-      event.groupLeafCommitments = JSON.stringify(updatedParticipants);
-      event.groupMerkleRootHash = group.merkleTree.root.toString();
-      
-      return await this.votingEventRepository.save(event);
+
+    // Check if user has already committed
+    if (participants.some(p => p.userId === userId)) {
+      throw new Error('User has already committed to this event');
     }
+
+    // 5. Reconstruct Semaphore group with existing members
+    const existingCommitments = participants.map(p => BigInt(p.commitment));
+    const group = new Group(BigInt(eventId), event.groupSize, existingCommitments);
+
+    // Verify reconstructed root matches stored root (data integrity check)
+    if (participants.length > 0 && group.root.toString() !== event.groupMerkleRootHash) {
+      throw new Error('Data integrity error: merkle root mismatch');
+    }
+
+    // 6. Add new member using addMember method from the library
+    group.addMember(BigInt(commitment));
+
+    // 7. Update database with new participant and updated merkle root
+    const updatedParticipants = [...participants, { userId, commitment }];
+    event.groupLeafCommitments = JSON.stringify(updatedParticipants);
+    event.groupMerkleRootHash = group.root.toString();
+
+    await this.votingEventRepository.save(event);
+
+    // 8. Mark invitation token as used (for audit purposes)
+    invitationToken.used = true;
+    await this.invitationTokenRepository.save(invitationToken);
 
     return event;
   }
@@ -167,7 +193,7 @@ export class VotingEventService {
     
     // Update group commitments and merkle root
     event.groupLeafCommitments = JSON.stringify(filteredParticipants);
-    event.groupMerkleRootHash = group.merkleTree.root.toString();
+    event.groupMerkleRootHash = group.root.toString();
 
     return await this.votingEventRepository.save(event);
   }

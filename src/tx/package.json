@@ -16,8 +16,9 @@
     "@meshsdk/core-csl": "^1.7.8"
   },
   "devDependencies": {
-    "typescript": "^5.7.3",
-    "@types/node": "^22.10.7"
+    "@types/node": "^22.10.7",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.3"
   },
   "exports": {
     ".": {
@@ -31,13 +32,13 @@
       "require": "./dist/types/index.js"
     },
     "./builders": {
-      "types": "./dist/builders/index.d.ts", 
+      "types": "./dist/builders/index.d.ts",
       "import": "./dist/builders/index.js",
       "require": "./dist/builders/index.js"
     },
     "./utils": {
       "types": "./dist/utils/index.d.ts",
-      "import": "./dist/utils/index.js", 
+      "import": "./dist/utils/index.js",
       "require": "./dist/utils/index.js"
     }
   }

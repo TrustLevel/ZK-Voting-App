@@ -48,10 +48,10 @@ export class VotingEventController {
   @Post(':eventId/participants')
   async addParticipant(
     @Param('eventId') eventId: number,
-    @Body('userId') userId: number,
+    @Body('token') token: string,
     @Body('commitment') commitment: string,
   ) {
-    return await this.votingEventService.addParticipant(eventId, userId, commitment);
+    return await this.votingEventService.addParticipant(eventId, token, commitment);
   }
 
   @Delete(':eventId/participants/:userId')

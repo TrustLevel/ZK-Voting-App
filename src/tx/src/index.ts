@@ -5,7 +5,7 @@ export * from './types.js';
 
 // Note: Environment variables loaded from .env file
 import { createWallet, walletBaseAddress, cborOfValidatorWith, applyOrefParamToScript, parseMnemonic, textToHex } from './utils.js';
-import { txOutRef, TxOutRef, MeshWallet, BlockfrostProvider, conStr, deserializeAddress, resolveScriptHash, MeshTxBuilder, Asset, stringToHex, resolvePlutusScriptAddress, PlutusScript, scriptAddress, integer, byteString, mTxOutRef} from '@meshsdk/core';
+import { BlockfrostProvider, conStr, deserializeAddress, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript, integer, byteString } from '@meshsdk/core';
 import { toPlutusData, toAddress } from '@meshsdk/core-csl';
 import 'dotenv/config';
 
@@ -31,9 +31,20 @@ console.log('Payment Key Hash:', paymentKeyHash);
 
 // Import and apply Oref to validator
 const validatorNaked = cborOfValidatorWith("/home/ash/Cardano/ZK-Voting-App/src/on-chain/build/packages/modulo-p-cardano-semaphore/plutus.json", "group", "mint")
-// const outputReference = txOutRef('4782f9be3028f26fef2fc5f525ea90370530e3e47d4a2a7134476a784c238804', 3); // Dummy TxOutRef with 64-char hex hash and output index 0
-const outputReference = txOutRef("d9fa1054c16cc5bc953cefbd1b71a00da1873a9a97bd852961c096111442916d", 1)
-console.log(outputReference);
+// Fresh UTxO with 2492272124 lovelace
+// FIXED: Create OutputReference manually - txOutRef has extra wrapper bug
+const outputReference = {
+  constructor: 0,
+  fields: [
+    {
+      bytes: "8a87c4aed75f5a612b51580db759b5eee278665f61094550f35b2cddf4b38d6c"
+    },
+    {
+      int: 1
+    }
+  ]
+};
+console.log('Output Reference:', outputReference);
 const clothedCbor = applyOrefParamToScript(validatorNaked, outputReference)
 
 // Script Address
@@ -56,9 +67,9 @@ console.log(policyId == deserializedScriptAddress.scriptHash)
 // Generate redeemer - Create variant (alternative 0, no fields)
 const createRedeemer = conStr(0, [])
 
-// Generate Datum - GroupDatum with group_merkle_root and admin_pkh
+// Generate Datum - GroupDatum with empty merkle root and admin_pkh
 const groupDatum = conStr(0,[
-    integer(123456789),
+    integer(0),  // Empty merkle root for new group
     byteString(paymentKeyHash)
 ])
 
@@ -85,7 +96,7 @@ const unsignedMintTx = await txBuilder
           .mint("1", policyId, assetName)
           .mintingScript(clothedCbor)
           .mintRedeemerValue(createRedeemer, "JSON")
-          .txIn("d9fa1054c16cc5bc953cefbd1b71a00da1873a9a97bd852961c096111442916d", 1, [{ unit: "lovelace", quantity: '4989593039' }], walletAddress)
+          .txIn("8a87c4aed75f5a612b51580db759b5eee278665f61094550f35b2cddf4b38d6c", 1, [{ unit: "lovelace", quantity: '2492272124' }], walletAddress)
           .selectUtxosFrom(walletUtxos)
           .txInCollateral("4782f9be3028f26fef2fc5f525ea90370530e3e47d4a2a7134476a784c238804", 5, [{ unit: "lovelace", quantity: "5000000" }])
           .txOut(scriptAddr, mintValue)
