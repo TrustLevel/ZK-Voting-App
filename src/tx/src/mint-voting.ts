@@ -1,6 +1,7 @@
 // Script to mint a voting event using the voting.ak validator
-import { createWallet, walletBaseAddress, cborOfValidatorWith, applyOrefParamToScript, parseMnemonic, textToHex } from './utils.js';
-import { BlockfrostProvider, conStr, deserializeAddress, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript, integer, byteString, list } from '@meshsdk/core';
+import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference } from './utils.js';
+import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript, integer, byteString, list } from '@meshsdk/core';
+import { VALIDATORS } from './validators.js';
 import 'dotenv/config';
 
 // Get mnemonic from environment
@@ -18,8 +19,7 @@ const walletAddress = walletBaseAddress(wallet);
 console.log('Wallet Address:', walletAddress);
 
 // Extract payment key hash from wallet address
-const addressInfo = deserializeAddress(walletAddress!);
-const paymentKeyHash = addressInfo.pubKeyHash;
+const paymentKeyHash = extractPaymentKeyHash(walletAddress!);
 console.log('Payment Key Hash:', paymentKeyHash);
 
 // Get available UTxOs
@@ -27,33 +27,15 @@ const walletUtxos = await wallet.getUtxos();
 console.log('Available wallet UTxOs:', walletUtxos.length);
 
 // Select a fresh UTxO for the oref parameter
-// Use a different UTxO than the one used in mint-voting-unsafe.ts
-const selectedUtxo = walletUtxos[3]; // Use walletUtxos[3]: 02318cc7...#1
+const { selectedUtxo, outputReference } = selectUtxoAndCreateOutputReference(walletUtxos, 3);
 console.log('\nUsing UTxO:');
 console.log(`  TxHash: ${selectedUtxo.input.txHash}`);
 console.log(`  Index: ${selectedUtxo.input.outputIndex}`);
 console.log(`  Value:`, selectedUtxo.output.amount);
-
-// FIXED: Create OutputReference manually - txOutRef has extra wrapper bug
-const outputReference = {
-  constructor: 0,
-  fields: [
-    {
-      bytes: selectedUtxo.input.txHash
-    },
-    {
-      int: selectedUtxo.input.outputIndex
-    }
-  ]
-};
 console.log('\nOutput Reference:', outputReference);
 
 // Load voting validator and apply oref parameter
-const validatorNaked = cborOfValidatorWith(
-  "/home/ash/Cardano/ZK-Voting-App/src/on-chain/plutus.json",
-  "voting",
-  "mint"
-);
+const validatorNaked = VALIDATORS.voting.mint;
 const clothedCbor = applyOrefParamToScript(validatorNaked, outputReference);
 
 // Script Address

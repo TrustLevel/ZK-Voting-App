@@ -1,6 +1,7 @@
 // Script to mint a Cardano Semaphore Group NFT using the group validator
-import { createWallet, walletBaseAddress, cborOfValidatorWith, applyOrefParamToScript, parseMnemonic, textToHex } from './utils.js';
-import { BlockfrostProvider, conStr, deserializeAddress, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript, integer, byteString } from '@meshsdk/core';
+import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference } from './utils.js';
+import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript, integer, byteString } from '@meshsdk/core';
+import { VALIDATORS } from './validators.js';
 import 'dotenv/config';
 
 // Get mnemonic from environment
@@ -18,8 +19,7 @@ const walletAddress = walletBaseAddress(wallet);
 console.log('Wallet Address:', walletAddress);
 
 // Extract payment key hash from wallet address
-const addressInfo = deserializeAddress(walletAddress!);
-const paymentKeyHash = addressInfo.pubKeyHash;
+const paymentKeyHash = extractPaymentKeyHash(walletAddress!);
 console.log('Payment Key Hash:', paymentKeyHash);
 
 // Get available UTxOs
@@ -27,32 +27,15 @@ const walletUtxos = await wallet.getUtxos();
 console.log('Available wallet UTxOs:', walletUtxos.length);
 
 // Select a fresh UTxO for the oref parameter
-const selectedUtxo = walletUtxos[0]; // Change index as needed
+const { selectedUtxo, outputReference } = selectUtxoAndCreateOutputReference(walletUtxos, 0);
 console.log('\nUsing UTxO:');
 console.log(`  TxHash: ${selectedUtxo.input.txHash}`);
 console.log(`  Index: ${selectedUtxo.input.outputIndex}`);
 console.log(`  Value:`, selectedUtxo.output.amount);
-
-// FIXED: Create OutputReference manually - txOutRef has extra wrapper bug
-const outputReference = {
-  constructor: 0,
-  fields: [
-    {
-      bytes: selectedUtxo.input.txHash
-    },
-    {
-      int: selectedUtxo.input.outputIndex
-    }
-  ]
-};
 console.log('\nOutput Reference:', outputReference);
 
 // Load group validator and apply oref parameter
-const validatorNaked = cborOfValidatorWith(
-  "/home/ash/Cardano/ZK-Voting-App/src/on-chain/build/packages/modulo-p-cardano-semaphore/plutus.json",
-  "group",
-  "mint"
-);
+const validatorNaked = VALIDATORS.group.mint;
 const clothedCbor = applyOrefParamToScript(validatorNaked, outputReference);
 
 // Script Address

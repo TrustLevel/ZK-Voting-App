@@ -7,7 +7,10 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "tsc",
+    "extract-validators": "tsx scripts/extract-validators.ts",
+    "check-validators": "tsx scripts/check-validators-fresh.ts",
+    "build": "npm run check-validators && tsc",
+    "build:force": "npm run extract-validators && tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist"
   },
