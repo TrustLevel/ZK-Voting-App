@@ -122,7 +122,8 @@ export class VotingEventService {
       throw new Error('Invalid invitation token');
     }
 
-    if (invitationToken.eventId !== eventId) {
+    // Ensure type-safe comparison (eventId from URL param may be string)
+    if (invitationToken.eventId !== Number(eventId)) {
       throw new Error('Invitation token is not valid for this event');
     }
 
@@ -389,6 +390,7 @@ export class VotingEventService {
   // Validate invitation token when user clicks email link
   async validateToken(token: string): Promise<{
     valid: boolean;
+    used?: boolean;
     userId?: number;
     eventId?: number;
     email?: string;
@@ -408,14 +410,6 @@ export class VotingEventService {
         };
       }
 
-      // Check if token has already been used
-      if (invitationToken.used) {
-        return {
-          valid: false,
-          error: 'Token has already been used',
-        };
-      }
-
       // Check if token has expired
       const currentTime = Math.floor(Date.now() / 1000);
       if (invitationToken.expiresAt < currentTime) {
@@ -425,9 +419,12 @@ export class VotingEventService {
         };
       }
 
-      // Token is valid
+      // Token is authentic - return user info
+      // "used" flag is informational only, not an error
+      // Registration status is checked separately via participants endpoint
       return {
         valid: true,
+        used: invitationToken.used,
         userId: invitationToken.userId,
         eventId: invitationToken.eventId,
         email: invitationToken.email,
@@ -460,7 +457,7 @@ export class VotingEventService {
   async submitVote(
     eventId: number,
     selectedOption: number,
-    userId: number, 
+    commitment: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
       // 1. Load event
@@ -479,13 +476,13 @@ export class VotingEventService {
         return { success: false, message: 'Voting has ended' };
       }
 
-      // 4. Parse nullifierLeafCommitments (list of userIds who voted - later to be replaced with nullifiers)
-      const votedUsers = JSON.parse(event.nullifierLeafCommitments || '[]') as number[];
+      // 4. Parse nullifierLeafCommitments (list of commitments who voted - ensures one vote per identity)
+      const votedCommitments = JSON.parse(event.nullifierLeafCommitments || '[]') as string[];
 
-      // 5. Check if user already voted
-      // NOTE: Should check nullifier, not userId!
-      if (votedUsers.includes(userId)) {
-        return { success: false, message: 'User has already voted' };
+      // 5. Check if commitment already voted (prevents double-voting with same identity)
+      // NOTE: This provides anonymity - we track commitments, not userIds
+      if (votedCommitments.includes(commitment)) {
+        return { success: false, message: 'This identity has already voted' };
       }
 
       // 6. Parse and update options
@@ -500,8 +497,8 @@ export class VotingEventService {
 
       // 7. Save updated data
       event.options = JSON.stringify(options);
-      votedUsers.push(userId);  // ⚠️ Should push nullifier, not userId!
-      event.nullifierLeafCommitments = JSON.stringify(votedUsers);
+      votedCommitments.push(commitment);  // Track commitment for anonymity
+      event.nullifierLeafCommitments = JSON.stringify(votedCommitments);
 
       await this.votingEventRepository.save(event);
 

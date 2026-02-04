@@ -119,9 +119,9 @@ export class VotingEventController {
   async submitVote(
     @Param('eventId') eventId: number,
     @Body('selectedOption') selectedOption: number,
-    @Body('userId') userId: number,  // ⚠️ TEMPORARY - Replace with proof, nullifier, signal
+    @Body('commitment') commitment: string,  // ⚠️ TEMPORARY - Replace with proof + nullifier for full ZK verification
   ) {
-    return await this.votingEventService.submitVote(eventId, selectedOption, userId);
+    return await this.votingEventService.submitVote(eventId, selectedOption, commitment);
   }
 
   @Post(':eventId/validate-admin-token')
