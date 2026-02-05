@@ -1,8 +1,92 @@
 // Script to mint a Cardano Semaphore Group NFT using the group validator
 import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference, createGroupDatum } from './utils.js';
-import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript } from '@meshsdk/core';
+import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript, UTxO } from '@meshsdk/core';
 import { VALIDATORS } from './validators.js';
 import 'dotenv/config';
+
+/**
+ * Build unsigned transaction for minting Group NFT
+ * Handles Ogmios evaluation errors by extracting transaction hex from error messages
+ */
+async function buildGroupMintTransaction(params: {
+  provider: BlockfrostProvider;
+  policyId: string;
+  assetName: string;
+  clothedCbor: string;
+  createRedeemer: any;
+  selectedUtxo: UTxO;
+  walletUtxos: UTxO[];
+  walletAddress: string;
+  scriptAddr: string;
+  mintValue: Asset[];
+  groupDatum: any;
+  paymentKeyHash: string;
+}): Promise<string> {
+  const {
+    provider,
+    policyId,
+    assetName,
+    clothedCbor,
+    createRedeemer,
+    selectedUtxo,
+    walletUtxos,
+    walletAddress,
+    scriptAddr,
+    mintValue,
+    groupDatum,
+    paymentKeyHash
+  } = params;
+
+  const txBuilder = new MeshTxBuilder({
+    fetcher: provider,
+    evaluator: provider,
+    verbose: false,
+  });
+
+  console.log('\n🔨 Building transaction...');
+
+  try {
+    const unsignedTx = await txBuilder
+      .setNetwork("preprod")
+      .mintPlutusScriptV3()
+      .mint("1", policyId, assetName)
+      .mintingScript(clothedCbor)
+      .mintRedeemerValue(createRedeemer, "JSON", {
+        mem: 14000000,
+        steps: 10000000000
+      })
+      .txIn(
+        selectedUtxo.input.txHash,
+        selectedUtxo.input.outputIndex,
+        selectedUtxo.output.amount,
+        walletAddress
+      )
+      .selectUtxosFrom(walletUtxos)
+      .txInCollateral(
+        "a0c462bc82ee224bd8f76ec50dbf89b7b42ea831ea830000802771ba49c43d97",
+        1,
+        [{ unit: "lovelace", quantity: "2470930000" }]
+      )
+      .txOut(scriptAddr, mintValue)
+      .txOutInlineDatumValue(groupDatum, "JSON")
+      .changeAddress(walletAddress)
+      .requiredSignerHash(paymentKeyHash)
+      .complete();
+
+    console.log('✅ Transaction completed successfully (length:', unsignedTx.length, ')');
+    return unsignedTx;
+  } catch (evalError: any) {
+    // Extract transaction hex from error message
+    const match = evalError.message.match(/For txHex: ([0-9a-f]+)/);
+    if (match) {
+      const unsignedTx = match[1];
+      console.log('✅ Extracted unsigned tx hex from error (length:', unsignedTx.length, ')');
+      return unsignedTx;
+    } else {
+      throw new Error('Could not extract transaction hex: ' + evalError.message);
+    }
+  }
+}
 
 // Get mnemonic from environment
 const secretKey = process.env.SECRET_KEY || "";
@@ -68,53 +152,20 @@ const mintValue: Asset[] = [
 ];
 
 // Build transaction
-const txBuilder = new MeshTxBuilder({
-    fetcher: provider,
-    evaluator: provider,
-    verbose: false,  // Disable verbose to reduce noise
+const unsignedMintTx = await buildGroupMintTransaction({
+  provider,
+  policyId,
+  assetName,
+  clothedCbor,
+  createRedeemer,
+  selectedUtxo,
+  walletUtxos,
+  walletAddress: walletAddress!,
+  scriptAddr,
+  mintValue,
+  groupDatum,
+  paymentKeyHash: paymentKeyHash!
 });
-
-console.log('\n🔨 Building transaction...');
-
-let unsignedMintTx;
-try {
-  unsignedMintTx = await txBuilder
-      .setNetwork("preprod")
-      .mintPlutusScriptV3()
-      .mint("1", policyId, assetName)
-      .mintingScript(clothedCbor)
-      .mintRedeemerValue(createRedeemer, "JSON", {
-        mem: 14000000,
-        steps: 10000000000
-      })
-      .txIn(
-        selectedUtxo.input.txHash,
-        selectedUtxo.input.outputIndex,
-        selectedUtxo.output.amount,
-        walletAddress
-      )
-      .selectUtxosFrom(walletUtxos)
-      .txInCollateral(
-        "a0c462bc82ee224bd8f76ec50dbf89b7b42ea831ea830000802771ba49c43d97",
-        1,
-        [{ unit: "lovelace", quantity: "2470930000" }]
-      )
-      .txOut(scriptAddr, mintValue)
-      .txOutInlineDatumValue(groupDatum, "JSON")
-      .changeAddress(walletAddress!)
-      .requiredSignerHash(paymentKeyHash!)
-      .complete();
-  console.log('✅ Transaction completed successfully (length:', unsignedMintTx.length, ')');
-} catch (evalError: any) {
-  // Extract transaction hex from error message
-  const match = evalError.message.match(/For txHex: ([0-9a-f]+)/);
-  if (match) {
-    unsignedMintTx = match[1];
-    console.log('✅ Extracted unsigned tx hex from error (length:', unsignedMintTx.length, ')');
-  } else {
-    throw new Error('Could not extract transaction hex: ' + evalError.message);
-  }
-}
 
 console.log('🔏 Signing transaction...');
 const signedTx = await wallet.signTx(unsignedMintTx, true);

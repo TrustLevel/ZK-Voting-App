@@ -22,10 +22,136 @@ import {
   resolvePlutusScriptAddress,
   PlutusScript,
   integer,
-  byteString
+  byteString,
+  UTxO
 } from '@meshsdk/core';
 import { VALIDATORS } from './validators.js';
 import 'dotenv/config';
+
+/**
+ * Build unsigned transaction for minting Semaphore + Voting NFTs together
+ * Handles Ogmios evaluation errors by extracting transaction hex from error messages
+ */
+async function buildSemaphoreVotingMintTransaction(params: {
+  provider: BlockfrostProvider;
+  txValidityEndSlot: number;
+  groupNftTxHash: string;
+  groupNftOutputIndex: number;
+  semaphorePolicyId: string;
+  semaphoreAssetName: string;
+  semaphoreValidatorCbor: string;
+  votingPolicyId: string;
+  votingAssetName: string;
+  votingValidatorCbor: string;
+  selectedUtxo: UTxO;
+  walletUtxos: UTxO[];
+  walletAddress: string;
+  semaphoreScriptAddr: string;
+  semaphoreMintValue: Asset[];
+  semaphoreDatum: any;
+  votingScriptAddr: string;
+  votingMintValue: Asset[];
+  urnaDatum: any;
+  paymentKeyHash: string;
+}): Promise<string> {
+  const {
+    provider,
+    txValidityEndSlot,
+    groupNftTxHash,
+    groupNftOutputIndex,
+    semaphorePolicyId,
+    semaphoreAssetName,
+    semaphoreValidatorCbor,
+    votingPolicyId,
+    votingAssetName,
+    votingValidatorCbor,
+    selectedUtxo,
+    walletUtxos,
+    walletAddress,
+    semaphoreScriptAddr,
+    semaphoreMintValue,
+    semaphoreDatum,
+    votingScriptAddr,
+    votingMintValue,
+    urnaDatum,
+    paymentKeyHash
+  } = params;
+
+  const txBuilder = new MeshTxBuilder({
+    fetcher: provider,
+    evaluator: provider,
+    verbose: false
+  });
+
+  console.log('\n🔨 Building combined transaction (2 mints in 1 tx)...\n');
+
+  try {
+    const unsignedTx = await txBuilder
+      .setNetwork("preprod")
+      .invalidHereafter(txValidityEndSlot)
+
+      // Reference input to existing Group NFT (required by Semaphore validator)
+      .readOnlyTxInReference(groupNftTxHash, groupNftOutputIndex)
+
+      // Mint Semaphore NFT (allocate ~5.5M mem, 3.4B steps)
+      .mintPlutusScriptV3()
+      .mint("1", semaphorePolicyId, semaphoreAssetName)
+      .mintingScript(semaphoreValidatorCbor)
+      .mintRedeemerValue(conStr(0, []), "JSON", {
+        mem: 5500000,
+        steps: 3400000000
+      })
+
+      // Mint Voting NFT (allocate ~5.5M mem, 3.3B steps)
+      .mintPlutusScriptV3()
+      .mint("1", votingPolicyId, votingAssetName)
+      .mintingScript(votingValidatorCbor)
+      .mintRedeemerValue(conStr(0, []), "JSON", {
+        mem: 5500000,
+        steps: 3300000000
+      })
+
+      // Consume the UTxO (satisfies one-shot condition for both)
+      .txIn(selectedUtxo.input.txHash, selectedUtxo.input.outputIndex, selectedUtxo.output.amount, walletAddress)
+      .selectUtxosFrom(walletUtxos)
+
+      // Collateral (valid UTxO with 2470 ADA)
+      .txInCollateral(
+        "a0c462bc82ee224bd8f76ec50dbf89b7b42ea831ea830000802771ba49c43d97",
+        1,
+        [{ unit: "lovelace", quantity: "2470930000" }]
+      )
+
+      // Output 0: Semaphore NFT to script
+      .txOut(semaphoreScriptAddr, semaphoreMintValue)
+      .txOutInlineDatumValue(semaphoreDatum, "JSON")
+
+      // Output 1: Voting NFT to script
+      .txOut(votingScriptAddr, votingMintValue)
+      .txOutInlineDatumValue(urnaDatum, "JSON")
+
+      // Change and signature
+      .changeAddress(walletAddress)
+      .requiredSignerHash(paymentKeyHash)
+      .complete();
+
+    console.log('✅ Transaction built successfully (length:', unsignedTx.length, ')');
+    return unsignedTx;
+  } catch (evalError: any) {
+    // Ogmios evaluation might fail even for valid transactions
+    // Extract the TX hex from error message and proceed anyway
+    const match = evalError.message.match(/For txHex: ([0-9a-f]+)/);
+    if (match) {
+      const unsignedTx = match[1];
+      console.log('⚠️  Ogmios evaluation failed (known issue), but extracted TX hex');
+      console.log('✅ Unsigned tx (length:', unsignedTx.length, ')');
+      return unsignedTx;
+    } else {
+      console.error('❌ Evaluation failed and could not extract TX hex');
+      throw evalError;
+    }
+  }
+}
 
 console.log('╔════════════════════════════════════════════════════════════╗');
 console.log('║     MINT Semaphore + Voting NFTs IN ONE TRANSACTION       ║');
@@ -58,9 +184,9 @@ console.log('Available wallet UTxOs:', walletUtxos.length);
 // Existing Group NFT (minted previously)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const groupNftTxHash = "5dba2d01219a3df4c84e3cc7cf5b539bd9fb30c65d3a1df8a79ca35fc49eb4e0";
+const groupNftTxHash = "7d343bb3a9fc94c20889e660f9913d52d6e550f76adc5e469ff90d49bd42df39";
 const groupNftOutputIndex = 0;
-const groupPolicyId = "a13c89cafb75ab42c0c2d7d9afd6bcd9d3c4c06de5cbd76232ad4028";
+const groupPolicyId = "a7bc807147157225d078e47f96a43d18248577955f1e93c7da28cd6c";
 
 console.log('\n📌 Using existing Group NFT:');
 console.log(`  Policy ID: ${groupPolicyId}`);
@@ -160,79 +286,28 @@ console.log('  TX expires at slot:', txValidityEndSlot);
 // Build SINGLE transaction that mints Semaphore + Voting NFTs
 // ═══════════════════════════════════════════════════════════════════════════
 
-console.log('\n🔨 Building combined transaction (2 mints in 1 tx)...\n');
-
-const txBuilder = new MeshTxBuilder({
-  fetcher: provider,
-  evaluator: provider,
-  verbose: false
+const unsignedTx = await buildSemaphoreVotingMintTransaction({
+  provider,
+  txValidityEndSlot,
+  groupNftTxHash,
+  groupNftOutputIndex,
+  semaphorePolicyId,
+  semaphoreAssetName,
+  semaphoreValidatorCbor,
+  votingPolicyId,
+  votingAssetName,
+  votingValidatorCbor,
+  selectedUtxo,
+  walletUtxos,
+  walletAddress: walletAddress!,
+  semaphoreScriptAddr,
+  semaphoreMintValue,
+  semaphoreDatum,
+  votingScriptAddr,
+  votingMintValue,
+  urnaDatum,
+  paymentKeyHash: paymentKeyHash!
 });
-
-let unsignedTx;
-try {
-  unsignedTx = await txBuilder
-    .setNetwork("preprod")
-    .invalidHereafter(txValidityEndSlot)
-
-    // Reference input to existing Group NFT (required by Semaphore validator)
-    .readOnlyTxInReference(groupNftTxHash, groupNftOutputIndex)
-
-    // Mint Semaphore NFT (allocate ~5.5M mem, 3.4B steps)
-    .mintPlutusScriptV3()
-    .mint("1", semaphorePolicyId, semaphoreAssetName)
-    .mintingScript(semaphoreValidatorCbor)
-    .mintRedeemerValue(conStr(0, []), "JSON", {
-      mem: 5500000,
-      steps: 3400000000
-    })
-
-    // Mint Voting NFT (allocate ~5.5M mem, 3.3B steps)
-    .mintPlutusScriptV3()
-    .mint("1", votingPolicyId, votingAssetName)
-    .mintingScript(votingValidatorCbor)
-    .mintRedeemerValue(conStr(0, []), "JSON", {
-      mem: 5500000,
-      steps: 3300000000
-    })
-
-    // Consume the UTxO (satisfies one-shot condition for both)
-    .txIn(selectedUtxo.input.txHash, selectedUtxo.input.outputIndex, selectedUtxo.output.amount, walletAddress)
-    .selectUtxosFrom(walletUtxos)
-
-    // Collateral (valid UTxO with 2470 ADA)
-    .txInCollateral(
-      "a0c462bc82ee224bd8f76ec50dbf89b7b42ea831ea830000802771ba49c43d97",
-      1,
-      [{ unit: "lovelace", quantity: "2470930000" }]
-    )
-
-    // Output 0: Semaphore NFT to script
-    .txOut(semaphoreScriptAddr, semaphoreMintValue)
-    .txOutInlineDatumValue(semaphoreDatum, "JSON")
-
-    // Output 1: Voting NFT to script
-    .txOut(votingScriptAddr, votingMintValue)
-    .txOutInlineDatumValue(urnaDatum, "JSON")
-
-    // Change and signature
-    .changeAddress(walletAddress!)
-    .requiredSignerHash(paymentKeyHash!)
-    .complete();
-
-  console.log('✅ Transaction built successfully (length:', unsignedTx.length, ')');
-} catch (evalError: any) {
-  // Ogmios evaluation might fail even for valid transactions
-  // Extract the TX hex from error message and proceed anyway
-  const match = evalError.message.match(/For txHex: ([0-9a-f]+)/);
-  if (match) {
-    unsignedTx = match[1];
-    console.log('⚠️  Ogmios evaluation failed (known issue), but extracted TX hex');
-    console.log('✅ Unsigned tx (length:', unsignedTx.length, ')');
-  } else {
-    console.error('❌ Evaluation failed and could not extract TX hex');
-    throw evalError;
-  }
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Sign and submit
