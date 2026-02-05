@@ -1,6 +1,6 @@
 // Script to mint a voting event using the voting.ak validator
-import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference } from './utils.js';
-import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript, integer, byteString, list } from '@meshsdk/core';
+import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference, generateInitialOptions, generateEventTiming, createUrnaDatum } from './utils.js';
+import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript } from '@meshsdk/core';
 import { VALIDATORS } from './validators.js';
 import 'dotenv/config';
 
@@ -53,44 +53,36 @@ console.log("Voting NFT Policy ID:", policyId);
 // Generate redeemer - Mint variant (alternative 0, no fields)
 const mintRedeemer = conStr(0, []);
 
-// Generate UrnaDatum
-// weight: Int - 0 for simple voting, >1 for weighted voting
-// options: List<(Int,Int)> - [(0,0), (1,0), (2,0)] for 3 options starting at 0
-// event_date: (Int, Int) - (start_posix_time, end_posix_time)
-// semaphore_nft: PolicyId - The semaphore group NFT policy ID
-
+// Configure voting event
 const weight = 0; // Simple voting (1 vote per participant)
 
-// Example: 3 voting options, all starting at 0 votes
-// Options is List<(Int,Int)> - each tuple wrapped with list() for PlutusData List
-const options = [
-  list([integer(0), integer(0)]), // Option 0: 0 votes
-  list([integer(1), integer(0)]), // Option 1: 0 votes
-  list([integer(2), integer(0)]), // Option 2: 0 votes
-];
+// Generate 3 voting options: Abstain (0), Option 1, Option 2
+const options = generateInitialOptions(3);
 
-// Event dates (POSIX timestamps in milliseconds)
-// IMPORTANT: Event start must be AFTER TX validity window ends!
-const now = Date.now();
-const eventStart = now + 3600000; // Starts in 1 hour (well after 5-minute validity window)
-const eventEnd = now + 7200000; // Ends in 2 hours (1 hour voting window)
+// Generate event timing - starts in 1 hour, lasts for 1 hour
+const { eventStart, eventEnd, txValiditySlots, description } = generateEventTiming({
+  startsInMinutes: 60,  // Voting begins in 1 hour
+  durationMinutes: 60,  // Voting window is 1 hour
+  txValidityMinutes: 5  // TX must be submitted within 5 minutes
+});
 
 // Semaphore NFT Policy ID (from the semaphore NFT we just minted)
 // This is what voters will spend when voting with ZK proofs
 const semaphoreNftPolicyId = "1779325f22a306fd4062a0c714dff772ef9446d3538dfb4910a75c99"; // ✅ Correct Semaphore NFT
 
-const urnaDatum = conStr(0, [
-  integer(weight),
-  list(options), // List of (Int, Int) pairs - wrapped in list()
-  list([integer(eventStart), integer(eventEnd)]), // event_date tuple as list
-  byteString(semaphoreNftPolicyId) // Semaphore NFT policy ID
-]);
+// Create UrnaDatum for the voting event
+const urnaDatum = createUrnaDatum({
+  weight,
+  options,
+  eventStart,
+  eventEnd,
+  semaphoreNftPolicyId
+});
 
 console.log('\nVoting Event Configuration:');
 console.log('  Weight:', weight, '(simple voting)');
 console.log('  Options:', options.length);
-console.log('  Event Start:', new Date(eventStart).toISOString());
-console.log('  Event End:', new Date(eventEnd).toISOString());
+console.log('  Timing:', description);
 console.log('  Semaphore NFT Policy:', semaphoreNftPolicyId);
 
 // Asset name for the voting NFT
@@ -100,14 +92,15 @@ const mintValue: Asset[] = [
     { unit: policyId + assetName, quantity: "1" },
 ];
 
-// Set validity to end in 5 minutes (well before event start in 1 hour)
+// Calculate transaction validity window
 // MeshSDK's invalidHereafter() expects a SLOT NUMBER, not POSIX time!
 const currentSlot = await provider.fetchLatestBlock().then(block => parseInt(block.slot));
-const txValidityEndSlot = currentSlot + 300; // 5 minutes from now
+const txValidityEndSlot = currentSlot + txValiditySlots;
 
-console.log('Current slot:', currentSlot);
-console.log('TX validity ends at slot:', txValidityEndSlot);
-console.log('Event starts at POSIX (ms):', eventStart, '(' + new Date(eventStart).toISOString() + ')');
+console.log('\nTransaction Validity:');
+console.log('  Current slot:', currentSlot);
+console.log('  TX expires at slot:', txValidityEndSlot, `(in ${txValiditySlots / 60} minutes)`);
+console.log('  Event starts after TX expires:', new Date(eventStart).toISOString());
 
 // Build transaction
 const txBuilder = new MeshTxBuilder({

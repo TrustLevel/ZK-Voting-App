@@ -129,6 +129,27 @@ View documentation by opening `docs/index.html` in your browser.
 - **Zero Initialization**: All vote counts must start at zero
 - **Time Validation**: Start time must be before end time and in the future
 
+#### Abstain Option Convention
+
+**Application-Level Business Rule**: Option 0 is conventionally reserved for "Abstain" votes. This allows voters to participate without selecting a specific voting option.
+
+**Important Notes**:
+- This is an **application-level convention**, NOT enforced by the smart contract
+- The validator accepts any number of options (including just one)
+- Frontend implementations should enforce minimum 2 options: option 0 (abstain) + at least one actual voting option
+- The smart contract treats all options equally - the "abstain" semantics are purely for application logic
+
+**Implementation Example**:
+```typescript
+// Generate voting options with abstain
+const options = generateInitialOptions(3);
+// Creates: [
+//   [0, 0],  // Option 0: Abstain (0 votes)
+//   [1, 0],  // Option 1: Yes (0 votes)
+//   [2, 0],  // Option 2: No (0 votes)
+// ]
+```
+
 ### Vote Processing
 
 - **Authentication**: Requires valid semaphore NFT with ZK proof
