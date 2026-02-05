@@ -8,7 +8,7 @@ import 'dotenv/config';
  * Build unsigned transaction for minting Group NFT
  * Handles Ogmios evaluation errors by extracting transaction hex from error messages
  */
-async function buildGroupMintTransaction(params: {
+export async function buildGroupMintTransaction(params: {
   provider: BlockfrostProvider;
   policyId: string;
   assetName: string;

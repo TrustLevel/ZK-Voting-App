@@ -32,7 +32,7 @@ import 'dotenv/config';
  * Build unsigned transaction for minting Semaphore + Voting NFTs together
  * Handles Ogmios evaluation errors by extracting transaction hex from error messages
  */
-async function buildSemaphoreVotingMintTransaction(params: {
+export async function buildSemaphoreVotingMintTransaction(params: {
   provider: BlockfrostProvider;
   txValidityEndSlot: number;
   groupNftTxHash: string;

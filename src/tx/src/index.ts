@@ -1,7 +1,20 @@
 // Main exports for @src/tx package
-export * from './builders.js';
+
+// Transaction builder functions
+export { buildGroupMintTransaction } from './mint-group.js';
+export { buildSemaphoreVotingMintTransaction } from './mint-sv.js';
+
+// Utility functions
 export * from './utils.js';
+
+// Type definitions
 export * from './types.js';
+
+// Validators
+export * from './validators.js';
+
+// Legacy builders (if any)
+export * from './builders.js';
 
 /**
  * @src/tx - Transaction Building Module
