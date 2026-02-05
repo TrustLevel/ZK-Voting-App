@@ -1,6 +1,6 @@
 // Script to mint a Cardano Semaphore Group NFT using the group validator
-import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference } from './utils.js';
-import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript, integer, byteString } from '@meshsdk/core';
+import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference, createGroupDatum } from './utils.js';
+import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript } from '@meshsdk/core';
 import { VALIDATORS } from './validators.js';
 import 'dotenv/config';
 
@@ -53,11 +53,8 @@ console.log("Group NFT Policy ID:", policyId);
 // Generate redeemer - Create variant (alternative 0, no fields)
 const createRedeemer = conStr(0, []);
 
-// Generate Datum - GroupDatum with empty merkle root and admin_pkh
-const groupDatum = conStr(0, [
-    integer(0),  // Empty merkle root for new group
-    byteString(paymentKeyHash) // Admin public key hash
-]);
+// Generate GroupDatum with empty merkle root and admin_pkh
+const groupDatum = createGroupDatum(0, paymentKeyHash);
 
 console.log('\nGroup Configuration:');
 console.log('  Merkle Root: 0 (empty - new group)');
@@ -98,9 +95,9 @@ try {
       )
       .selectUtxosFrom(walletUtxos)
       .txInCollateral(
-        "4782f9be3028f26fef2fc5f525ea90370530e3e47d4a2a7134476a784c238804",
-        5,
-        [{ unit: "lovelace", quantity: "5000000" }]
+        "a0c462bc82ee224bd8f76ec50dbf89b7b42ea831ea830000802771ba49c43d97",
+        1,
+        [{ unit: "lovelace", quantity: "2470930000" }]
       )
       .txOut(scriptAddr, mintValue)
       .txOutInlineDatumValue(groupDatum, "JSON")

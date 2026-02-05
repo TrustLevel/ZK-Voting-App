@@ -1,5 +1,5 @@
 // Script to mint a Semaphore NFT using the semaphore.ak validator
-import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference } from './utils.js';
+import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference, createOutputReference } from './utils.js';
 import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript, integer, byteString } from '@meshsdk/core';
 import { VALIDATORS } from './validators.js';
 import 'dotenv/config';
@@ -88,17 +88,7 @@ const createRedeemer = conStr(0, []);
 const nullHash = "0000000000000000000000000000000000000000000000000000000000000000";
 
 // Create vkey_ref_input OutputReference
-const vkeyRefInput = {
-  constructor: 0,
-  fields: [
-    {
-      bytes: vkeyRefTxHash
-    },
-    {
-      int: vkeyRefOutputIndex
-    }
-  ]
-};
+const vkeyRefInput = createOutputReference(vkeyRefTxHash, vkeyRefOutputIndex);
 
 const semaphoreDatum = conStr(0, [
   byteString(groupNftPolicyId),     // group_token_policy: PolicyId
