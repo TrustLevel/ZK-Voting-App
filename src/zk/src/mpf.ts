@@ -22,10 +22,12 @@ function nullifierToBuffer(nullifier: bigint): Buffer {
 export async function insertNullifier(
   currentRoot: Buffer,
   nullifier: bigint,
-  storePath: string
+  eventId: number
 ): Promise<{ newRoot: Buffer; proof: Buffer }> {
-  // Load the existing trie from disk (persists all previous nullifiers)
-  const trie = await Trie.load(new Store(storePath));
+  // Each voting event gets its own isolated trie, keyed by eventId.
+  // If no DB exists yet (first vote), create a fresh empty trie.
+  const store = new Store(`nullifiers-db/${eventId}`);
+  const trie = await Trie.load(store).catch(() => new Trie(store));
 
   const key = nullifierToBuffer(nullifier);
 
