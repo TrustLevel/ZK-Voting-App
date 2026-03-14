@@ -9,9 +9,9 @@ const require = createRequire(import.meta.url);
 const snarkjs = require('snarkjs');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const WASM_PATH = path.join(__dirname, '../../wasm/semaphore.wasm');
-const ZKEY_PATH = path.join(__dirname, '../../keys/semaphore_final.zkey');
-const VKEY_PATH = path.join(__dirname, '../../keys/verification_key.json');
+const WASM_PATH = path.join(__dirname, '../wasm/semaphore.wasm');
+const ZKEY_PATH = path.join(__dirname, '../keys/semaphore_final.zkey');
+const VKEY_PATH = path.join(__dirname, '../keys/verification_key.json');
 
 type MerkleProof = {
   root: bigint;

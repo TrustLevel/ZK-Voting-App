@@ -10,7 +10,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "test": "node tests/conversion.test.mjs"
+    "test": "node tests/conversion.test.mjs && node tests/proof.test.mjs"
   },
   "dependencies": {
     "@aiken-lang/merkle-patricia-forestry": "^1.1.0",
