@@ -130,6 +130,87 @@ async function convertVerificationKeyToUncompressed(verificationKey: Verificatio
   return uncompressedVerificationKey;
 }
 
+// Reverses compressedG1 — takes a 96-char hex string and returns the snarkjs G1Point tuple.
+// YBIT=1 means the stored y is the greater of the two square root candidates.
+export async function decompressG1(hex: string): Promise<G1Point> {
+  const curve = await ff.getCurveFromName("bls12381");
+  const buf = Buffer.from(hex, 'hex');
+
+  const INFINITY = 0b01000000;
+  const YBIT     = 0b00100000;
+
+  const isInfinity = (buf[0] & INFINITY) !== 0;
+  const ybit       = (buf[0] & YBIT) !== 0;
+
+  // Clear the top 3 flag bits to recover the raw x coordinate
+  buf[0] &= 0x1F;
+
+  if (isInfinity) {
+    return ['0', '1', '0'];
+  }
+
+  const x = BigInt('0x' + buf.toString('hex'));
+  const F = curve.G1.F;
+  const xF = F.fromObject(x);
+
+  // Compute both square root candidates from the curve equation y² = x³ + b
+  const x3b = F.add(F.mul(F.square(xF), xF), curve.G1.b);
+  const y1: bigint = F.toObject(F.sqrt(x3b));
+  const y2: bigint = F.toObject(F.neg(F.sqrt(x3b)));
+
+  // YBIT=1 → greater y; YBIT=0 → lesser y
+  const y = ybit ? (y1 > y2 ? y1 : y2) : (y1 < y2 ? y1 : y2);
+
+  return [x.toString(), y.toString(), '1'];
+}
+
+// Reverses compressedG2 — takes a 192-char hex string and returns the snarkjs G2Point tuple.
+// Fp2 elements are stored as [x0, x1]; comparison is lexicographic on [1] then [0].
+export async function decompressG2(hex: string): Promise<G2Point> {
+  const curve = await ff.getCurveFromName("bls12381");
+  const buf = Buffer.from(hex, 'hex');
+
+  const INFINITY = 0b01000000;
+  const YBIT     = 0b00100000;
+
+  const isInfinity = (buf[0] & INFINITY) !== 0;
+  const ybit       = (buf[0] & YBIT) !== 0;
+
+  // Clear the top 3 flag bits in the first byte
+  buf[0] &= 0x1F;
+
+  if (isInfinity) {
+    return [['0', '0'], ['1', '0'], ['0', '0']];
+  }
+
+  // compressedG2 stored x[1] in bytes 0..47 and x[0] in bytes 48..95
+  const x1 = BigInt('0x' + buf.slice(0, 48).toString('hex'));
+  const x0 = BigInt('0x' + buf.slice(48, 96).toString('hex'));
+
+  const F = curve.G2.F;
+  const xF = F.fromObject([x0, x1]);
+
+  // Compute both square root candidates in Fp2
+  const x3b = F.add(F.mul(F.square(xF), xF), curve.G2.b);
+  const y1: bigint[] = F.toObject(F.sqrt(x3b));
+  const y2: bigint[] = F.toObject(F.neg(F.sqrt(x3b)));
+
+  function greaterThan(a: bigint[], b: bigint[]): boolean {
+    if (a[1] > b[1]) return true;
+    if (a[1] === b[1] && a[0] > b[0]) return true;
+    return false;
+  }
+
+  // YBIT=1 → greater Fp2 element; YBIT=0 → lesser
+  const y = ybit ? (greaterThan(y1, y2) ? y1 : y2) : (greaterThan(y2, y1) ? y1 : y2);
+
+  return [
+    [x0.toString(), x1.toString()],
+    [y[0].toString(), y[1].toString()],
+    ['1', '0'],
+  ];
+}
+
 export async function printCompressedProof(proof: any) {
   console.log("Uncompressed proof", JSON.stringify(await convertProofToUncompressed(proof)));
 }
