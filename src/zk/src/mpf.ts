@@ -1,14 +1,45 @@
-// Manages the nullifier Merkle Patricia Forestry (MPF) trie used for
-// double-vote prevention. Given the current on-chain MPF root (from
-// SemaphoreDatum.nullifier_mpf_root) and a new nullifier hash (output of the
-// ZK proof), inserts the nullifier into the trie and returns the updated root
-// plus the serialised insertion proof required by the on-chain
-// SemaphoreRedeemer.Signal as its `mpf_proof` field.
-//
-// Uses @aiken-lang/merkle-patricia-forestry for trie operations.
-//
-// insertNullifier(currentRoot: Uint8Array, nullifier: bigint):
-//   Promise<{ newRoot: Uint8Array, proof: Uint8Array }>
-//   currentRoot — 32-byte MPF root from SemaphoreDatum
-//   nullifier   — nullifierHash integer from the ZK proof public signals
-//   returns     — updated root and serialised proof for the redeemer
+import { Trie, Store } from '@aiken-lang/merkle-patricia-forestry';
+
+// Converts a nullifier bigint to a 32-byte big-endian Buffer used as the trie key
+function nullifierToBuffer(nullifier: bigint): Buffer {
+  const hex = nullifier.toString(16).padStart(64, '0');
+  return Buffer.from(hex, 'hex');
+}
+
+/**
+ * Inserts a nullifier into the MPF trie, proving it was not there before.
+ *
+ * The trie is loaded from disk (storePath) on each call and persisted after
+ * insertion — this is the source of truth for all previously used nullifiers.
+ *
+ * The returned proof is the CBOR-encoded insertion proof expected by the
+ * on-chain SemaphoreRedeemer.Signal as its `mpf_proof` field.
+ *
+ * The on-chain validator uses it to:
+ *   1. Verify exclusion:  proof.verify(false) == currentRoot  (nullifier not yet used)
+ *   2. Derive new root:   proof.verify(true)  == newRoot      (nullifier now included)
+ */
+export async function insertNullifier(
+  currentRoot: Buffer,
+  nullifier: bigint,
+  storePath: string
+): Promise<{ newRoot: Buffer; proof: Buffer }> {
+  // Load the existing trie from disk (persists all previous nullifiers)
+  const trie = await Trie.load(new Store(storePath));
+
+  const key = nullifierToBuffer(nullifier);
+
+  // Insert the nullifier — the library internally checks exclusion before inserting.
+  // Throws if the nullifier is already in the trie (double vote attempt).
+  await trie.insert(key, key);
+
+  // A single proof after insertion encodes both:
+  //   verify(false) → root without the item (must equal currentRoot on-chain)
+  //   verify(true)  → root with the item (the new on-chain root after this vote)
+  const proof = await trie.prove(key);
+
+  return {
+    newRoot: proof.verify(true),
+    proof: proof.toCBOR(),
+  };
+}
