@@ -2,7 +2,8 @@ import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { poseidon1 } from 'poseidon-bls12381';
-import { compressedG1, compressedG2 } from './conversion.js';
+import fs from 'fs';
+import { compressedG1, compressedG2, decompressG1, decompressG2 } from './conversion.js';
 
 const require = createRequire(import.meta.url);
 const snarkjs = require('snarkjs');
@@ -10,6 +11,7 @@ const snarkjs = require('snarkjs');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WASM_PATH = path.join(__dirname, '../../wasm/semaphore.wasm');
 const ZKEY_PATH = path.join(__dirname, '../../keys/semaphore_final.zkey');
+const VKEY_PATH = path.join(__dirname, '../../keys/verification_key.json');
 
 type MerkleProof = {
   root: bigint;
@@ -62,4 +64,26 @@ export async function generateVoteProof(params: {
   const nullifierHash = BigInt(publicSignals[1]);
 
   return { zkProof, nullifierHash, publicSignals };
+}
+
+/**
+ * Verifies a compressed zkProof off-chain against the ceremony verification key.
+ * Decompresses pi_a, pi_b, pi_c back to the snarkjs G1/G2 point format before verifying.
+ */
+export async function verifyVoteProof(
+  zkProof: { pi_a: string; pi_b: string; pi_c: string },
+  publicSignals: string[]
+): Promise<boolean> {
+  // Decompress the BLS12-381 points back to the decimal tuple format snarkjs expects
+  const rawProof = {
+    pi_a: await decompressG1(zkProof.pi_a),
+    pi_b: await decompressG2(zkProof.pi_b),
+    pi_c: await decompressG1(zkProof.pi_c),
+    protocol: 'groth16',
+    curve: 'bls12-381',
+  };
+
+  const vKey = JSON.parse(fs.readFileSync(VKEY_PATH, 'utf8'));
+
+  return snarkjs.groth16.verify(vKey, publicSignals, rawProof);
 }
