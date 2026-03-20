@@ -39,5 +39,20 @@ await test('decodeVoteSignal roundtrip: decode(encode(options)) equals original'
   assert.deepStrictEqual(decoded, options);
 });
 
+await test('roundtrip holds for 100 random Option lists', async () => {
+  for (let i = 0; i < 100; i++) {
+    // Build a random List<(Int, Int)>: 1–5 options, each with index 0–9 and count 0–99
+    const length = 1 + Math.floor(Math.random() * 5);
+    const options = Array.from({ length }, () => [
+      Math.floor(Math.random() * 10),   // option index
+      Math.floor(Math.random() * 100),  // vote count
+    ]);
+
+    const hex = encodeVoteSignal(options);
+    const decoded = decodeVoteSignal(hex);
+    assert.deepStrictEqual(decoded, options, `iteration ${i} failed for options ${JSON.stringify(options)}`);
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
