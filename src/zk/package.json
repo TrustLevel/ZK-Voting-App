@@ -10,12 +10,13 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "test": "node tests/conversion.test.mjs && node tests/proof.test.mjs"
+    "test": "node tests/conversion.test.mjs && node tests/signal.test.mjs && node tests/proof.test.mjs"
   },
   "dependencies": {
     "@aiken-lang/merkle-patricia-forestry": "^1.1.0",
     "bigint-buffer": "^1.1.5",
     "blake2b": "^2.1.4",
+    "cbor-x": "^1.6.4",
     "ffjavascript": "^0.3.0",
     "snarkjs": "^0.7.5"
   },
