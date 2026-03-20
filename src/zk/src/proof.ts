@@ -1,12 +1,12 @@
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { poseidon1 } from 'poseidon-bls12381';
 import fs from 'fs';
 import { compressedG1, compressedG2, decompressG1, decompressG2 } from './conversion.js';
 
 const require = createRequire(import.meta.url);
 const snarkjs = require('snarkjs');
+const blake2b = require('blake2b');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WASM_PATH = path.join(__dirname, '../wasm/semaphore.wasm');
@@ -32,8 +32,11 @@ export async function generateVoteProof(params: {
 }> {
   const { identityNullifier, identityTrapdoor, merkleProof, externalNullifier, signal } = params;
 
-  // Hash the signal bytes into a field element as the circuit's public input
-  const signalHash = poseidon1([BigInt('0x' + signal)]);
+  // signal_hash = blake2b_256(signal_message) interpreted as a big-endian BLS12-381 scalar.
+  // Must match on-chain: message_digest_int == blake2b_256(signal_message) (semaphore.ak line 163)
+  const signalBytes = Buffer.from(signal, 'hex');
+  const digestHex = Buffer.from(blake2b(32).update(signalBytes).digest()).toString('hex');
+  const signalHash = BigInt('0x' + digestHex);
 
   // Assemble the private/public inputs expected by semaphore.circom
   const circuitInputs = {
