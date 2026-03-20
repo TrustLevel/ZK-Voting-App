@@ -109,6 +109,13 @@ Frontend (Next.js)
 - `UrnaDatum` — weight, options `List<(Int,Int)>`, event dates, semaphore NFT policy
 - `SemaphoreRedeemer.Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)`
 
+**Voting modes** (determined by `UrnaDatum.weight`):
+- Simple voting (`weight <= 1`): `signal_message` must encode exactly one pair with count 1,
+  e.g. `[[2, 1]]` — cast 1 vote for option 2. On-chain: `expect [vote_target] = vote`.
+- Weighted/power voting (`weight > 1`): `signal_message` can distribute votes across multiple
+  options, e.g. `[[1, 3], [2, 2]]` — but total counts must sum exactly to `weight`.
+  On-chain: enforced by `check_weight(vote, dat.weight)` in `voting_utilities.ak`.
+
 **Dependencies** (aiken.toml):
 - `aiken-lang/stdlib v2.2.0`
 - `modulo-p/cardano-semaphore v0.9.2`
@@ -148,6 +155,10 @@ Key files:
 - `keys/verification_key.json` — matched verification key
 
 The WASM and zkey were verified compatible by generating and verifying a test proof.
+
+`generateVoteProof()` is intended to run on the **frontend** (user's browser) so that the
+voter's identity secrets (`identityNullifier`, `identityTrapdoor`) never leave the client.
+The backend only receives the resulting compressed proof and nullifier hash.
 
 `signal_message` and `signal_hash` serve distinct purposes in `SemaphoreRedeemer.Signal`:
 - `signal_message` — the raw CBOR bytes (`encodeVoteSignal()` output). Passed directly to

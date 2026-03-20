@@ -5,7 +5,8 @@
   "workspaces": [
     "src/backend",
     "src/frontend",
-    "src/tx"
+    "src/tx",
+    "src/zk"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
