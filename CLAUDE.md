@@ -149,6 +149,14 @@ Key files:
 
 The WASM and zkey were verified compatible by generating and verifying a test proof.
 
+`signal_message` and `signal_hash` serve distinct purposes in `SemaphoreRedeemer.Signal`:
+- `signal_message` — the raw CBOR bytes (`encodeVoteSignal()` output). Passed directly to
+  `deserialise_signal()` in `voting.ak` to decode and tally `List<(Int,Int)>` vote options.
+- `signal_hash` — `blake2b_256(signal_message)` interpreted as a big-endian BLS12-381
+  scalar integer. Used as the ZK circuit's public input. The on-chain Semaphore verifier
+  checks `message_digest_int == blake2b_256(signal_message)` (semaphore.ak line 163),
+  proving the signal was not tampered with between proof generation and submission.
+
 MPF trie data is stored in `nullifiers-db/<eventId>/` (LevelDB) per voting event.
 
 ---
