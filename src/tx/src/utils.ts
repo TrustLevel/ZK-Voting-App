@@ -219,22 +219,16 @@ export function generateEventTiming(options?: {
   const txValidityMinutes = options?.txValidityMinutes ?? 5;
 
   // Validation
-  if (startsInMinutes < 10) {
-    throw new Error('Event must start at least 10 minutes from now (minimum safe margin after TX validity)');
+  if (startsInMinutes < 2) {
+    throw new Error('Event must start at least 2 minutes from now (minimum safe margin after TX validity)');
   }
 
-  if (durationMinutes < 60) {
-    throw new Error('Voting duration must be at least 1 hour (60 minutes) to ensure meaningful participation');
+  if (durationMinutes < 1) {
+    throw new Error('Voting duration must be at least 1 minute');
   }
 
   if (txValidityMinutes < 1 || txValidityMinutes > 10) {
     throw new Error('TX validity window must be between 1-10 minutes');
-  }
-
-  if (txValidityMinutes >= startsInMinutes - 5) {
-    throw new Error(
-      `TX validity (${txValidityMinutes}min) must end at least 5 minutes before event starts (starts in ${startsInMinutes}min)`
-    );
   }
 
   // Calculate timestamps

@@ -19,8 +19,8 @@ import {
   resolveScriptHash,
   resolvePlutusScriptAddress,
 } from '@meshsdk/core';
-import { Identity } from 'modp-semaphore-bls12381/packages/typescript/src/identity/index.js';
-import { Group } from 'modp-semaphore-bls12381/packages/typescript/src/group/index.js';
+import { Identity } from 'modp-semaphore-bls12381/packages/typescript/lib/identity/index.js';
+import { Group } from 'modp-semaphore-bls12381/packages/typescript/lib/group/index.js';
 import { poseidon1, poseidon2 } from 'poseidon-bls12381';
 import {
   createWallet,
@@ -88,157 +88,166 @@ console.log('Group Merkle root (with first voter):', group.root.toString());
 console.log('→ Save commitment to VotingEvent.groupLeafCommitments in backend.');
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PHASE 1 — Mint Group NFT
+// PHASE 1 — Mint Group NFT  (already ran — tx: f63cdf994eb9d7519b25f5e270aa987471924ece22447c731a365f022e593b70)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const { selectedUtxo: groupUtxo, outputReference: groupOref } =
-  selectUtxoAndCreateOutputReference(walletUtxos, 0);
-
-const groupValidatorCbor = applyOrefParamToScript(VALIDATORS.group.mint, groupOref);
-const groupScriptAddr = resolvePlutusScriptAddress(
-  { code: groupValidatorCbor, version: "V3" } as PlutusScript, 0
-);
-const groupPolicyId = resolveScriptHash(groupValidatorCbor, "V3");
-const groupAssetName = textToHex("zkvapp-group");
-// GroupDatum: { merkle_root: Int, admin_pkh: ByteArray }
-// Built inline because group.root is a bigint and createGroupDatum only accepts number.
-const groupDatum = conStr(0, [integer(BigInt(group.root.toString())), byteString(paymentKeyHash!)]);
-const groupMintValue: Asset[] = [
-  { unit: "lovelace", quantity: "5000000" },
-  { unit: groupPolicyId + groupAssetName, quantity: "1" },
-];
-
-console.log('\n=== PHASE 1: Minting Group NFT ===');
-console.log('Group policy ID:', groupPolicyId);
-console.log('Group script address:', groupScriptAddr);
-
-const unsignedGroupTx = await buildGroupMintTransaction({
-  provider,
-  policyId: groupPolicyId,
-  assetName: groupAssetName,
-  clothedCbor: groupValidatorCbor,
-  createRedeemer: conStr(0, []),
-  selectedUtxo: groupUtxo,
-  walletUtxos,
-  walletAddress: walletAddress!,
-  scriptAddr: groupScriptAddr,
-  mintValue: groupMintValue,
-  groupDatum,
-  paymentKeyHash: paymentKeyHash!,
-});
-
-const signedGroupTx = await wallet.signTx(unsignedGroupTx, true);
-const groupTxHash = await wallet.submitTx(signedGroupTx);
-
-console.log('\nGroup NFT tx hash:', groupTxHash);
-console.log('Explorer: https://preprod.cardanoscan.io/transaction/' + groupTxHash);
-console.log('\n→ Wait for confirmation, then fill in PHASE 2 below and run again.');
+// const { selectedUtxo: groupUtxo, outputReference: groupOref } =
+//   selectUtxoAndCreateOutputReference(walletUtxos, 0);
+// const collateralUtxo = walletUtxos[1] ?? walletUtxos[0];
+// const groupValidatorCbor = applyOrefParamToScript(VALIDATORS.group.mint, groupOref);
+// const groupScriptAddr = resolvePlutusScriptAddress(
+//   { code: groupValidatorCbor, version: "V3" } as PlutusScript, 0
+// );
+// const groupPolicyId = resolveScriptHash(groupValidatorCbor, "V3");
+// const groupAssetName = textToHex("zkvapp-group");
+// const groupDatum = conStr(0, [integer(BigInt(group.root.toString())), byteString(paymentKeyHash!)]);
+// const groupMintValue: Asset[] = [
+//   { unit: "lovelace", quantity: "5000000" },
+//   { unit: groupPolicyId + groupAssetName, quantity: "1" },
+// ];
+// console.log('\n=== PHASE 1: Minting Group NFT ===');
+// console.log('Group policy ID:', groupPolicyId);
+// console.log('Group script address:', groupScriptAddr);
+// const unsignedGroupTx = await buildGroupMintTransaction({
+//   provider,
+//   policyId: groupPolicyId,
+//   assetName: groupAssetName,
+//   clothedCbor: groupValidatorCbor,
+//   createRedeemer: conStr(0, []),
+//   selectedUtxo: groupUtxo,
+//   walletUtxos,
+//   walletAddress: walletAddress!,
+//   scriptAddr: groupScriptAddr,
+//   mintValue: groupMintValue,
+//   groupDatum,
+//   paymentKeyHash: paymentKeyHash!,
+//   collateralUtxo,
+// });
+// const signedGroupTx = await wallet.signTx(unsignedGroupTx, true);
+// const groupTxHash = await wallet.submitTx(signedGroupTx);
+// console.log('\nGroup NFT tx hash:', groupTxHash);
+// console.log('Explorer: https://preprod.cardanoscan.io/transaction/' + groupTxHash);
+// console.log('\n→ Wait for confirmation, then fill in PHASE 2 below and run again.');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE 2 — Mint Semaphore + Voting NFTs
-// Fill in groupNftTxHash and groupNftOutputIndex from Phase 1 output above,
-// then uncomment this entire block and run the script again.
+// 1. Comment out the PHASE 1 block above (it has already run).
+// 2. Paste the Phase 1 tx hash and output index below.
+// 3. Run the script again.
 // ═══════════════════════════════════════════════════════════════════════════
 
-// const groupNftTxHash = "";    // ← paste Phase 1 tx hash here
-// const groupNftOutputIndex = 0;
+const groupNftTxHash = "f63cdf994eb9d7519b25f5e270aa987471924ece22447c731a365f022e593b70";
+const groupNftOutputIndex = 0;
 
-// const { selectedUtxo: svUtxo, outputReference: svOref } =
-//   selectUtxoAndCreateOutputReference(walletUtxos, 1); // use a different UTxO
+// Phase 1 outputs — hardcoded from the Phase 1 run output.
+// Re-deriving from walletUtxos[0] would be wrong: that UTxO was spent in Phase 1,
+// so the wallet UTxO list changes and index 0 is now a different UTxO.
+const groupPolicyId = "3ee8455dedfe6407dd152c8aa4295edf4f5be119495cb4f2890a89a8";
+const groupScriptAddr = "addr_test1wqlws32aahlxgp7az5kg4fpftm057klpr9y4ed8j3y9gn2qd56d98";
 
-// const semaphoreValidatorCbor = applyOrefParamToScript(VALIDATORS.semaphore.mint, svOref);
-// const semaphoreScriptAddr = resolvePlutusScriptAddress(
-//   { code: semaphoreValidatorCbor, version: "V3" } as PlutusScript, 0
-// );
-// const semaphorePolicyId = resolveScriptHash(semaphoreValidatorCbor, "V3");
+// Collateral for Phase 2 — use a different UTxO from the minting one (index 1 → index 2).
+const collateralUtxo = walletUtxos[2] ?? walletUtxos[1];
 
-// const votingValidatorCbor = applyOrefParamToScript(VALIDATORS.voting.mint, svOref);
-// const votingScriptAddr = resolvePlutusScriptAddress(
-//   { code: votingValidatorCbor, version: "V3" } as PlutusScript, 0
-// );
-// const votingPolicyId = resolveScriptHash(votingValidatorCbor, "V3");
+const { selectedUtxo: svUtxo, outputReference: svOref } =
+  selectUtxoAndCreateOutputReference(walletUtxos, 1); // use a different UTxO than Phase 1
 
-// const nullHash = "0000000000000000000000000000000000000000000000000000000000000000";
-// const vkeyRefTxHash = "0000000000000000000000000000000000000000000000000000000000000000";
-// const semaphoreDatum = conStr(0, [
-//   byteString(groupPolicyId),
-//   integer(0),
-//   byteString(nullHash),
-//   createOutputReference(vkeyRefTxHash, 0),
-// ]);
+const semaphoreValidatorCbor = applyOrefParamToScript(VALIDATORS.semaphore.mint, svOref);
+const semaphoreScriptAddr = resolvePlutusScriptAddress(
+  { code: semaphoreValidatorCbor, version: "V3" } as PlutusScript, 0
+);
+const semaphorePolicyId = resolveScriptHash(semaphoreValidatorCbor, "V3");
 
-// const options = generateInitialOptions(3);
-// const { eventStart, eventEnd, txValiditySlots, description } = generateEventTiming({
-//   startsInMinutes: 60,
-//   durationMinutes: 60,
-//   txValidityMinutes: 5,
-// });
-// const urnaDatum = createUrnaDatum({
-//   weight: 0,
-//   options,
-//   eventStart,
-//   eventEnd,
-//   semaphoreNftPolicyId: semaphorePolicyId,
-// });
+const votingValidatorCbor = applyOrefParamToScript(VALIDATORS.voting.mint, svOref);
+const votingScriptAddr = resolvePlutusScriptAddress(
+  { code: votingValidatorCbor, version: "V3" } as PlutusScript, 0
+);
+const votingPolicyId = resolveScriptHash(votingValidatorCbor, "V3");
 
-// const semaphoreAssetName = textToHex("Semaphore1");
-// const votingAssetName    = textToHex("VotingEvent1");
-// const semaphoreMintValue: Asset[] = [
-//   { unit: "lovelace", quantity: "5000000" },
-//   { unit: semaphorePolicyId + semaphoreAssetName, quantity: "1" },
-// ];
-// const votingMintValue: Asset[] = [
-//   { unit: "lovelace", quantity: "5000000" },
-//   { unit: votingPolicyId + votingAssetName, quantity: "1" },
-// ];
+// SemaphoreDatum: { group_token_policy, group_merke_root, nullifier_mpf_root, vkey_ref_input }
+// group_merke_root matches the Group NFT datum minted in Phase 1 (same group.root).
+// vkeyRefTxHash is a placeholder — replace with the real VKey UTxO tx hash before going live.
+const nullHash    = "0000000000000000000000000000000000000000000000000000000000000000";
+const vkeyRefTxHash = "ccfd47f36e7488a1c4388552dd48d28cebc32bb4cb4f1554dfe8d1952444e1c4";
+const semaphoreDatum = conStr(0, [
+  byteString(groupPolicyId),
+  integer(BigInt(group.root.toString())), // must match the Merkle root stored in the Group NFT datum
+  byteString(nullHash),
+  createOutputReference(vkeyRefTxHash, 0),
+]);
 
-// const currentSlot = await provider.fetchLatestBlock().then(b => parseInt(b.slot));
-// const txValidityEndSlot = currentSlot + txValiditySlots;
+const options = generateInitialOptions(3);
+const { eventStart, eventEnd, txValiditySlots, description } = generateEventTiming({
+  startsInMinutes: 2,
+  durationMinutes: 1000000,
+  txValidityMinutes: 1, // must be less than startsInMinutes so validity ends before event starts
+});
+const urnaDatum = createUrnaDatum({
+  weight: 0,
+  options,
+  eventStart,
+  eventEnd,
+  semaphoreNftPolicyId: semaphorePolicyId,
+});
 
-// console.log('\n=== PHASE 2: Minting Semaphore + Voting NFTs ===');
-// console.log('Semaphore policy ID:', semaphorePolicyId);
-// console.log('Voting policy ID:', votingPolicyId);
-// console.log('Timing:', description);
+const semaphoreAssetName = textToHex("Semaphore1");
+const votingAssetName    = textToHex("VotingEvent1");
+const semaphoreMintValue: Asset[] = [
+  { unit: "lovelace", quantity: "5000000" },
+  { unit: semaphorePolicyId + semaphoreAssetName, quantity: "1" },
+];
+const votingMintValue: Asset[] = [
+  { unit: "lovelace", quantity: "5000000" },
+  { unit: votingPolicyId + votingAssetName, quantity: "1" },
+];
 
-// const unsignedSvTx = await buildSemaphoreVotingMintTransaction({
-//   provider,
-//   txValidityEndSlot,
-//   groupNftTxHash,
-//   groupNftOutputIndex,
-//   semaphorePolicyId,
-//   semaphoreAssetName,
-//   semaphoreValidatorCbor,
-//   votingPolicyId,
-//   votingAssetName,
-//   votingValidatorCbor,
-//   selectedUtxo: svUtxo,
-//   walletUtxos,
-//   walletAddress: walletAddress!,
-//   semaphoreScriptAddr,
-//   semaphoreMintValue,
-//   semaphoreDatum,
-//   votingScriptAddr,
-//   votingMintValue,
-//   urnaDatum,
-//   paymentKeyHash: paymentKeyHash!,
-// });
+const currentSlot = await provider.fetchLatestBlock().then(b => parseInt(b.slot));
+const txValidityEndSlot = currentSlot + txValiditySlots;
 
-// const signedSvTx = await wallet.signTx(unsignedSvTx, true);
-// const response = await fetch('https://cardano-preprod.blockfrost.io/api/v0/tx/submit', {
-//   method: 'POST',
-//   headers: { 'project_id': apiKey, 'Content-Type': 'application/cbor' },
-//   body: Buffer.from(signedSvTx, 'hex'),
-// });
-// const svTxHash = await response.text();
+console.log('\n=== PHASE 2: Minting Semaphore + Voting NFTs ===');
+console.log('Semaphore policy ID:', semaphorePolicyId);
+console.log('Voting policy ID:', votingPolicyId);
+console.log('Timing:', description);
 
-// console.log('\nSemaphore + Voting NFTs tx hash:', svTxHash);
-// console.log('Explorer: https://preprod.cardanoscan.io/transaction/' + svTxHash);
-// console.log('\nVotingEvent fields to save in backend:');
-// console.log('  groupNft:               ', groupPolicyId);
-// console.log('  groupValidatorAddress:  ', groupScriptAddr);
-// console.log('  semaphoreNft:           ', semaphorePolicyId);
-// console.log('  semaphoreAddress:       ', semaphoreScriptAddr);
-// console.log('  votingNft:              ', votingPolicyId);
-// console.log('  votingValidatorAddress: ', votingScriptAddr);
-// console.log('  startingDate:           ', eventStart);
-// console.log('  endingDate:             ', eventEnd);
+const unsignedSvTx = await buildSemaphoreVotingMintTransaction({
+  provider,
+  txValidityEndSlot,
+  groupNftTxHash,
+  groupNftOutputIndex,
+  semaphorePolicyId,
+  semaphoreAssetName,
+  semaphoreValidatorCbor,
+  votingPolicyId,
+  votingAssetName,
+  votingValidatorCbor,
+  selectedUtxo: svUtxo,
+  walletUtxos,
+  walletAddress: walletAddress!,
+  semaphoreScriptAddr,
+  semaphoreMintValue,
+  semaphoreDatum,
+  votingScriptAddr,
+  votingMintValue,
+  urnaDatum,
+  paymentKeyHash: paymentKeyHash!,
+  collateralUtxo,
+});
+
+const signedSvTx = await wallet.signTx(unsignedSvTx, true);
+const response = await fetch('https://cardano-preprod.blockfrost.io/api/v0/tx/submit', {
+  method: 'POST',
+  headers: { 'project_id': apiKey, 'Content-Type': 'application/cbor' },
+  body: Buffer.from(signedSvTx, 'hex'),
+});
+const svTxHash = await response.text();
+
+console.log('\nSemaphore + Voting NFTs tx hash:', svTxHash);
+console.log('Explorer: https://preprod.cardanoscan.io/transaction/' + svTxHash);
+console.log('\nVotingEvent fields to save in backend:');
+console.log('  groupNft:               ', groupPolicyId);
+console.log('  groupValidatorAddress:  ', groupScriptAddr);
+console.log('  semaphoreNft:           ', semaphorePolicyId);
+console.log('  semaphoreAddress:       ', semaphoreScriptAddr);
+console.log('  votingNft:              ', votingPolicyId);
+console.log('  votingValidatorAddress: ', votingScriptAddr);
+console.log('  startingDate:           ', eventStart);
+console.log('  endingDate:             ', eventEnd);
