@@ -1,8 +1,7 @@
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
-import { BlockfrostProvider, UTxO, integer, list, conStr, byteString } from '@meshsdk/core';
-// import { MeshTxBuilder } from '@meshsdk/core'; // uncomment in step 10
-import { createWallet, parseMnemonic, walletBaseAddress, extractPaymentKeyHash, createUrnaDatum } from './utils.js';
+import { BlockfrostProvider, UTxO, integer, list, conStr, byteString, MeshTxBuilder } from '@meshsdk/core';
+import { createWallet, parseMnemonic, walletBaseAddress, extractPaymentKeyHash, createUrnaDatum, createOutputReference } from './utils.js';
 import { encodeVoteSignal, generateVoteProof, insertNullifier } from '@src/zk';
 
 const require = createRequire(fileURLToPath(import.meta.url));
@@ -193,7 +192,7 @@ console.log('Nullifier hash:', nullifierHash);
 const eventId = 0;                         // VotingEvent.id
 const currentMpfRoot = Buffer.alloc(32);   // VotingEvent.nullifierMerkleTree (32-byte root, zeros for empty trie)
 
-const { proof: mpfProof } = await insertNullifier(currentMpfRoot, nullifierHash, eventId);
+const { newRoot: mpfNewRoot, proof: mpfProof } = await insertNullifier(currentMpfRoot, nullifierHash, eventId);
 
 console.log('MPF proof (hex):', mpfProof.toString('hex'));
 
@@ -249,3 +248,99 @@ const semaphoreRedeemer = conStr(1, [
 ]);
 
 console.log('Semaphore redeemer constructed.');
+
+// --- Step 10: Build vote transaction ---
+// NOTE: frontend. The transaction is built and signed in the user's browser via CIP-30.
+// The backend is not involved after Step 7 (insertNullifier).
+//
+// semaphoreValidatorCbor / votingValidatorCbor are recomputed from the validator templates
+// (VALIDATORS.semaphore.mint / VALIDATORS.voting.mint) and the OutputReference used at
+// mint time. Both can be re-derived by the frontend from VotingEvent.mintingOref.
+// TODO (function): semaphoreValidatorCbor and votingValidatorCbor become parameters.
+//
+// vkeyRefTxHash / vkeyRefOutputIndex identify the UTxO holding the SnarkVerificationKey
+// datum. The semaphore validator fetches it from transaction inputs during Signal spending.
+// NOTE: the validator reads it via find_input(inputs, ...) — so it must be a spending input,
+// not a read-only reference input. The VKey UTxO must also be re-created as an output in
+// the same transaction to remain available for subsequent votes.
+// TODO (function): vkeyUtxo becomes a parameter, fetched from VotingEvent.vkeyRefTxHash.
+
+const semaphoreValidatorCbor = ""; // recomputed: applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref)
+const votingValidatorCbor    = ""; // recomputed: applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref)
+
+// Fields preserved from the current SemaphoreDatum (decoded from semaphoreUtxo.output.plutusData).
+// TODO (function): groupNftPolicyId, groupMerkleRoot, vkeyRefTxHash, vkeyRefOutputIndex become parameters.
+const groupNftPolicyId   = ""; // VotingEvent.groupNft
+const groupMerkleRoot    = 0n; // VotingEvent.groupMerkleRootHash (as bigint)
+const vkeyRefTxHash      = "0000000000000000000000000000000000000000000000000000000000000000";
+const vkeyRefOutputIndex = 0;
+
+// Updated SemaphoreDatum: same as current but nullifier_mpf_root set to mpfNewRoot.
+const updatedSemaphoreDatum = conStr(0, [
+  byteString(groupNftPolicyId),
+  integer(groupMerkleRoot),
+  byteString(mpfNewRoot.toString('hex')), // new nullifier MPF root after nullifier insertion
+  createOutputReference(vkeyRefTxHash, vkeyRefOutputIndex),
+]);
+
+// Convert POSIX ms → Cardano preprod slot.
+// Preprod Shelley era started at Unix time 1655769600s, slot 86400.
+const SHELLEY_UNIX_TIME = 1655769600;
+const SHELLEY_SLOT      = 86400;
+const eventStartSlot = Math.floor(eventStart / 1000) - SHELLEY_UNIX_TIME + SHELLEY_SLOT;
+const eventEndSlot   = Math.floor(eventEnd   / 1000) - SHELLEY_UNIX_TIME + SHELLEY_SLOT;
+
+const txBuilder = new MeshTxBuilder({
+  fetcher: provider,
+  evaluator: provider,
+  verbose: false,
+});
+
+const unsignedVoteTx = await txBuilder
+  .setNetwork("preprod")
+  .invalidBefore(eventStartSlot)
+  .invalidHereafter(eventEndSlot)
+
+  // Spend Semaphore UTxO — sent back with updated nullifier_mpf_root
+  .txIn(
+    semaphoreUtxo.input.txHash,
+    semaphoreUtxo.input.outputIndex,
+    semaphoreUtxo.output.amount,
+    semaphoreScriptAddress,
+  )
+  .txInScript(semaphoreValidatorCbor)
+  .txInInlineDatumPresent()
+  .txInRedeemerValue(semaphoreRedeemer, "JSON", { mem: 14000000, steps: 10000000000 })
+
+  // Spend Voting UTxO — sent back with updated UrnaDatum; UrnaRedeemer.Vote = conStr(1, [])
+  .txIn(
+    votingUtxo.input.txHash,
+    votingUtxo.input.outputIndex,
+    votingUtxo.output.amount,
+    votingScriptAddress,
+  )
+  .txInScript(votingValidatorCbor)
+  .txInInlineDatumPresent()
+  .txInRedeemerValue(conStr(1, []), "JSON", { mem: 7000000, steps: 5000000000 })
+
+  // Collateral
+  .txInCollateral(
+    "a0c462bc82ee224bd8f76ec50dbf89b7b42ea831ea830000802771ba49c43d97",
+    1,
+    [{ unit: "lovelace", quantity: "2470930000" }],
+  )
+
+  // Output 0: Semaphore back to script address with updated nullifier_mpf_root
+  .txOut(semaphoreScriptAddress, semaphoreUtxo.output.amount)
+  .txOutInlineDatumValue(updatedSemaphoreDatum, "JSON")
+
+  // Output 1: Voting back to script address with updated vote tally
+  .txOut(votingScriptAddress, votingUtxo.output.amount)
+  .txOutInlineDatumValue(updatedUrnaDatum, "JSON")
+
+  .selectUtxosFrom(walletUtxos)
+  .changeAddress(walletAddress!)
+  .requiredSignerHash(paymentKeyHash!)
+  .complete();
+
+console.log('Vote transaction built. Length:', unsignedVoteTx.length);
