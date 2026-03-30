@@ -32,11 +32,13 @@ export async function generateVoteProof(params: {
 }> {
   const { identityNullifier, identityTrapdoor, merkleProof, externalNullifier, signal } = params;
 
-  // signal_hash = blake2b_256(signal_message) interpreted as a big-endian BLS12-381 scalar.
-  // Must match on-chain: message_digest_int == blake2b_256(signal_message) (semaphore.ak line 163)
+  // signal_hash = blake2b_256(signal_message) mod r, where r is the BLS12-381 scalar field prime.
+  // The circom circuit implicitly reduces all inputs mod r, so this matches publicSignals[2].
+  // On-chain semaphore.ak also applies % scalar.field_prime before comparing (condition 5).
+  const BLS12_381_R = 52435875175126190479447740508185965837690552500527637822603658699938581184513n;
   const signalBytes = Buffer.from(signal, 'hex');
   const digestHex = Buffer.from(blake2b(32).update(signalBytes).digest()).toString('hex');
-  const signalHash = BigInt('0x' + digestHex);
+  const signalHash = BigInt('0x' + digestHex) % BLS12_381_R;
 
   // Assemble the private/public inputs expected by semaphore.circom
   const circuitInputs = {
