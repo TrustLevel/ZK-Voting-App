@@ -212,6 +212,44 @@ On-chain tests (600+ lines) cover:
 
 ## Known Improvements
 
+### BLS12-381 scalar field constraint on `signal_hash`
+`blake2b_256` produces a 256-bit value, but the BLS12-381 scalar field prime `r` is ~255 bits.
+~55% of all possible signal messages produce a hash >= `r`. Fixed in `cardano-semaphore v0.9.3`:
+- **On-chain** (`semaphore.ak` condition 5): replaced `scalar.from_bytearray_big_endian` (which
+  returns `None` for values >= `r`) with `builtin.bytearray_to_integer(True, hash) % scalar.field_prime`.
+- **Off-chain** (`src/zk/src/proof.ts`): `signalHash = BigInt('0x' + digestHex) % BLS12_381_R`
+  so the value passed to the circom circuit and the redeemer are consistent.
+
+The circom circuit already reduces all inputs mod `r` implicitly (finite field arithmetic), so
+this change does not affect circuit behaviour — only the on-chain recomputation and off-chain
+value construction needed to match.
+
+### VKey UTxO design limitation
+The VKey UTxO (holds the Groth16 verification key for the Semaphore verifier) is included as a
+**spending input** on every vote transaction (required by `find_input` in `semaphore.ak`).
+After each vote it is re-created at a **new txHash**. However, `SemaphoreDatum.vkey_ref_input`
+is immutable (condition 1 of `semaphore.ak` enforces datum preservation). This means:
+- `bootstrap-vote.ts` must be updated with the current vkey UTxO txHash/index before deploying
+  a new voting event.
+- Hardcoded as `const vkeyRefTxHash` in `src/tx/src/debug/vote/bootstrap-vote.ts`.
+- Long-term fix: use `find_reference_input` in `semaphore.ak` so the vkey UTxO is a read-only
+  reference input that is never consumed.
+
+### Updating `cardano-semaphore` dependency version
+After bumping the version in `src/on-chain/aiken.toml`, three build steps are required:
+```sh
+# 1. Rebuild main on-chain project
+cd src/on-chain && aiken build
+
+# 2. Build the dependency standalone to generate its own plutus.json
+#    (required by src/tx/scripts/extract-validators.ts)
+cd src/on-chain/build/packages/modulo-p-cardano-semaphore && aiken build
+
+# 3. Re-extract validator CBORs and rebuild the tx module
+cd src/tx && npm run build:force
+```
+After this, redeploy all contracts (new script CBORs → new policy IDs and script addresses).
+
 ### MPF nullifier store resilience (`src/zk/src/mpf.ts`)
 The LevelDB store for the nullifier trie (`nullifiers-db/<eventId>`) is the off-chain
 source of truth for all used nullifiers. If it is lost or corrupted, the trie cannot
