@@ -110,15 +110,15 @@ console.log('Available UTxOs:', walletUtxos.length);
 // --- Step 2: Script addresses ---
 // Hardcoded from Phase 2 bootstrap-vote.ts output (VotingEvent entity fields).
 
-const semaphoreScriptAddress = "addr_test1wrakxnn4jvcme8uh9y79n0eaaaqushv8ew7hc24h45g2ncq3m97u4";
-const votingScriptAddress    = "addr_test1wpxa40hvnqmsjkz80slk6983gjazzdewe9qas6uh3yl0x0s0t5578";
+const semaphoreScriptAddress = "addr_test1wr0r03cellu3nvtgr87uk2wcdcwgsh92dh56g53cx9m4uegl0cz26";
+const votingScriptAddress    = "addr_test1wp3veftrvs4x44hde9pu6jgqu9z8tcmhrq67ul44qc5mfms9902tf";
 
 console.log('Semaphore script address:', semaphoreScriptAddress);
 console.log('Voting script address:', votingScriptAddress);
 
 // --- Step 3: Fetch Semaphore UTxO ---
 
-const semaphoreNftPolicyId = "fb634e759331bc9f97293c59bf3def41c85d87cbbd7c2ab7ad10a9e0";
+const semaphoreNftPolicyId = "de37c719fff919b16819fdcb29d86e1c885caa6de9a4523831775e65";
 
 const semaphoreUtxos: UTxO[] = await provider.fetchAddressUTxOs(semaphoreScriptAddress);
 const semaphoreUtxo = semaphoreUtxos.find(u =>
@@ -130,7 +130,7 @@ console.log('Semaphore UTxO:', semaphoreUtxo.input.txHash, '#', semaphoreUtxo.in
 
 // --- Step 4: Fetch Voting UTxO ---
 
-const votingNftPolicyId = "4ddabeec98370958477c3f6d14f144ba21372ec941d86b97893ef33e";
+const votingNftPolicyId = "62cca563642a6ad6edc943cd4900e14475e3771835ee7eb50629b4ee";
 
 const votingUtxos: UTxO[] = await provider.fetchAddressUTxOs(votingScriptAddress);
 const votingUtxo = votingUtxos.find(u =>
@@ -145,8 +145,8 @@ console.log('Voting UTxO datum:', votingUtxo.output.plutusData);
 // (semaphore validator uses find_input(inputs, dat.vkey_ref_input) to read the vkey datum).
 // Re-created as output in this tx so it remains available for subsequent votes.
 
-const vkeyRefTxHash      = "ccfd47f36e7488a1c4388552dd48d28cebc32bb4cb4f1554dfe8d1952444e1c4";
-const vkeyRefOutputIndex = 0;
+const vkeyRefTxHash      = "10b5b3ca7cfad3da6d344138ff4361a5398acc19b41cc0382fcfc82e427581ae";
+const vkeyRefOutputIndex = 2;
 
 const vkeyUtxo = walletUtxos.find(u =>
   u.input.txHash === vkeyRefTxHash && u.input.outputIndex === vkeyRefOutputIndex
@@ -168,7 +168,7 @@ if (!collateralUtxo) throw new Error('No collateral UTxO available');
 // which causes semaphore.ak condition 5 (scalar.from_bytearray_big_endian) to return None.
 // Options 0 and 2 produce hashes < r and work correctly.
 
-const voteSignal: Array<[number, number]> = [[0, 1]];
+const voteSignal: Array<[number, number]> = [[2, 1]];
 
 const signalMessage = encodeVoteSignal(voteSignal);
 
@@ -223,8 +223,8 @@ console.log('MPF proof steps:', JSON.stringify(mpfProofSteps));
 // --- Step 8: Compute updated UrnaDatum ---
 
 const weight     = 0;
-const eventStart = 1774109005840;
-const eventEnd   = 1834109005840;
+const eventStart = 1774890746725;
+const eventEnd   = 1834890746725;
 const currentOptions: Array<[number, number]> = [[0, 0], [1, 0], [2, 0]];
 
 const updatedOptions = currentOptions.map(([idx, count]) => {
@@ -240,7 +240,7 @@ const updatedUrnaDatum = createUrnaDatum({
   semaphoreNftPolicyId,
 });
 
-console.log('Updated UrnaDatum constructed (option 0 now has 1 vote).');
+console.log('Updated UrnaDatum constructed (option 2 now has 1 vote).');
 
 // --- Step 9: Construct SemaphoreRedeemer.Signal ---
 
@@ -290,7 +290,7 @@ console.log('Semaphore redeemer constructed.');
 // Re-derive validator CBORs from the minting oref used in Phase 2 of bootstrap-vote.ts.
 // Phase 2 tx: 63b8e161... consumed walletUtxos[1] at the time, which was 6a99bb1d...#2.
 const mintingOref = createOutputReference(
-  "6a99bb1d2f660544323a13edd2afafbee340fd048c71f9297d15f594b08cefad",
+  "63b8e16110d53c56776067efc67ed23869f83a7645dd9acbdda696625dac1a03",
   2
 );
 const semaphoreValidatorCbor = applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
@@ -430,7 +430,7 @@ if (response.ok) {
   console.log('\n=== VOTE CAST SUCCESSFULLY ===');
   console.log('Vote tx hash:', voteTxHash);
   console.log('Explorer: https://preprod.cardanoscan.io/transaction/' + voteTxHash.replace(/"/g, ''));
-  console.log('Voted: option 0, count 1');
+  console.log('Voted: option 2, count 1');
 } else {
   console.error('Submission failed. Status:', response.status);
   console.error('Response:', voteTxHash);

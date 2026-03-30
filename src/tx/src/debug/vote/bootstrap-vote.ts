@@ -167,12 +167,13 @@ const votingPolicyId = resolveScriptHash(votingValidatorCbor, "V3");
 // group_merke_root matches the Group NFT datum minted in Phase 1 (same group.root).
 // vkeyRefTxHash is a placeholder — replace with the real VKey UTxO tx hash before going live.
 const nullHash    = "0000000000000000000000000000000000000000000000000000000000000000";
-const vkeyRefTxHash = "ccfd47f36e7488a1c4388552dd48d28cebc32bb4cb4f1554dfe8d1952444e1c4";
+const vkeyRefTxHash = "10b5b3ca7cfad3da6d344138ff4361a5398acc19b41cc0382fcfc82e427581ae";
+const vkeyRefOutputIndex = 2;
 const semaphoreDatum = conStr(0, [
   byteString(groupPolicyId),
   integer(BigInt(group.root.toString())), // must match the Merkle root stored in the Group NFT datum
   byteString(nullHash),
-  createOutputReference(vkeyRefTxHash, 0),
+  createOutputReference(vkeyRefTxHash, vkeyRefOutputIndex),
 ]);
 
 const options = generateInitialOptions(3);
