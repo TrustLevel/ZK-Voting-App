@@ -118,7 +118,7 @@ Frontend (Next.js)
 
 **Dependencies** (aiken.toml):
 - `aiken-lang/stdlib v2.2.0`
-- `modulo-p/cardano-semaphore v0.9.2`
+- `modulo-p/cardano-semaphore v0.9.3`
 - `aiken-lang/merkle-patricia-forestry v2.1.0`
 - `modulo-p/ak-381 v0.1.1`
 
@@ -132,16 +132,37 @@ The `VotingEvent` entity (`voting-event.entity.ts`) is the central DB record. It
 - Off-chain Merkle tree state (`groupMerkleRootHash`, `groupLeafCommitments`)
 - Nullifier tracking (`nullifierMerkleTree`, `nullifierLeafCommitments`)
 - Participant list and invitation tokens
+- `mintingOrefTxHash` / `mintingOrefIndex` — the OutputReference consumed in Phase 2 of
+  bootstrap; required by the frontend to re-derive parameterised validator CBORs via
+  `applyOrefParamToScript()`
+- `vkeyRefTxHash` / `vkeyRefIndex` — UTxO holding the Groth16 verification key datum;
+  must be a spending input on every vote tx (see VKey UTxO design limitation)
+
+**Key API endpoints** (`/voting-event`):
+- `GET /` — list all events
+- `GET /:eventId` — get single event
+- `GET /:eventId/merkle-proof/:userId` — Semaphore group Merkle proof for ZK circuit witness
+- `POST /:eventId/nullifier` — insert nullifier into MPF trie, returns proof steps + new root
+- `POST /:eventId/vote` — submit signed tx hex to Blockfrost, returns `{ txHash }`
+- `GET /current-slot` — current blockchain slot (via Blockfrost), used for tx validity windows
+
+**Dependencies:** `@aiken-lang/merkle-patricia-forestry` (MPF trie), `@noble/hashes` (blake2b)
 
 ### `src/tx` — Transaction Builder
 
 Exports as `@src/tx`. Key exports:
 - `buildGroupMintTransaction()` — unsigned Group NFT mint TX
 - `buildSemaphoreVotingMintTransaction()` — unsigned Semaphore + Voting NFT mint TX
+- `buildVoteTransaction(params: BuildVoteTransactionParams)` — unsigned vote TX; accepts
+  pre-computed ZK proof, MPF proof steps, and signal data; fetches Semaphore/Voting/VKey
+  UTxOs from chain internally via the passed `provider`
 - Pure utility functions: datum creators, `applyOrefParamToScript()`, `textToHex()`, etc.
 - `VALIDATORS` object with compiled script CBORs (auto-extracted from `src/on-chain/plutus.json`)
 
 See `FRONTEND_BACKEND_SPLIT.md` for which functions are safe to call from the frontend.
+
+> **Note:** All transaction builder functions accept a `BlockfrostProvider` — on the frontend
+> this exposes the API key in the browser. See Known Improvements for the planned fix.
 
 ### `src/zk` — ZK Proof Module
 
@@ -249,6 +270,20 @@ cd src/on-chain/build/packages/modulo-p-cardano-semaphore && aiken build
 cd src/tx && npm run build:force
 ```
 After this, redeploy all contracts (new script CBORs → new policy IDs and script addresses).
+
+### Blockfrost API key exposure on frontend
+All transaction builder functions (`buildGroupMintTransaction`, `buildSemaphoreVotingMintTransaction`,
+`buildVoteTransaction`) accept a `BlockfrostProvider` and use it internally to fetch script UTxOs
+and evaluate transactions. Passing a Blockfrost API key directly to the frontend exposes it in
+the browser — anyone can extract it and exhaust the quota (critical on mainnet).
+
+Planned fix:
+- Add `GET /voting-event/:eventId/script-utxos` backend endpoint that fetches and returns the
+  current Semaphore UTxO, Voting UTxO, and VKey UTxO server-side.
+- Refactor `buildVoteTransaction` to accept pre-fetched UTxOs instead of a `provider`.
+  Evaluation can be removed — hardcoded execution units are already in the redeemer values
+  and the Ogmios error-catch pattern handles the failure gracefully.
+- Result: frontend needs zero Blockfrost access for vote transactions.
 
 ### MPF nullifier store resilience (`src/zk/src/mpf.ts`)
 The LevelDB store for the nullifier trie (`nullifiers-db/<eventId>`) is the off-chain
