@@ -118,7 +118,7 @@ Frontend (Next.js)
 
 **Dependencies** (aiken.toml):
 - `aiken-lang/stdlib v2.2.0`
-- `modulo-p/cardano-semaphore v0.9.3`
+- `modulo-p/cardano-semaphore v0.9.4`
 - `aiken-lang/merkle-patricia-forestry v2.1.0`
 - `modulo-p/ak-381 v0.1.1`
 
@@ -136,7 +136,9 @@ The `VotingEvent` entity (`voting-event.entity.ts`) is the central DB record. It
   bootstrap; required by the frontend to re-derive parameterised validator CBORs via
   `applyOrefParamToScript()`
 - `vkeyRefTxHash` / `vkeyRefIndex` — UTxO holding the Groth16 verification key datum;
-  must be a spending input on every vote tx (see VKey UTxO design limitation)
+  included as a **read-only reference input** on every vote tx (permanently locked at the
+  always-false script address `addr_test1wzl94ddu5xplr7p8f55ldtxjvw6cqqsh57jkj4vndwthtkgdw2fq8`,
+  tx `3dc5c982ea80091afc75f4392ac9e91af8d9124a3318a0d76a26de4e934da083#0`)
 
 **Key API endpoints** (`/voting-event`):
 - `GET /` — list all events
@@ -154,8 +156,9 @@ Exports as `@src/tx`. Key exports:
 - `buildGroupMintTransaction()` — unsigned Group NFT mint TX
 - `buildSemaphoreVotingMintTransaction()` — unsigned Semaphore + Voting NFT mint TX
 - `buildVoteTransaction(params: BuildVoteTransactionParams)` — unsigned vote TX; accepts
-  pre-computed ZK proof, MPF proof steps, and signal data; fetches Semaphore/Voting/VKey
-  UTxOs from chain internally via the passed `provider`
+  pre-computed ZK proof, MPF proof steps, and signal data; fetches Semaphore and Voting
+  UTxOs from chain internally via the passed `provider`; VKey UTxO is a hardcoded reference input
+- `VKEY_REF_TX_HASH` / `VKEY_REF_OUTPUT_INDEX` — permanent VKey UTxO constants
 - Pure utility functions: datum creators, `applyOrefParamToScript()`, `textToHex()`, etc.
 - `VALIDATORS` object with compiled script CBORs (auto-extracted from `src/on-chain/plutus.json`)
 
@@ -245,16 +248,17 @@ The circom circuit already reduces all inputs mod `r` implicitly (finite field a
 this change does not affect circuit behaviour — only the on-chain recomputation and off-chain
 value construction needed to match.
 
-### VKey UTxO design limitation
+### VKey UTxO (fixed in v0.9.4)
 The VKey UTxO (holds the Groth16 verification key for the Semaphore verifier) is included as a
-**spending input** on every vote transaction (required by `find_input` in `semaphore.ak`).
-After each vote it is re-created at a **new txHash**. However, `SemaphoreDatum.vkey_ref_input`
-is immutable (condition 1 of `semaphore.ak` enforces datum preservation). This means:
-- `bootstrap-vote.ts` must be updated with the current vkey UTxO txHash/index before deploying
-  a new voting event.
-- Hardcoded as `const vkeyRefTxHash` in `src/tx/src/debug/vote/bootstrap-vote.ts`.
-- Long-term fix: use `find_reference_input` in `semaphore.ak` so the vkey UTxO is a read-only
-  reference input that is never consumed.
+**read-only reference input** on every vote transaction. Fixed in `cardano-semaphore v0.9.4`:
+- **On-chain** (`semaphore.ak`): changed `find_input(inputs, ...)` to
+  `find_input(reference_inputs, ...)` so the VKey UTxO is never consumed.
+- **Off-chain**: VKey UTxO sent to the always-false script address
+  (`addr_test1wzl94ddu5xplr7p8f55ldtxjvw6cqqsh57jkj4vndwthtkgdw2fq8`) — permanently locked,
+  can never be accidentally spent.
+- Constants `VKEY_REF_TX_HASH` / `VKEY_REF_OUTPUT_INDEX` are hardcoded in `src/tx/src/vote.ts`
+  and used as `.readOnlyTxInReference()` in all vote transactions.
+- `SemaphoreDatum.vkey_ref_input` is set once at bootstrap and never needs updating.
 
 ### Updating `cardano-semaphore` dependency version
 After bumping the version in `src/on-chain/aiken.toml`, three build steps are required:
