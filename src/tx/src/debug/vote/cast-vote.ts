@@ -76,11 +76,10 @@ if (fs.existsSync(nullifiersDbPath)) {
 // Step 10 — Build the transaction using MeshTxBuilder:
 //             - .txIn(semaphore UTxO) with semaphore script + SemaphoreRedeemer.Signal
 //             - .txIn(voting UTxO)    with voting script   + UrnaRedeemer.Vote (conStr(1,[]))
-//             - .txIn(vkey UTxO)      plain wallet input — semaphore validator reads vkey from it
+//             - .readOnlyTxInReference(vkeyRefTxHash, vkeyRefOutputIndex)  ← VKey as reference input
 //             - .txOut(semaphore script address, semaphore UTxO value)  ← sent back unchanged
 //             - .txOut(voting script address, voting UTxO value)
 //               .txOutInlineDatumValue(updatedUrnaDatum)                ← updated options
-//             - .txOut(walletAddress, vkey UTxO value)                  ← vkey UTxO re-created
 //             - .invalidBefore(event_start) / .invalidHereafter(event_end)
 //               to set the validity range inside the voting window
 //             - .txInCollateral(...)
@@ -141,24 +140,13 @@ if (!votingUtxo) throw new Error('Voting UTxO not found at script address');
 console.log('Voting UTxO:', votingUtxo.input.txHash, '#', votingUtxo.input.outputIndex);
 console.log('Voting UTxO datum:', votingUtxo.output.plutusData);
 
-// VKey UTxO — posted to wallet address in mint-vkey.ts, must be a spending input
-// (semaphore validator uses find_input(inputs, dat.vkey_ref_input) to read the vkey datum).
-// Re-created as output in this tx so it remains available for subsequent votes.
+// VKey UTxO — permanently locked at the always-false script address.
+// Included as a read-only reference input (semaphore validator v0.9.4 uses
+// find_input(reference_inputs, dat.vkey_ref_input) — never consumed, never re-created).
+const vkeyRefTxHash      = "3dc5c982ea80091afc75f4392ac9e91af8d9124a3318a0d76a26de4e934da083";
+const vkeyRefOutputIndex = 0;
 
-const vkeyRefTxHash      = "10b5b3ca7cfad3da6d344138ff4361a5398acc19b41cc0382fcfc82e427581ae";
-const vkeyRefOutputIndex = 2;
-
-const vkeyUtxo = walletUtxos.find(u =>
-  u.input.txHash === vkeyRefTxHash && u.input.outputIndex === vkeyRefOutputIndex
-);
-if (!vkeyUtxo) throw new Error('VKey UTxO not found in wallet — expected ' + vkeyRefTxHash + '#0');
-console.log('VKey UTxO found:', vkeyUtxo.input.txHash, '#', vkeyUtxo.input.outputIndex);
-
-// UTxOs available for automatic fee selection and collateral (exclude VKey UTxO).
-const selectableUtxos = walletUtxos.filter(u =>
-  !(u.input.txHash === vkeyRefTxHash && u.input.outputIndex === vkeyRefOutputIndex)
-);
-const collateralUtxo = selectableUtxos[0];
+const collateralUtxo = walletUtxos[0];
 if (!collateralUtxo) throw new Error('No collateral UTxO available');
 
 // --- Step 5: Encode vote signal ---
@@ -368,14 +356,8 @@ try {
     .txInInlineDatumPresent()
     .txInRedeemerValue(conStr(1, []), "JSON", { mem: 4000000, steps: 2500000000 })
 
-    // Include VKey UTxO as a spending input — semaphore validator reads vkey datum from it
-    // via find_input(inputs, dat.vkey_ref_input). Plain wallet UTxO, no script redeemer needed.
-    .txIn(
-      vkeyUtxo.input.txHash,
-      vkeyUtxo.input.outputIndex,
-      vkeyUtxo.output.amount,
-      walletAddress!,
-    )
+    // VKey UTxO as read-only reference input — semaphore validator reads vkey datum from it
+    .readOnlyTxInReference(vkeyRefTxHash, vkeyRefOutputIndex)
 
     // Collateral
     .txInCollateral(
@@ -392,11 +374,7 @@ try {
     .txOut(votingScriptAddress, votingUtxo.output.amount)
     .txOutInlineDatumValue(updatedUrnaDatum, "JSON")
 
-    // Output 2: VKey UTxO re-created at wallet address (datum preserved for subsequent votes)
-    .txOut(walletAddress!, vkeyUtxo.output.amount)
-    .txOutInlineDatumValue(vkeyUtxo.output.plutusData!, "CBOR")
-
-    .selectUtxosFrom(selectableUtxos)
+    .selectUtxosFrom(walletUtxos)
     .changeAddress(walletAddress!)
     .requiredSignerHash(paymentKeyHash!)
     .complete();
