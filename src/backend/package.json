@@ -20,6 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@aiken-lang/merkle-patricia-forestry": "^1.1.0",
+    "@noble/hashes": "^1.7.2",
     "@ethersproject/bignumber": "^5.8.0",
     "@ethersproject/bytes": "^5.8.0",
     "@ethersproject/keccak256": "^5.8.0",

@@ -9,4 +9,10 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  @Get('current-slot')
+  async getCurrentSlot() {
+    const currentSlot = await this.appService.getCurrentSlot();
+    return { currentSlot };
+  }
 }
