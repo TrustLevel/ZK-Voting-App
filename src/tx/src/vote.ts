@@ -1,346 +1,265 @@
-import { createRequire } from 'module';
-import { fileURLToPath } from 'url';
-import { BlockfrostProvider, UTxO, integer, list, conStr, byteString, MeshTxBuilder } from '@meshsdk/core';
-import { createWallet, parseMnemonic, walletBaseAddress, extractPaymentKeyHash, createUrnaDatum, createOutputReference } from './utils.js';
-import { encodeVoteSignal, generateVoteProof, insertNullifier } from '@src/zk';
+import {
+  BlockfrostProvider,
+  UTxO,
+  integer,
+  list,
+  conStr,
+  byteString,
+  MeshTxBuilder,
+} from '@meshsdk/core';
+import { createUrnaDatum, createOutputReference } from './utils.js';
 
-const require = createRequire(fileURLToPath(import.meta.url));
-const blake2b = require('blake2b');
-import 'dotenv/config';
+// Convert MPF proof steps (from proof.toJSON()) to on-chain List<ProofStep> Plutus data.
+// Matches the ProofStep type in aiken-lang/merkle-patricia-forestry:
+//   Branch { skip, neighbors }  → Constr 0 [Int, ByteArray]
+//   Fork   { skip, neighbor }   → Constr 1 [Int, Constr 0 [Int, ByteArray, ByteArray]]
+//   Leaf   { skip, neighbor }   → Constr 2 [Int, ByteArray, ByteArray]
+function mpfStepsToPlutusData(steps: Array<any>): ReturnType<typeof list> {
+  return list(steps.map(step => {
+    switch (step.type) {
+      case 'branch':
+        return conStr(0, [integer(step.skip), byteString(step.neighbors)]);
+      case 'fork':
+        return conStr(1, [
+          integer(step.skip),
+          conStr(0, [integer(step.neighbor.nibble), byteString(step.neighbor.prefix), byteString(step.neighbor.root)]),
+        ]);
+      case 'leaf':
+        return conStr(2, [integer(step.skip), byteString(step.neighbor.key), byteString(step.neighbor.value)]);
+      default:
+        throw new Error(`Unknown MPF proof step type: ${step.type}`);
+    }
+  }));
+}
 
-// Steps to build a vote transaction:
-//
-// Step 1 — Set up provider and wallet (same pattern as mint-group.ts)
-//
-// Step 2 — Resolve the semaphore script address and voting script address
-//           from VALIDATORS.semaphore.mint and VALIDATORS.voting.mint.
-//           Both validators are parameterised with their minting OutputReference,
-//           so their script address must be retrieved from the backend/database
-//           (the policy IDs and addresses are stored in VotingEvent entity).
-//
-// Step 3 — Fetch the Semaphore UTxO from the semaphore script address.
-//           This is the UTxO that holds the Semaphore NFT and will be
-//           spent and sent back in the same transaction.
-//
-// Step 4 — Fetch the Voting UTxO from the voting script address.
-//           This holds the Voting NFT and the current UrnaDatum
-//           (weight, options, event_date, semaphore_nft).
-//
-// Step 5 — Encode the voter's choice as signal_message.
-//           signal_message = encodeVoteSignal(options) where options is
-//           List<(Int, Int)> — e.g. [[2, 1]] for "cast 1 vote for option 2".
-//
-// Step 6 — Generate the ZK proof using generateVoteProof().
-//           Inputs: identityNullifier, identityTrapdoor, merkleProof
-//           (path from current group Merkle root to the voter's leaf),
-//           externalNullifier (the semaphore NFT policy ID as bigint),
-//           and signal (hex string from Step 5).
-//           Output: { zkProof: { pi_a, pi_b, pi_c }, nullifierHash, publicSignals }
-//
-// Step 7 — Insert nullifier into MPF trie using insertNullifier().
-//           Inputs: current nullifier MPF root (from backend), nullifierHash
-//           (from Step 6), eventId.
-//           Output: { newRoot, proof } — proof is the CBOR MPF insertion proof
-//           sent as mpf_proof in the redeemer; newRoot must be saved to backend.
-//
-// Step 8 — Compute the updated UrnaDatum options.
-//           Apply the vote to the current options list read from the UrnaDatum
-//           fetched in Step 4 (increment the count for the chosen option index).
-//           Then call createUrnaDatum() with the updated options and the
-//           remaining fields preserved (weight, event_date, semaphore_nft).
-//
-// Step 9 — Construct the SemaphoreRedeemer.Signal.
-//           Signal is constructor index 1 of SemaphoreRedeemer:
-//             conStr(1, [zk_proof, mpf_proof, nullifier, signal_hash, signal_message])
-//           where:
-//             - zk_proof  = conStr(0, [byteString(pi_a), byteString(pi_b), byteString(pi_c)])
-//             - mpf_proof = byteString(mpf_proof CBOR hex)
-//             - nullifier = integer(nullifierHash)
-//             - signal_hash = integer(blake2b_256(signal_message) as BLS12-381 scalar)
-//               NOTE: signal_hash is already embedded in publicSignals[0] from snarkjs
-//             - signal_message = byteString(hex from Step 5)
-//
-// Step 10 — Build the transaction using MeshTxBuilder:
-//             - .txIn(semaphore UTxO) with semaphore script + SemaphoreRedeemer.Signal
-//             - .txIn(voting UTxO)    with voting script   + UrnaRedeemer.Vote (conStr(1,[]))
-//             - .txOut(semaphore script address, semaphore UTxO value)  ← sent back unchanged
-//             - .txOut(voting script address, voting UTxO value)
-//               .txOutInlineDatumValue(updatedUrnaDatum)                ← updated options
-//             - .invalidBefore(event_start) / .invalidHereafter(event_end)
-//               to set the validity range inside the voting window
-//             - .txInCollateral(...)
-//             - .changeAddress(walletAddress)
-//             - .requiredSignerHash(paymentKeyHash)
-//             - .complete()
+export interface BuildVoteTransactionParams {
+  provider: BlockfrostProvider;
 
-// --- Step 1: Provider and wallet ---
-// NOTE: frontend. In production the voter connects a CIP-30 browser wallet (Eternl, Lace,
-// Yoroi) instead of a mnemonic. createWallet + mnemonic is used here for testing only.
+  // On-chain addresses and policy IDs from VotingEvent entity
+  semaphoreScriptAddress: string;  // VotingEvent.semaphoreAddress
+  votingScriptAddress: string;     // VotingEvent.votingValidatorAddress
+  semaphoreNftPolicyId: string;    // VotingEvent.semaphoreNft
+  votingNftPolicyId: string;       // VotingEvent.votingNft
 
-const secretKey = process.env.SECRET_KEY || "";
-const mnemonic = parseMnemonic(secretKey);
+  // Validator CBORs re-derived via applyOrefParamToScript(VALIDATORS.*.mint, mintingOref)
+  // The mintingOref comes from VotingEvent.mintingOrefTxHash / mintingOrefIndex
+  semaphoreValidatorCbor: string;
+  votingValidatorCbor: string;
 
-const apiKey: string = process.env.API_KEY || "";
-const provider = new BlockfrostProvider(apiKey);
+  // Fields preserved in SemaphoreDatum (from VotingEvent)
+  groupNftPolicyId: string;    // VotingEvent.groupNft
+  groupMerkleRoot: bigint;     // VotingEvent.groupMerkleRootHash as bigint
+  vkeyRefTxHash: string;       // VotingEvent.vkeyRefTxHash
+  vkeyRefOutputIndex: number;  // VotingEvent.vkeyRefIndex
 
-const wallet = await createWallet(provider, mnemonic, 0);
-const walletAddress = walletBaseAddress(wallet);
-const paymentKeyHash = extractPaymentKeyHash(walletAddress!);
-const walletUtxos = await wallet.getUtxos();
+  // From CIP-30 wallet
+  walletUtxos: UTxO[];
+  walletAddress: string;
+  paymentKeyHash: string;
 
-console.log('Wallet address:', walletAddress);
-console.log('Payment key hash:', paymentKeyHash);
-console.log('Available UTxOs:', walletUtxos.length);
+  // Pre-computed ZK proof — from generateVoteProof() in @src/zk
+  zkProof: { pi_a: string; pi_b: string; pi_c: string };
+  nullifierHash: bigint;
+  // publicSignals[2] from snarkjs — blake2b_256(signal_message) already reduced mod BLS12-381 r
+  signalHash: bigint;
+  // encodeVoteSignal(voteSignal) — CBOR hex of List<(Int, Int)>
+  signalMessage: string;
 
-// --- Step 2: Script addresses ---
-// Hardcoded from VotingEvent entity after the event is created via mint-sv.ts.
-// TODO (function): these become parameters semaphoreScriptAddress and votingScriptAddress.
+  // Pre-computed MPF nullifier insertion proof — from POST /voting-event/:id/nullifier
+  mpfProofSteps: Array<object>;
+  mpfNewRoot: string;  // hex string (32 bytes), new nullifier MPF root after insertion
 
-const semaphoreScriptAddress = ""; // VotingEvent.semaphoreAddress  → e.g. "addr_test1..."
-const votingScriptAddress    = ""; // VotingEvent.votingValidatorAddress → e.g. "addr_test1..."
+  // Current on-chain UrnaDatum fields (read from VotingEvent or decoded from votingUtxo)
+  voteSignal: Array<[number, number]>;           // voter's choice, e.g. [[2, 1]]
+  currentOptions: Array<[number, number]>;       // current vote tallies from UrnaDatum
+  weight: number;      // VotingEvent.votingPower (0 = simple voting)
+  eventStart: number;  // VotingEvent.startingDate (POSIX ms)
+  eventEnd: number;    // VotingEvent.endingDate   (POSIX ms)
+}
 
-console.log('Semaphore script address:', semaphoreScriptAddress);
-console.log('Voting script address:', votingScriptAddress);
+/**
+ * Build an unsigned vote transaction.
+ *
+ * Fetches the Semaphore and Voting UTxOs from the chain, assembles the
+ * SemaphoreRedeemer.Signal and updated datums, and returns the unsigned
+ * transaction CBOR.
+ *
+ * All ZK and MPF proof data must be pre-computed and passed in — this function
+ * only handles transaction construction, not proof generation or nullifier insertion.
+ *
+ * The caller (frontend) signs and submits the returned TX via CIP-30:
+ *   const signed = await walletApi.signTx(unsignedTx, true);
+ *   await walletApi.submitTx(signed);
+ */
+export async function buildVoteTransaction(
+  params: BuildVoteTransactionParams,
+): Promise<string> {
+  const {
+    provider,
+    semaphoreScriptAddress, votingScriptAddress,
+    semaphoreNftPolicyId, votingNftPolicyId,
+    semaphoreValidatorCbor, votingValidatorCbor,
+    groupNftPolicyId, groupMerkleRoot,
+    vkeyRefTxHash, vkeyRefOutputIndex,
+    walletUtxos, walletAddress, paymentKeyHash,
+    zkProof, nullifierHash, signalHash, signalMessage,
+    mpfProofSteps, mpfNewRoot,
+    voteSignal, currentOptions, weight, eventStart, eventEnd,
+  } = params;
 
-// --- Step 3: Fetch Semaphore UTxO ---
-// TODO (function): semaphoreNftPolicyId becomes a parameter.
+  // ── Step 3: Fetch Semaphore UTxO ─────────────────────────────────────────
+  const semaphoreUtxos: UTxO[] = await provider.fetchAddressUTxOs(semaphoreScriptAddress);
+  const semaphoreUtxo = semaphoreUtxos.find(u =>
+    u.output.amount.some(a => a.unit.startsWith(semaphoreNftPolicyId))
+  );
+  if (!semaphoreUtxo) throw new Error('Semaphore UTxO not found at ' + semaphoreScriptAddress);
 
-const semaphoreNftPolicyId = ""; // VotingEvent.semaphoreNft → e.g. "a7bc807..."
+  // ── Step 4: Fetch Voting UTxO ─────────────────────────────────────────────
+  const votingUtxos: UTxO[] = await provider.fetchAddressUTxOs(votingScriptAddress);
+  const votingUtxo = votingUtxos.find(u =>
+    u.output.amount.some(a => a.unit.startsWith(votingNftPolicyId))
+  );
+  if (!votingUtxo) throw new Error('Voting UTxO not found at ' + votingScriptAddress);
 
-const semaphoreUtxos: UTxO[] = await provider.fetchAddressUTxOs(semaphoreScriptAddress);
-const semaphoreUtxo = semaphoreUtxos.find(u =>
-  u.output.amount.some(a => a.unit.startsWith(semaphoreNftPolicyId))
-);
-if (!semaphoreUtxo) throw new Error('Semaphore UTxO not found at script address');
+  // Find VKey UTxO in the wallet's UTxO set.
+  // The semaphore validator reads the vkey datum via find_input(inputs, dat.vkey_ref_input),
+  // so this must be a spending input (not a reference input). It is re-created as an output
+  // so it remains available for subsequent votes.
+  const vkeyUtxo = walletUtxos.find(u =>
+    u.input.txHash === vkeyRefTxHash && u.input.outputIndex === vkeyRefOutputIndex
+  );
+  if (!vkeyUtxo) throw new Error(`VKey UTxO not found: ${vkeyRefTxHash}#${vkeyRefOutputIndex}`);
 
-console.log('Semaphore UTxO:', semaphoreUtxo.input.txHash, '#', semaphoreUtxo.input.outputIndex);
+  // Exclude VKey UTxO from fee selection and collateral — it must appear at a specific index.
+  const selectableUtxos = walletUtxos.filter(u =>
+    !(u.input.txHash === vkeyRefTxHash && u.input.outputIndex === vkeyRefOutputIndex)
+  );
+  const collateralUtxo = selectableUtxos[0];
+  if (!collateralUtxo) throw new Error('No collateral UTxO available');
 
-// --- Step 4: Fetch Voting UTxO ---
-// TODO (function): votingNftPolicyId becomes a parameter.
+  // ── Step 8: Compute updated UrnaDatum ────────────────────────────────────
+  const updatedOptions = currentOptions.map(([idx, count]) => {
+    const voted = voteSignal.find(([vi]) => vi === idx);
+    return list([integer(idx), integer(count + (voted ? voted[1] : 0))]);
+  });
 
-const votingNftPolicyId = ""; // VotingEvent.votingNft → e.g. "1779325f..."
+  const updatedUrnaDatum = createUrnaDatum({
+    weight,
+    options: updatedOptions,
+    eventStart,
+    eventEnd,
+    semaphoreNftPolicyId,
+  });
 
-const votingUtxos: UTxO[] = await provider.fetchAddressUTxOs(votingScriptAddress);
-const votingUtxo = votingUtxos.find(u =>
-  u.output.amount.some(a => a.unit.startsWith(votingNftPolicyId))
-);
-if (!votingUtxo) throw new Error('Voting UTxO not found at script address');
+  // ── Step 9: Construct SemaphoreRedeemer.Signal ───────────────────────────
+  // Constr 1 [zk_proof, mpf_proof, nullifier, signal_hash, signal_message]
+  const semaphoreRedeemer = conStr(1, [
+    conStr(0, [byteString(zkProof.pi_a), byteString(zkProof.pi_b), byteString(zkProof.pi_c)]),
+    mpfStepsToPlutusData(mpfProofSteps),
+    integer(nullifierHash),
+    integer(signalHash),
+    byteString(signalMessage),
+  ]);
 
-console.log('Voting UTxO:', votingUtxo.input.txHash, '#', votingUtxo.input.outputIndex);
-console.log('Voting UTxO datum:', votingUtxo.output.plutusData);
+  // Updated SemaphoreDatum — only nullifier_mpf_root changes; all other fields preserved.
+  const updatedSemaphoreDatum = conStr(0, [
+    byteString(groupNftPolicyId),
+    integer(groupMerkleRoot),
+    byteString(mpfNewRoot),
+    createOutputReference(vkeyRefTxHash, vkeyRefOutputIndex),
+  ]);
 
-// --- Step 5: Encode vote signal ---
-// signal_message is the CBOR-encoded List<(Int, Int)> passed to deserialise_signal on-chain.
-//
-// Simple voting   (UrnaDatum.weight <= 1): exactly one pair, vote count must be 1.
-//   e.g. [[2, 1]] — cast 1 vote for option 2.
-//
-// Weighted voting (UrnaDatum.weight  > 1): one or more pairs, vote counts must sum
-//   exactly to UrnaDatum.weight (checked on-chain by check_weight).
-//   e.g. [[1, 3], [2, 2]] — split 5 votes across options 1 and 2.
-//
-// TODO (function): voteSignal becomes a parameter of type Array<[number, number]>.
+  // ── Step 10: Build transaction ───────────────────────────────────────────
+  // Convert POSIX ms → Cardano preprod slot.
+  // Preprod Shelley era started at Unix time 1655769600s, slot 86400.
+  const SHELLEY_UNIX_TIME = 1655769600;
+  const SHELLEY_SLOT = 86400;
+  const eventStartSlot = Math.floor(eventStart / 1000) - SHELLEY_UNIX_TIME + SHELLEY_SLOT;
 
-const voteSignal: Array<[number, number]> = [[1, 1]]; // simple vote example: 1 vote for option 1
+  // Use a near-future slot for invalidHereafter rather than the full event end date.
+  // The on-chain validity check only requires invalidBefore(eventStartSlot).
+  const currentSlot = await provider.fetchLatestBlock().then(b => parseInt(b.slot));
+  const txValidityEndSlot = currentSlot + 1200; // 20-minute window
 
-const signalMessage = encodeVoteSignal(voteSignal);
+  const txBuilder = new MeshTxBuilder({
+    fetcher: provider,
+    evaluator: provider,
+    verbose: false,
+  });
 
-console.log('Signal message (hex):', signalMessage);
+  let unsignedVoteTx: string;
 
-// --- Step 6: Generate ZK proof ---
-// NOTE: in production this step runs on the frontend (user's browser) via @src/zk,
-// so that identity secrets (nullifier, trapdoor) never leave the client.
-// The backend only receives the resulting compressed proof and nullifier hash.
-// TODO (function): all values below become parameters.
-//
-// identityNullifier, identityTrapdoor — Semaphore identity secrets known only to the voter.
-// merkleProof — the Merkle path proving the voter's leaf is in the group tree.
-//   root: VotingEvent.groupMerkleRootHash (as bigint)
-//   siblings: sibling hashes along the path (from VotingEvent.groupLeafCommitments)
-//   pathIndices: 0 (left) or 1 (right) at each level
-// externalNullifier — semaphore NFT policy ID as a bigint; ties the nullifier to this event.
+  try {
+    unsignedVoteTx = await txBuilder
+      .setNetwork("preprod")
+      // is_entirely_after requires lower_bound > event_start; +1 slot = +1000ms
+      .invalidBefore(eventStartSlot + 1)
+      .invalidHereafter(txValidityEndSlot)
 
-const identityNullifier: bigint = 0n; // voter's Semaphore identity nullifier
-const identityTrapdoor: bigint  = 0n; // voter's Semaphore identity trapdoor
-const merkleProof = {
-  root:        0n,   // VotingEvent.groupMerkleRootHash
-  siblings:    [0n], // path sibling hashes
-  pathIndices: [0],  // path direction at each level
-};
-const externalNullifier = BigInt('0x' + semaphoreNftPolicyId);
+      // Spend Semaphore UTxO — returned with updated nullifier_mpf_root
+      .spendingPlutusScriptV3()
+      .txIn(
+        semaphoreUtxo.input.txHash,
+        semaphoreUtxo.input.outputIndex,
+        semaphoreUtxo.output.amount,
+        semaphoreScriptAddress,
+      )
+      .txInScript(semaphoreValidatorCbor)
+      .txInInlineDatumPresent()
+      .txInRedeemerValue(semaphoreRedeemer, "JSON", { mem: 12000000, steps: 7000000000 })
 
-const { zkProof, nullifierHash, publicSignals } = await generateVoteProof({
-  identityNullifier,
-  identityTrapdoor,
-  merkleProof,
-  externalNullifier,
-  signal: signalMessage,
-});
+      // Spend Voting UTxO — returned with updated vote tally; UrnaRedeemer.Vote = conStr(1, [])
+      .spendingPlutusScriptV3()
+      .txIn(
+        votingUtxo.input.txHash,
+        votingUtxo.input.outputIndex,
+        votingUtxo.output.amount,
+        votingScriptAddress,
+      )
+      .txInScript(votingValidatorCbor)
+      .txInInlineDatumPresent()
+      .txInRedeemerValue(conStr(1, []), "JSON", { mem: 4000000, steps: 2500000000 })
 
-console.log('pi_a:', zkProof.pi_a);
-console.log('pi_b:', zkProof.pi_b);
-console.log('pi_c:', zkProof.pi_c);
-console.log('Nullifier hash:', nullifierHash);
+      // Include VKey UTxO as a spending input (semaphore validator reads vkey datum from it)
+      .txIn(
+        vkeyUtxo.input.txHash,
+        vkeyUtxo.input.outputIndex,
+        vkeyUtxo.output.amount,
+        walletAddress,
+      )
 
-// --- Step 7: Insert nullifier into MPF trie ---
-// NOTE: backend. LevelDB cannot run in a browser and the trie must be consistent across
-// all voters. In production the frontend sends nullifierHash to a backend API endpoint
-// and receives mpfProof in return. The backend also persists newRoot to VotingEvent.nullifierMerkleTree.
-// insertNullifier throws if the nullifier already exists (double vote attempt).
-// TODO (function): eventId becomes a parameter.
+      // Collateral
+      .txInCollateral(
+        collateralUtxo.input.txHash,
+        collateralUtxo.input.outputIndex,
+        collateralUtxo.output.amount,
+      )
 
-const eventId = 0;                         // VotingEvent.id
-const currentMpfRoot = Buffer.alloc(32);   // VotingEvent.nullifierMerkleTree (32-byte root, zeros for empty trie)
+      // Output 0: Semaphore back to script with updated nullifier_mpf_root
+      .txOut(semaphoreScriptAddress, semaphoreUtxo.output.amount)
+      .txOutInlineDatumValue(updatedSemaphoreDatum, "JSON")
 
-const { newRoot: mpfNewRoot, proof: mpfProof } = await insertNullifier(currentMpfRoot, nullifierHash, eventId);
+      // Output 1: Voting back to script with updated vote tally
+      .txOut(votingScriptAddress, votingUtxo.output.amount)
+      .txOutInlineDatumValue(updatedUrnaDatum, "JSON")
 
-console.log('MPF proof (hex):', mpfProof.toString('hex'));
+      // Output 2: VKey UTxO re-created at wallet address (datum preserved for next vote)
+      .txOut(walletAddress, vkeyUtxo.output.amount)
+      .txOutInlineDatumValue(vkeyUtxo.output.plutusData!, "CBOR")
 
-// --- Step 8: Compute updated UrnaDatum ---
-// Apply the vote signal to the current options and build the new datum to send back on-chain.
-// TODO (function): weight, currentOptions, eventStart, eventEnd become parameters
-//   read from VotingEvent entity / decoded from votingUtxo.output.plutusData.
-//
-// currentOptions is List<[optionIndex, currentCount]> mirroring the on-chain UrnaDatum.options.
-// For each [optionIndex, votes] in voteSignal, increment the matching option's count.
+      .selectUtxosFrom(selectableUtxos)
+      .changeAddress(walletAddress)
+      .requiredSignerHash(paymentKeyHash)
+      .complete();
+  } catch (evalError: any) {
+    // Ogmios evaluation may fail while still producing a valid TX hex in the error message.
+    const match = evalError.message.match(/For txHex: ([0-9a-f]+)/);
+    if (match) {
+      unsignedVoteTx = match[1];
+    } else {
+      throw evalError;
+    }
+  }
 
-const weight     = 0;          // VotingEvent.votingPower (0 = simple voting)
-const eventStart = 0;          // VotingEvent.startingDate (POSIX ms)
-const eventEnd   = 0;          // VotingEvent.endingDate   (POSIX ms)
-const currentOptions: Array<[number, number]> = [[0, 0], [1, 0], [2, 0]]; // from UrnaDatum
-
-// Apply vote: add voteSignal counts to matching options
-const updatedOptions = currentOptions.map(([idx, count]) => {
-  const voted = voteSignal.find(([vi]) => vi === idx);
-  return list([integer(idx), integer(count + (voted ? voted[1] : 0))]);
-});
-
-const updatedUrnaDatum = createUrnaDatum({
-  weight,
-  options: updatedOptions,
-  eventStart,
-  eventEnd,
-  semaphoreNftPolicyId,
-});
-
-console.log('Updated UrnaDatum:', JSON.stringify(updatedUrnaDatum));
-
-// --- Step 9: Construct SemaphoreRedeemer.Signal ---
-// SemaphoreRedeemer has two constructors: Create (0) and Signal (1).
-// Signal fields (semaphore_types.ak):
-//   groth16.Proof  → conStr(0, [piA, piB, piC])  — compressed BLS12-381 points
-//   mpf.Proof      → byteString (raw CBOR from insertNullifier)
-//   Int nullifier  → integer(nullifierHash)
-//   Int signal_hash → integer(blake2b_256(signal_message))
-//   ByteArray signal_message → byteString(signalMessage)
-
-const signalHashBuf = Buffer.from(
-  blake2b(32).update(Buffer.from(signalMessage, 'hex')).digest()
-);
-const signalHash = BigInt('0x' + signalHashBuf.toString('hex'));
-
-const semaphoreRedeemer = conStr(1, [
-  conStr(0, [byteString(zkProof.pi_a), byteString(zkProof.pi_b), byteString(zkProof.pi_c)]),
-  byteString(mpfProof.toString('hex')),
-  integer(nullifierHash),
-  integer(signalHash),
-  byteString(signalMessage),
-]);
-
-console.log('Semaphore redeemer constructed.');
-
-// --- Step 10: Build vote transaction ---
-// NOTE: frontend. The transaction is built and signed in the user's browser via CIP-30.
-// The backend is not involved after Step 7 (insertNullifier).
-//
-// semaphoreValidatorCbor / votingValidatorCbor are recomputed from the validator templates
-// (VALIDATORS.semaphore.mint / VALIDATORS.voting.mint) and the OutputReference used at
-// mint time. Both can be re-derived by the frontend from VotingEvent.mintingOref.
-// TODO (function): semaphoreValidatorCbor and votingValidatorCbor become parameters.
-//
-// vkeyRefTxHash / vkeyRefOutputIndex identify the UTxO holding the SnarkVerificationKey
-// datum. The semaphore validator fetches it from transaction inputs during Signal spending.
-// NOTE: the validator reads it via find_input(inputs, ...) — so it must be a spending input,
-// not a read-only reference input. The VKey UTxO must also be re-created as an output in
-// the same transaction to remain available for subsequent votes.
-// TODO (function): vkeyUtxo becomes a parameter, fetched from VotingEvent.vkeyRefTxHash.
-
-const semaphoreValidatorCbor = ""; // recomputed: applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref)
-const votingValidatorCbor    = ""; // recomputed: applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref)
-
-// Fields preserved from the current SemaphoreDatum (decoded from semaphoreUtxo.output.plutusData).
-// TODO (function): groupNftPolicyId, groupMerkleRoot, vkeyRefTxHash, vkeyRefOutputIndex become parameters.
-const groupNftPolicyId   = ""; // VotingEvent.groupNft
-const groupMerkleRoot    = 0n; // VotingEvent.groupMerkleRootHash (as bigint)
-const vkeyRefTxHash      = "0000000000000000000000000000000000000000000000000000000000000000";
-const vkeyRefOutputIndex = 0;
-
-// Updated SemaphoreDatum: same as current but nullifier_mpf_root set to mpfNewRoot.
-const updatedSemaphoreDatum = conStr(0, [
-  byteString(groupNftPolicyId),
-  integer(groupMerkleRoot),
-  byteString(mpfNewRoot.toString('hex')), // new nullifier MPF root after nullifier insertion
-  createOutputReference(vkeyRefTxHash, vkeyRefOutputIndex),
-]);
-
-// Convert POSIX ms → Cardano preprod slot.
-// Preprod Shelley era started at Unix time 1655769600s, slot 86400.
-const SHELLEY_UNIX_TIME = 1655769600;
-const SHELLEY_SLOT      = 86400;
-const eventStartSlot = Math.floor(eventStart / 1000) - SHELLEY_UNIX_TIME + SHELLEY_SLOT;
-const eventEndSlot   = Math.floor(eventEnd   / 1000) - SHELLEY_UNIX_TIME + SHELLEY_SLOT;
-
-const txBuilder = new MeshTxBuilder({
-  fetcher: provider,
-  evaluator: provider,
-  verbose: false,
-});
-
-const unsignedVoteTx = await txBuilder
-  .setNetwork("preprod")
-  .invalidBefore(eventStartSlot)
-  .invalidHereafter(eventEndSlot)
-
-  // Spend Semaphore UTxO — sent back with updated nullifier_mpf_root
-  .txIn(
-    semaphoreUtxo.input.txHash,
-    semaphoreUtxo.input.outputIndex,
-    semaphoreUtxo.output.amount,
-    semaphoreScriptAddress,
-  )
-  .txInScript(semaphoreValidatorCbor)
-  .txInInlineDatumPresent()
-  .txInRedeemerValue(semaphoreRedeemer, "JSON", { mem: 14000000, steps: 10000000000 })
-
-  // Spend Voting UTxO — sent back with updated UrnaDatum; UrnaRedeemer.Vote = conStr(1, [])
-  .txIn(
-    votingUtxo.input.txHash,
-    votingUtxo.input.outputIndex,
-    votingUtxo.output.amount,
-    votingScriptAddress,
-  )
-  .txInScript(votingValidatorCbor)
-  .txInInlineDatumPresent()
-  .txInRedeemerValue(conStr(1, []), "JSON", { mem: 7000000, steps: 5000000000 })
-
-  // Collateral
-  .txInCollateral(
-    "a0c462bc82ee224bd8f76ec50dbf89b7b42ea831ea830000802771ba49c43d97",
-    1,
-    [{ unit: "lovelace", quantity: "2470930000" }],
-  )
-
-  // Output 0: Semaphore back to script address with updated nullifier_mpf_root
-  .txOut(semaphoreScriptAddress, semaphoreUtxo.output.amount)
-  .txOutInlineDatumValue(updatedSemaphoreDatum, "JSON")
-
-  // Output 1: Voting back to script address with updated vote tally
-  .txOut(votingScriptAddress, votingUtxo.output.amount)
-  .txOutInlineDatumValue(updatedUrnaDatum, "JSON")
-
-  .selectUtxosFrom(walletUtxos)
-  .changeAddress(walletAddress!)
-  .requiredSignerHash(paymentKeyHash!)
-  .complete();
-
-console.log('Vote transaction built. Length:', unsignedVoteTx.length);
+  return unsignedVoteTx;
+}
