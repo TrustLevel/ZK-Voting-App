@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { VotingEvent } from './voting-event.entity';
 import { InvitationToken } from './invitation-token.entity';
 import { Group } from 'modp-semaphore-bls12381/packages/typescript/src/group';
@@ -41,6 +42,7 @@ export class VotingEventService {
     private votingEventRepository: Repository<VotingEvent>,
     @InjectRepository(InvitationToken)
     private invitationTokenRepository: Repository<InvitationToken>,
+    private configService: ConfigService,
     private usersService: UsersService,
     private emailService: EmailService,
   ) {}
@@ -214,6 +216,10 @@ export class VotingEventService {
 
     const participants = JSON.parse(event.groupLeafCommitments) as Array<{userId: number, commitment: string}>;
     return participants.map(p => p.userId);
+  }
+
+  async getAllVotingEvents(): Promise<VotingEvent[]> {
+    return await this.votingEventRepository.find();
   }
 
   // Get voting event details
@@ -460,63 +466,25 @@ export class VotingEventService {
     }
   }
 
-  /**
-   * ============================================================================
-   * ⚠️ ATTENTION: THIS METHOD ("submitVote") IS A TEMPORARY IMPLEMENTATION TO SIMULATE VOTING WITHOUT ZK-PROOFS & On-Chain VERIFICATION
-   * ============================================================================
-   */
+  // Submit a signed vote transaction to the Blockfrost node.
+  // The frontend builds and signs the tx (via CIP-30), then sends the hex here.
+  // Double-vote prevention is handled upstream by POST /nullifier (MPF trie).
   async submitVote(
-    eventId: number,
-    selectedOption: number,
-    userId: number, 
-  ): Promise<{ success: boolean; message: string }> {
-    try {
-      // 1. Load event
-      const event = await this.votingEventRepository.findOne({ where: { eventId } });
-      if (!event) {
-        throw new Error('Event not found');
-      }
+    signedTx: string,
+  ): Promise<{ txHash: string }> {
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const response = await fetch('https://cardano-preprod.blockfrost.io/api/v0/tx/submit', {
+      method: 'POST',
+      headers: { 'project_id': apiKey, 'Content-Type': 'application/cbor' },
+      body: Buffer.from(signedTx, 'hex'),
+    });
 
-      // 2. Check if voting has started
-      if (!event.startingDate || Date.now() < event.startingDate * 1000) {
-        return { success: false, message: 'Voting has not started yet' };
-      }
-
-      // 3. Check if voting has ended
-      if (event.endingDate && Date.now() > event.endingDate * 1000) {
-        return { success: false, message: 'Voting has ended' };
-      }
-
-      // 4. Parse nullifierLeafCommitments (list of userIds who voted - later to be replaced with nullifiers)
-      const votedUsers = JSON.parse(event.nullifierLeafCommitments || '[]') as number[];
-
-      // 5. Check if user already voted
-      // NOTE: Should check nullifier, not userId!
-      if (votedUsers.includes(userId)) {
-        return { success: false, message: 'User has already voted' };
-      }
-
-      // 6. Parse and update options
-      const options = JSON.parse(event.options || '[]');
-      const option = options.find((opt: any) => opt.index === selectedOption);
-
-      if (!option) {
-        throw new Error('Invalid option');
-      }
-
-      option.votes += 1;
-
-      // 7. Save updated data
-      event.options = JSON.stringify(options);
-      votedUsers.push(userId);  // ⚠️ Should push nullifier, not userId!
-      event.nullifierLeafCommitments = JSON.stringify(votedUsers);
-
-      await this.votingEventRepository.save(event);
-
-      return { success: true, message: 'Vote recorded successfully' };
-    } catch (error) {
-      throw error;
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(`Blockfrost submission failed (${response.status}): ${body}`);
     }
+
+    return { txHash: body.replace(/"/g, '') };
   }
 
   // Check admin token for /manage access

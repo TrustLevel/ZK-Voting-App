@@ -24,6 +24,11 @@ export class VotingEventController {
     );
   }
 
+  @Get()
+  async getAllVotingEvents() {
+    return await this.votingEventService.getAllVotingEvents();
+  }
+
   @Get(':eventId')
   async getVotingEvent(@Param('eventId') eventId: number) {
     return await this.votingEventService.getVotingEvent(eventId);
@@ -117,11 +122,10 @@ export class VotingEventController {
    */
   @Post(':eventId/vote')
   async submitVote(
-    @Param('eventId') eventId: number,
-    @Body('selectedOption') selectedOption: number,
-    @Body('userId') userId: number,  // ⚠️ TEMPORARY - Replace with proof, nullifier, signal
+    @Param('eventId') _eventId: number,
+    @Body('signedTx') signedTx: string,
   ) {
-    return await this.votingEventService.submitVote(eventId, selectedOption, userId);
+    return await this.votingEventService.submitVote(signedTx);
   }
 
   @Post(':eventId/validate-admin-token')
