@@ -28,6 +28,10 @@ interface CreateVotingEventDto {
   nullifierLeafCommitments?: string | null;
   verificationReferenceInput?: string | null;
   currentVoteCount?: string | null;
+  mintingOrefTxHash?: string | null;
+  mintingOrefIndex?: number | null;
+  vkeyRefTxHash?: string | null;
+  vkeyRefIndex?: number | null;
 }
 
 @Injectable()
@@ -109,6 +113,10 @@ export class VotingEventService {
       nullifierLeafCommitments: createData.nullifierLeafCommitments || null,
       verificationReferenceInput: createData.verificationReferenceInput || null,
       currentVoteCount: createData.currentVoteCount || null,
+      mintingOrefTxHash: createData.mintingOrefTxHash || null,
+      mintingOrefIndex: createData.mintingOrefIndex ?? null,
+      vkeyRefTxHash: createData.vkeyRefTxHash || null,
+      vkeyRefIndex: createData.vkeyRefIndex ?? null,
     });
 
     return await this.votingEventRepository.save(votingEvent);
@@ -551,6 +559,88 @@ export class VotingEventService {
     } catch (error) {
       return { success: false, message: 'Failed to mark invitations as sent' };
     }
+  }
+
+  // Return the Semaphore group Merkle proof for a specific participant.
+  // The frontend passes this proof (siblings, pathIndices) to the ZK circuit
+  // as witness data when generating the vote proof.
+  async getMerkleProof(eventId: number, userId: number): Promise<{
+    root: string;
+    leaf: string;
+    siblings: string[];
+    pathIndices: number[];
+  }> {
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) {
+      throw new Error('Voting event not found');
+    }
+
+    const participants = JSON.parse(event.groupLeafCommitments) as Array<{userId: number, commitment: string}>;
+    const index = participants.findIndex(p => p.userId === userId);
+    if (index === -1) {
+      throw new Error('User is not a participant in this event');
+    }
+
+    const commitments = participants.map(p => BigInt(p.commitment));
+    const group = new Group(BigInt(eventId), event.groupSize, commitments);
+    const proof = group.generateMerkleProof(index);
+
+    return {
+      root: proof.root.toString(),
+      leaf: proof.leaf.toString(),
+      siblings: proof.siblings.map((s: bigint) => s.toString()),
+      pathIndices: proof.pathIndices,
+    };
+  }
+
+  // Insert a nullifier into the MPF trie for a voting event.
+  // Called by the frontend after successfully casting a vote on-chain.
+  // Returns the MPF proof (needed to build the vote transaction) and the new root.
+  // Throws if the nullifier was already inserted (double-vote prevention).
+  async insertNullifier(eventId: number, nullifier: string): Promise<{
+    newRoot: string;
+    proof: string;
+    proofSteps: Array<object>;
+  }> {
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) {
+      throw new Error('Voting event not found');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Trie, Store } = require('@aiken-lang/merkle-patricia-forestry');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { blake2b } = require('@noble/hashes/blake2b');
+
+    const nullifierBigInt = BigInt(nullifier);
+
+    // Convert nullifier to key/value — mirrors nullifierToKeyValue() in src/zk/src/mpf.ts.
+    // value = little-endian 32-byte representation  (scalar.to_bytearray_little_endian)
+    // key   = blake2b_256(value)                    (crypto.blake2b_256 on-chain)
+    const hex = nullifierBigInt.toString(16).padStart(64, '0');
+    const bigEndian = Buffer.from(hex, 'hex');
+    const value = Buffer.from(bigEndian).reverse();
+    const key = Buffer.from(blake2b(value, { dkLen: 32 }));
+
+    const store = new Store(`nullifiers-db/${eventId}`);
+    const trie = await Trie.load(store).catch(() => new Trie(store));
+
+    // Throws if nullifier already exists — prevents double voting at the backend level.
+    await trie.insert(key, value);
+
+    const mpfProof = await trie.prove(key);
+    const newRootBuffer: Buffer = mpfProof.verify(true);
+    const newRoot = Buffer.from(newRootBuffer).toString('hex');
+
+    // Persist the updated MPF root so future votes use the correct old root.
+    event.nullifierMerkleTree = newRoot;
+    await this.votingEventRepository.save(event);
+
+    return {
+      newRoot,
+      proof: Buffer.from(mpfProof.toCBOR()).toString('hex'),
+      proofSteps: mpfProof.toJSON(),
+    };
   }
 
   // Save blockchain data related to the event (Temporary implementation)
