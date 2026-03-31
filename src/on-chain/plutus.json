@@ -12,6 +12,14 @@
   },
   "validators": [
     {
+      "title": "always_false.always_false.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a508a4d136564004ae69",
+      "hash": "7b21efdd7d88e44caeadcf7c35a61c4dd2f6f57caac61674559fe435"
+    },
+    {
       "title": "voting.voting.mint",
       "redeemer": {
         "title": "_redeemer",

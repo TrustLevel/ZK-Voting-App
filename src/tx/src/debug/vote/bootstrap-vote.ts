@@ -165,10 +165,10 @@ const votingPolicyId = resolveScriptHash(votingValidatorCbor, "V3");
 
 // SemaphoreDatum: { group_token_policy, group_merke_root, nullifier_mpf_root, vkey_ref_input }
 // group_merke_root matches the Group NFT datum minted in Phase 1 (same group.root).
-// vkeyRefTxHash is a placeholder — replace with the real VKey UTxO tx hash before going live.
+// vkeyRefTxHash is permanent — the VKey UTxO is locked at the always-false script address.
 const nullHash    = "0000000000000000000000000000000000000000000000000000000000000000";
-const vkeyRefTxHash = "10b5b3ca7cfad3da6d344138ff4361a5398acc19b41cc0382fcfc82e427581ae";
-const vkeyRefOutputIndex = 2;
+const vkeyRefTxHash = "3dc5c982ea80091afc75f4392ac9e91af8d9124a3318a0d76a26de4e934da083";
+const vkeyRefOutputIndex = 0;
 const semaphoreDatum = conStr(0, [
   byteString(groupPolicyId),
   integer(BigInt(group.root.toString())), // must match the Merkle root stored in the Group NFT datum

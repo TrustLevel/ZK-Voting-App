@@ -1,14 +1,13 @@
-// Script to post the SnarkVerificationKey as an on-chain UTxO datum.
+// Script to post the SnarkVerificationKey as a permanent on-chain UTxO datum.
 //
-// The semaphore validator's Signal spending path reads the VKey from a UTxO
-// identified by SemaphoreDatum.vkey_ref_input. Run this script once before
-// Phase 2 of bootstrap-vote.ts, then paste the printed tx hash and output
-// index into bootstrap-vote.ts (vkeyRefTxHash / vkeyRefOutputIndex).
+// The VKey UTxO is sent to the always-false script address so it can never
+// be accidentally spent. It is included as a read-only reference input on
+// every vote transaction — it never moves, so SemaphoreDatum.vkey_ref_input
+// is set once at bootstrap and never needs to be updated.
 //
-// The VKey UTxO is sent to the wallet address so the wallet can include it
-// as a spending input in each vote transaction.
-// NOTE: the vote transaction must also re-create this UTxO as an output so
-// the VKey remains available for subsequent votes.
+// Run this script ONCE. Paste the printed tx hash and output index into
+// bootstrap-vote.ts (vkeyRefTxHash / vkeyRefOutputIndex) and cast-vote.ts.
+// These values are permanent for the lifetime of the voting deployment.
 
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
@@ -103,10 +102,14 @@ const txBuilder = new MeshTxBuilder({
 
 console.log('\nBuilding VKey UTxO transaction...');
 
+// Always-false script address (preprod) — UTxO sent here can never be spent.
+// Script hash: 7b21efdd7d88e44caeadcf7c35a61c4dd2f6f57caac61674559fe435
+const alwaysFalseAddress = "addr_test1wzl94ddu5xplr7p8f55ldtxjvw6cqqsh57jkj4vndwthtkgdw2fq8";
+
 const unsignedTx = await txBuilder
   .setNetwork("preprod")
   .selectUtxosFrom(walletUtxos)
-  .txOut(walletAddress, [{ unit: "lovelace", quantity: "5000000" }])
+  .txOut(alwaysFalseAddress, [{ unit: "lovelace", quantity: "5000000" }])
   .txOutInlineDatumValue(vkeyDatum, "JSON")
   .changeAddress(walletAddress)
   .requiredSignerHash(paymentKeyHash)

@@ -14,6 +14,13 @@ import { createUrnaDatum, createOutputReference } from './utils.js';
 //   Branch { skip, neighbors }  → Constr 0 [Int, ByteArray]
 //   Fork   { skip, neighbor }   → Constr 1 [Int, Constr 0 [Int, ByteArray, ByteArray]]
 //   Leaf   { skip, neighbor }   → Constr 2 [Int, ByteArray, ByteArray]
+// VKey UTxO — permanently locked at the always-false script address.
+// Script: agustinbadi/zk-voting-app always_false.else (hash: 7b21efdd...)
+// Address (preprod): addr_test1wzl94ddu5xplr7p8f55ldtxjvw6cqqsh57jkj4vndwthtkgdw2fq8
+// This OutputReference is set once and never changes.
+export const VKEY_REF_TX_HASH = "3dc5c982ea80091afc75f4392ac9e91af8d9124a3318a0d76a26de4e934da083";
+export const VKEY_REF_OUTPUT_INDEX = 0;
+
 function mpfStepsToPlutusData(steps: Array<any>): ReturnType<typeof list> {
   return list(steps.map(step => {
     switch (step.type) {
@@ -49,8 +56,7 @@ export interface BuildVoteTransactionParams {
   // Fields preserved in SemaphoreDatum (from VotingEvent)
   groupNftPolicyId: string;    // VotingEvent.groupNft
   groupMerkleRoot: bigint;     // VotingEvent.groupMerkleRootHash as bigint
-  vkeyRefTxHash: string;       // VotingEvent.vkeyRefTxHash
-  vkeyRefOutputIndex: number;  // VotingEvent.vkeyRefIndex
+  // vkeyRef is hardcoded as VKEY_REF_TX_HASH / VKEY_REF_OUTPUT_INDEX — permanent
 
   // From CIP-30 wallet
   walletUtxos: UTxO[];
@@ -100,7 +106,6 @@ export async function buildVoteTransaction(
     semaphoreNftPolicyId, votingNftPolicyId,
     semaphoreValidatorCbor, votingValidatorCbor,
     groupNftPolicyId, groupMerkleRoot,
-    vkeyRefTxHash, vkeyRefOutputIndex,
     walletUtxos, walletAddress, paymentKeyHash,
     zkProof, nullifierHash, signalHash, signalMessage,
     mpfProofSteps, mpfNewRoot,
@@ -121,20 +126,9 @@ export async function buildVoteTransaction(
   );
   if (!votingUtxo) throw new Error('Voting UTxO not found at ' + votingScriptAddress);
 
-  // Find VKey UTxO in the wallet's UTxO set.
-  // The semaphore validator reads the vkey datum via find_input(inputs, dat.vkey_ref_input),
-  // so this must be a spending input (not a reference input). It is re-created as an output
-  // so it remains available for subsequent votes.
-  const vkeyUtxo = walletUtxos.find(u =>
-    u.input.txHash === vkeyRefTxHash && u.input.outputIndex === vkeyRefOutputIndex
-  );
-  if (!vkeyUtxo) throw new Error(`VKey UTxO not found: ${vkeyRefTxHash}#${vkeyRefOutputIndex}`);
-
-  // Exclude VKey UTxO from fee selection and collateral — it must appear at a specific index.
-  const selectableUtxos = walletUtxos.filter(u =>
-    !(u.input.txHash === vkeyRefTxHash && u.input.outputIndex === vkeyRefOutputIndex)
-  );
-  const collateralUtxo = selectableUtxos[0];
+  // VKey UTxO is a permanent read-only reference input — never consumed, never re-created.
+  // semaphore.ak reads the vkey datum via find_input(reference_inputs, dat.vkey_ref_input).
+  const collateralUtxo = walletUtxos[0];
   if (!collateralUtxo) throw new Error('No collateral UTxO available');
 
   // ── Step 8: Compute updated UrnaDatum ────────────────────────────────────
@@ -166,7 +160,7 @@ export async function buildVoteTransaction(
     byteString(groupNftPolicyId),
     integer(groupMerkleRoot),
     byteString(mpfNewRoot),
-    createOutputReference(vkeyRefTxHash, vkeyRefOutputIndex),
+    createOutputReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX),
   ]);
 
   // ── Step 10: Build transaction ───────────────────────────────────────────
@@ -220,13 +214,8 @@ export async function buildVoteTransaction(
       .txInInlineDatumPresent()
       .txInRedeemerValue(conStr(1, []), "JSON", { mem: 4000000, steps: 2500000000 })
 
-      // Include VKey UTxO as a spending input (semaphore validator reads vkey datum from it)
-      .txIn(
-        vkeyUtxo.input.txHash,
-        vkeyUtxo.input.outputIndex,
-        vkeyUtxo.output.amount,
-        walletAddress,
-      )
+      // VKey UTxO as read-only reference input — semaphore validator reads vkey datum from it
+      .readOnlyTxInReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX)
 
       // Collateral
       .txInCollateral(
@@ -243,11 +232,7 @@ export async function buildVoteTransaction(
       .txOut(votingScriptAddress, votingUtxo.output.amount)
       .txOutInlineDatumValue(updatedUrnaDatum, "JSON")
 
-      // Output 2: VKey UTxO re-created at wallet address (datum preserved for next vote)
-      .txOut(walletAddress, vkeyUtxo.output.amount)
-      .txOutInlineDatumValue(vkeyUtxo.output.plutusData!, "CBOR")
-
-      .selectUtxosFrom(selectableUtxos)
+      .selectUtxosFrom(walletUtxos)
       .changeAddress(walletAddress)
       .requiredSignerHash(paymentKeyHash)
       .complete();

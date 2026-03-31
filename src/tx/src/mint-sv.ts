@@ -211,8 +211,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
   console.log('\n📋 Creating datums and assets...\n');
 
-  const vkeyRefTxHash = "0000000000000000000000000000000000000000000000000000000000000000";
-  const vkeyRefOutputIndex = 0;
+  const { VKEY_REF_TX_HASH: vkeyRefTxHash, VKEY_REF_OUTPUT_INDEX: vkeyRefOutputIndex } = await import('./vote.js');
   const nullHash = "0000000000000000000000000000000000000000000000000000000000000000";
 
   const semaphoreDatum = conStr(0, [
