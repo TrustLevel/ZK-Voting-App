@@ -28,6 +28,14 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useWallet } from '@meshsdk/react';
+import { BlockfrostProvider, deserializeAddress } from '@meshsdk/core';
+import {
+  buildAndSubmitGroupMintTx,
+  buildAndSubmitSemaphoreVotingMintTx,
+  getWalletUtxos,
+  selectUtxoAndCreateOutputReference,
+  waitForTxConfirmation,
+} from '@/lib/blockchain-helpers';
 
 // ============================================================================
 // CONSTANTS
@@ -134,6 +142,18 @@ export default function EventDashboard() {
     timestamp: number;
   } | null>(null);
 
+  // NEW: Blockchain Minting State
+  const [mintingStep, setMintingStep] = useState<'idle' | 'group' | 'voting' | 'complete'>('idle');
+  const [txStatus, setTxStatus] = useState<string>('');
+  const [blockchainResult, setBlockchainResult] = useState<{
+    groupTxHash?: string;
+    groupPolicyId?: string;
+    semaphoreVotingTxHash?: string;
+    semaphorePolicyId?: string;
+    votingPolicyId?: string;
+    votingValidatorAddress?: string;
+  } | null>(null);
+
   // UI State
   const [activeTab, setActiveTab] = useState<Tab>('parameters');
   const [copiedAdmin, setCopiedAdmin] = useState(false);
@@ -191,25 +211,21 @@ export default function EventDashboard() {
 
   /**
    * Get wallet address when wallet becomes available
-   * Tries getChangeAddress first, then falls back to getUsedAddresses
    */
   useEffect(() => {
     const getWalletAddress = async () => {
       if (wallet) {
         try {
-          const address = await wallet.getChangeAddress();
-          setWalletAddress(address);
+          // Get wallet UTxOs to extract address
+          const utxos = await wallet.getUtxos();
+          if (utxos && utxos.length > 0) {
+            // Extract address from first UTxO
+            setWalletAddress(utxos[0].output.address);
+          } else {
+            console.warn('Wallet has no UTxOs. Please fund your wallet.');
+          }
         } catch (error) {
           console.error('Failed to get wallet address:', error);
-          // Fallback: try getUsedAddresses
-          try {
-            const usedAddresses = await wallet.getUsedAddresses();
-            if (usedAddresses && usedAddresses.length > 0) {
-              setWalletAddress(usedAddresses[0]);
-            }
-          } catch (err) {
-            console.error('Failed to get used addresses:', err);
-          }
         } finally {
           setIsConnecting(false);
         }
@@ -606,38 +622,43 @@ export default function EventDashboard() {
    * Backend: POST /voting-event/:eventId/save-blockchain-data (persist signature)
    *
    * ============================================================================
-   * ⚠️ TODO FOR BLOCKCHAIN PUBLISHING
+   * ⚠️ TODO FOR BLOCKCHAIN PUBLISHING (currently Mock Implementation)
    * ============================================================================
-   *
+   * 
    * CURRENT (OFF-CHAIN ONLY):
    * - Only updates dates in database
    * - Only stores wallet signature
    * - Event is NOT on blockchain
    *
-   * REQUIRED FOR FULL ON-CHAIN INTEGRATION:
+   * Zbielzustand (3-Step Prozess):                                                                                                                                                                                    
+   * 1. mint-group.ts: Mint Group NFT mit Merkle Root der participants                                                                                                                                                
+   * 2. mint-sv.ts: Mint Semaphore NFT + Voting NFT in EINER transaction                                                                                                                                              
+   * 3. Backend speichert NFT policy IDs und addresses               
+   * 
+   * = 2 TX STEPS TO PUBLISH VOTING EVENT ON BLOCKCHAIN:
+   * - The logic of the first transaction is on mint-group.ts and the logic of the second transaction (semaphore and voting nfts) are on mint-sv.ts (most of the work would be replicating the code right there). 
+   * - All the relevant files needed for the imports on the front are exposed in the index.ts file
+   * - The biggest change is that we won't be using MeshJS wallet rather BrowserWallet instead
    *
-   * 1. Deploy Smart Contracts on Cardano:
-   *    - Voting Smart Contract (generates votingNft, votingValidatorAddress)
-   *    - Group Smart Contract (generates groupNft, groupValidatorAddress)
-   *    - Semaphore Contract (generates semaphoreNft, semaphoreAddress)
-   *
-   * 2. Publish Group Merkle Root on-chain:
-   *    - Post groupMerkleRootHash to Group Smart Contract
-   *    - This locks the participant list
-   *
-   * 3. Update VotingEvent entity with on-chain addresses:
-   *    - votingNft, votingValidatorAddress
-   *    - groupNft, groupValidatorAddress
-   *    - semaphoreNft, semaphoreAddress
-   *    - verificationReferenceInput
-   *
-   * 4. Enable on-chain voting:
-   *    - Votes should be submitted to Voting Smart Contract
-   *    - ZK-proofs verified on-chain
+   * 
+   * Details: 
+   * Mint-group.ts file: (1. NFT = Merkle tree of the users)
+   * - generate wallet - sollte schon da sein 
+   * - get available UTXOs - with browser wallet we dont need backend for this, we can get UTXOs directly from the wallet
+   * = Ergbenis: Reference Input (UTXO) for this tx
+   * = and then: the mint-sv.ts
+   * 
+   * Mint-sv.ts file: (2. Sempahore NFT and 3. voting NFT)
+   * = Publish voting event data on blockchain by minting NFTs and calling smart contracts
+   * 
+   * 
    * ============================================================================
    */
   const handleStartVoting = async () => {
-    // Validation
+    // ═══════════════════════════════════════════════════════════════════════
+    // A. VALIDATION
+    // ═══════════════════════════════════════════════════════════════════════
+
     if (!startDate || !endDate) {
       alert('Please select both start and end dates');
       return;
@@ -677,40 +698,176 @@ export default function EventDashboard() {
     }
 
     setIsStarting(true);
+    setMintingStep('idle');
+    setTxStatus('Preparing blockchain transaction...');
 
     try {
       // Convert dates to POSIX timestamps (seconds since epoch)
       const startingDate = Math.floor(start.getTime() / 1000);
       const endingDate = Math.floor(end.getTime() / 1000);
 
-      // Prepare voting start data for blockchain
-      const votingStartData = {
-        eventId: createdEvent?.eventId,
-        eventName: createdEvent?.eventName,
-        startingDate, // POSIX timestamp
-        endingDate, // POSIX timestamp
-        walletAddress: walletAddress,
-        timestamp: Date.now(),
-      };
+      // ═══════════════════════════════════════════════════════════════════════
+      // B. FETCH EVENT DATA FROM BACKEND
+      // ═══════════════════════════════════════════════════════════════════════
 
-      // Create message to sign (JSON string of the data)
-      const messageToSign = JSON.stringify({
-        eventId: votingStartData.eventId,
-        eventName: votingStartData.eventName,
-        startingDate: votingStartData.startingDate,
-        endingDate: votingStartData.endingDate,
-        walletAddress: votingStartData.walletAddress,
-        timestamp: votingStartData.timestamp,
+      setTxStatus('Loading event data from backend...');
+
+      const eventResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}`);
+      if (!eventResponse.ok) {
+        throw new Error('Failed to load event data');
+      }
+      const eventData = await eventResponse.json();
+
+      // Extract merkle root and options
+      const merkleRoot = parseInt(eventData.groupMerkleRootHash || '0');
+      const optionsArray = eventData.options ? JSON.parse(eventData.options) : options;
+
+      console.log('Event data loaded:', {
+        merkleRoot,
+        optionsCount: optionsArray.length,
+        startingDate,
+        endingDate,
       });
 
-      // Convert message to hex format for signing
-      const messageHex = Buffer.from(messageToSign, 'utf8').toString('hex');
+      // ═══════════════════════════════════════════════════════════════════════
+      // C. INITIALIZE BLOCKFROST PROVIDER
+      // ═══════════════════════════════════════════════════════════════════════
 
-      // Sign data with wallet - wallet.signData expects hex payload
-      const signedData = await wallet.signData(messageHex);
+      const blockfrostApiKey = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
+      if (!blockfrostApiKey) {
+        throw new Error('Blockfrost API key not configured. Please check .env.local');
+      }
 
-      // Send to backend API
-      const response = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}`, {
+      console.log('Blockfrost API Key loaded:', blockfrostApiKey.slice(0, 10) + '...');
+      console.log('API Key starts with "preprod"?', blockfrostApiKey.startsWith('preprod'));
+
+      const provider = new BlockfrostProvider(blockfrostApiKey);
+
+      // Get payment key hash from wallet address
+      const addressInfo = deserializeAddress(walletAddress);
+      const paymentKeyHash = addressInfo.pubKeyHash;
+
+      console.log('Blockfrost provider initialized');
+      console.log('Payment Key Hash:', paymentKeyHash);
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // D. TRANSACTION 1: MINT GROUP NFT
+      // ═══════════════════════════════════════════════════════════════════════
+
+      setMintingStep('group');
+      setTxStatus('Step 1/2: Minting Group NFT with participant merkle tree...');
+
+      // Get wallet UTxOs
+      const walletUtxos = await getWalletUtxos(wallet);
+      console.log('Available wallet UTxOs:', walletUtxos.length);
+
+      // Select UTxO for Group NFT minting
+      const { selectedUtxo: groupUtxo } =
+        selectUtxoAndCreateOutputReference(walletUtxos, 0);
+
+      console.log('Selected UTxO for Group NFT:', {
+        txHash: groupUtxo.input.txHash,
+        index: groupUtxo.input.outputIndex,
+      });
+
+      // Build and submit Group NFT mint transaction
+      const groupResult = await buildAndSubmitGroupMintTx({
+        provider,
+        wallet,
+        walletAddress,
+        paymentKeyHash,
+        merkleRoot,
+        selectedUtxo: groupUtxo,
+        walletUtxos,
+      });
+
+      console.log('✅ Group NFT minted:', {
+        txHash: groupResult.txHash,
+        policyId: groupResult.policyId,
+      });
+
+      setTxStatus(`Group NFT minted! TX: ${groupResult.txHash.slice(0, 16)}... Waiting for confirmation...`);
+
+      // Wait for transaction confirmation
+      const groupConfirmed = await waitForTxConfirmation(provider, groupResult.txHash, 30, 2000);
+      if (!groupConfirmed) {
+        console.warn('Group NFT transaction not confirmed yet, but continuing...');
+      } else {
+        console.log('✅ Group NFT transaction confirmed on-chain');
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // E. TRANSACTION 2: MINT SEMAPHORE + VOTING NFTs
+      // ═══════════════════════════════════════════════════════════════════════
+
+      setMintingStep('voting');
+      setTxStatus('Step 2/2: Minting Semaphore + Voting NFTs...');
+
+      // Get fresh UTxOs (after Group NFT mint)
+      const walletUtxos2 = await getWalletUtxos(wallet);
+      console.log('Available wallet UTxOs (after Group mint):', walletUtxos2.length);
+
+      // Select different UTxO for Semaphore + Voting NFT minting
+      const { selectedUtxo: votingUtxo } =
+        selectUtxoAndCreateOutputReference(walletUtxos2, 0);
+
+      console.log('Selected UTxO for Semaphore + Voting NFTs:', {
+        txHash: votingUtxo.input.txHash,
+        index: votingUtxo.input.outputIndex,
+      });
+
+      // Calculate TX validity window (5 minutes from now)
+      const currentSlot = await provider.fetchLatestBlock().then(block => parseInt(block.slot));
+      const txValidityEndSlot = currentSlot + (5 * 60); // 5 minutes in slots
+
+      console.log('Transaction validity:', {
+        currentSlot,
+        expiresAt: txValidityEndSlot,
+      });
+
+      // Build and submit Semaphore + Voting NFT mint transaction
+      const svResult = await buildAndSubmitSemaphoreVotingMintTx({
+        provider,
+        wallet,
+        walletAddress,
+        paymentKeyHash,
+        groupNftTxHash: groupResult.txHash,
+        groupNftOutputIndex: 0,
+        groupPolicyId: groupResult.policyId,
+        merkleRoot,
+        options: optionsArray,
+        startingDate,
+        endingDate,
+        selectedUtxo: votingUtxo,
+        walletUtxos: walletUtxos2,
+        txValidityEndSlot,
+      });
+
+      console.log('✅ Semaphore + Voting NFTs minted:', {
+        txHash: svResult.txHash,
+        semaphorePolicyId: svResult.semaphorePolicyId,
+        votingPolicyId: svResult.votingPolicyId,
+      });
+
+      setTxStatus(`Voting NFTs minted! TX: ${svResult.txHash.slice(0, 16)}... Waiting for confirmation...`);
+
+      // Wait for transaction confirmation
+      const svConfirmed = await waitForTxConfirmation(provider, svResult.txHash, 30, 2000);
+      if (!svConfirmed) {
+        console.warn('Semaphore/Voting NFT transaction not confirmed yet, but continuing...');
+      } else {
+        console.log('✅ Semaphore/Voting NFT transaction confirmed on-chain');
+      }
+
+      setMintingStep('complete');
+      setTxStatus('Blockchain transactions complete! Updating backend...');
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // F. BACKEND UPDATES
+      // ═══════════════════════════════════════════════════════════════════════
+
+      // Update event dates
+      const dateResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -719,13 +876,13 @@ export default function EventDashboard() {
         })
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to start voting event: ${response.status} ${response.statusText}`);
+      if (!dateResponse.ok) {
+        throw new Error(`Failed to update event dates: ${dateResponse.status}`);
       }
 
-      const updatedEvent = await response.json();
+      const updatedEvent = await dateResponse.json();
 
-      // Update local state with backend response
+      // Update local state
       if (createdEvent) {
         setCreatedEvent({
           ...createdEvent,
@@ -734,38 +891,64 @@ export default function EventDashboard() {
         });
       }
 
-      // Store published data for display
+      // Save blockchain data (NFT policy IDs, addresses, TX hashes)
       const blockchainData = {
-        signature: signedData.signature,
-        publicKey: signedData.key,
-        eventId: votingStartData.eventId?.toString() || '',
-        eventName: votingStartData.eventName || '',
-        startingDate: votingStartData.startingDate,
-        endingDate: votingStartData.endingDate,
-        walletAddress: walletAddress,
-        timestamp: votingStartData.timestamp,
+        groupNft: groupResult.policyId,
+        groupValidatorAddress: groupResult.scriptAddress,
+        semaphoreNft: svResult.semaphorePolicyId,
+        semaphoreAddress: svResult.semaphoreScriptAddr,
+        votingNft: svResult.votingPolicyId,
+        votingValidatorAddress: svResult.votingScriptAddr,
+        txHashes: {
+          groupMint: groupResult.txHash,
+          semaphoreVotingMint: svResult.txHash,
+        },
+        mintedAt: Date.now(),
+        walletAddress,
       };
 
-      setPublishedData(blockchainData);
+      await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/save-blockchain-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blockchainData })
+      });
 
-      // Save blockchain data to backend
-      try {
-        await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/save-blockchain-data`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ blockchainData })
-        });
-      } catch (err) {
-        console.error('Failed to save blockchain data to backend:', err);
-        // Don't block UI on this failure
-      }
+      console.log('✅ Backend updated with blockchain data');
 
-      alert('Voting event started successfully! The event is now live on the blockchain.');
+      // Store results for UI display
+      setBlockchainResult({
+        groupTxHash: groupResult.txHash,
+        groupPolicyId: groupResult.policyId,
+        semaphoreVotingTxHash: svResult.txHash,
+        semaphorePolicyId: svResult.semaphorePolicyId,
+        votingPolicyId: svResult.votingPolicyId,
+        votingValidatorAddress: svResult.votingScriptAddr,
+      });
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // G. SUCCESS
+      // ═══════════════════════════════════════════════════════════════════════
+
+      setTxStatus('Voting event published to blockchain! 🎉');
+
+      alert(
+        `🎉 Voting event published to blockchain!\n\n` +
+        `Group NFT: ${groupResult.txHash.slice(0, 16)}...\n` +
+        `Voting NFTs: ${svResult.txHash.slice(0, 16)}...\n\n` +
+        `View transactions on Cardanoscan`
+      );
 
     } catch (error) {
-      console.error('Error starting voting:', error);
+      console.error('❌ Error starting voting:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to start voting event';
-      alert(`Failed to start voting event: ${errorMessage}`);
+
+      setTxStatus(`Error: ${errorMessage}`);
+      setMintingStep('idle');
+
+      alert(
+        `Failed to start voting event:\n\n${errorMessage}\n\n` +
+        `Please check the console for details.`
+      );
     } finally {
       setIsStarting(false);
     }
@@ -944,9 +1127,9 @@ export default function EventDashboard() {
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
                     activeTab === 'start'
                       ? 'bg-gray-900 ring-2 ring-gray-900 ring-offset-2'
-                      : publishedData ? 'bg-gray-900' : 'bg-gray-300 text-gray-600'
+                      : (blockchainResult || publishedData) ? 'bg-gray-900' : 'bg-gray-300 text-gray-600'
                   }`}>
-                    {publishedData ? (
+                    {(blockchainResult || publishedData) ? (
                       <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
@@ -960,7 +1143,7 @@ export default function EventDashboard() {
                 </button>
 
                 {/* Connector Line */}
-                <div className={`w-12 h-px ${publishedData ? 'bg-gray-300' : 'bg-gray-200'}`}></div>
+                <div className={`w-12 h-px ${(blockchainResult || publishedData) ? 'bg-gray-300' : 'bg-gray-200'}`}></div>
 
                 {/* Step 4 - Results */}
                 <button
@@ -1255,8 +1438,151 @@ export default function EventDashboard() {
             {/* Start Voting Tab */}
             {activeTab === 'start' && (
               <div>
-                {/* Published Data - Show after successful signing */}
-                {publishedData ? (
+                {/* Blockchain Minting Status - Show during minting */}
+                {isStarting && mintingStep !== 'idle' && (
+                  <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 mb-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <LoadingSpinner />
+                      <h3 className="font-bold text-blue-900 text-lg">
+                        {mintingStep === 'group' && 'Step 1/2: Minting Group NFT'}
+                        {mintingStep === 'voting' && 'Step 2/2: Minting Voting NFTs'}
+                        {mintingStep === 'complete' && 'Finalizing...'}
+                      </h3>
+                    </div>
+                    <p className="text-sm text-blue-800 mb-4">
+                      {txStatus}
+                    </p>
+                    <div className="flex gap-2 mt-4">
+                      <div className={`h-2 flex-1 rounded ${mintingStep === 'group' || mintingStep === 'voting' || mintingStep === 'complete' ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+                      <div className={`h-2 flex-1 rounded ${mintingStep === 'voting' || mintingStep === 'complete' ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+                    </div>
+                    <div className="text-xs text-blue-700 mt-2 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>Do not close this window. Blockchain transactions may take 1-2 minutes.</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Blockchain Result - Show after successful minting */}
+                {blockchainResult ? (
+                  <div className="bg-green-50 border-2 border-green-200 rounded-xl p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <h3 className="font-bold text-green-900 text-lg">Event Published to Blockchain! 🎉</h3>
+                    </div>
+                    <p className="text-sm text-green-800 mb-4">
+                      Your voting event has been successfully minted on the Cardano blockchain. All NFTs are now live on-chain!
+                    </p>
+
+                    <div className="bg-white rounded-lg p-4 border border-green-200 space-y-4">
+                      <h4 className="font-semibold text-gray-900 mb-3">Blockchain Transaction Details</h4>
+
+                      {/* Group NFT */}
+                      <div className="pb-4 border-b border-gray-200">
+                        <h5 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                          <span className="text-lg">1️⃣</span>
+                          Group NFT (Participant Merkle Tree)
+                        </h5>
+                        <div className="space-y-2 text-xs">
+                          <div>
+                            <label className="block text-gray-600 font-semibold mb-1">Policy ID</label>
+                            <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all">
+                              {blockchainResult.groupPolicyId}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-gray-600 font-semibold mb-1">Transaction Hash</label>
+                            <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all">
+                              {blockchainResult.groupTxHash}
+                            </div>
+                          </div>
+                          <a
+                            href={`https://preprod.cardanoscan.io/transaction/${blockchainResult.groupTxHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                            View on Cardanoscan
+                          </a>
+                        </div>
+                      </div>
+
+                      {/* Semaphore + Voting NFTs */}
+                      <div>
+                        <h5 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                          <span className="text-lg">2️⃣</span>
+                          Semaphore + Voting NFTs
+                        </h5>
+                        <div className="space-y-3 text-xs">
+                          <div>
+                            <label className="block text-gray-600 font-semibold mb-1">Semaphore Policy ID</label>
+                            <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all">
+                              {blockchainResult.semaphorePolicyId}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-gray-600 font-semibold mb-1">Voting Policy ID</label>
+                            <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all">
+                              {blockchainResult.votingPolicyId}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-gray-600 font-semibold mb-1">Voting Validator Address</label>
+                            <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all text-[10px]">
+                              {blockchainResult.votingValidatorAddress}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-gray-600 font-semibold mb-1">Transaction Hash</label>
+                            <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all">
+                              {blockchainResult.semaphoreVotingTxHash}
+                            </div>
+                          </div>
+                          <a
+                            href={`https://preprod.cardanoscan.io/transaction/${blockchainResult.semaphoreVotingTxHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                            View on Cardanoscan
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-start gap-2 text-xs text-green-800">
+                      <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p>
+                        All NFTs and voting data are now immutably recorded on the Cardano blockchain and can be verified by anyone.
+                      </p>
+                    </div>
+
+                    {/* Navigation to Results */}
+                    <div className="mt-6 pt-6 border-t border-green-200">
+                      <button
+                        onClick={() => setActiveTab('results')}
+                        className="w-full bg-gray-900 text-white py-4 px-6 rounded-xl hover:bg-gray-800 transition-all font-semibold flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        View Results
+                      </button>
+                    </div>
+                  </div>
+                ) : publishedData ? (
                   <div className="bg-green-50 border-2 border-green-200 rounded-xl p-6">
                     <div className="flex items-center gap-2 mb-4">
                       <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1454,14 +1780,17 @@ export default function EventDashboard() {
                   {isStarting ? (
                     <>
                       <LoadingSpinner />
-                      Signing with Wallet...
+                      {mintingStep === 'group' && 'Minting Group NFT...'}
+                      {mintingStep === 'voting' && 'Minting Voting NFTs...'}
+                      {mintingStep === 'complete' && 'Finalizing...'}
+                      {mintingStep === 'idle' && 'Preparing Transaction...'}
                     </>
                   ) : (
                     <>
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
-                      Sign with Wallet & Start Voting
+                      Publish Voting Event to Blockchain
                     </>
                   )}
                 </button>
