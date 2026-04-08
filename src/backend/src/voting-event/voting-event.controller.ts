@@ -24,6 +24,11 @@ export class VotingEventController {
     );
   }
 
+  @Get()
+  async getAllVotingEvents() {
+    return await this.votingEventService.getAllVotingEvents();
+  }
+
   @Get(':eventId')
   async getVotingEvent(@Param('eventId') eventId: number) {
     return await this.votingEventService.getVotingEvent(eventId);
@@ -117,11 +122,10 @@ export class VotingEventController {
    */
   @Post(':eventId/vote')
   async submitVote(
-    @Param('eventId') eventId: number,
-    @Body('selectedOption') selectedOption: number,
-    @Body('commitment') commitment: string,  // ⚠️ TEMPORARY - Replace with proof + nullifier for full ZK verification
+    @Param('eventId') _eventId: number,
+    @Body('signedTx') signedTx: string,
   ) {
-    return await this.votingEventService.submitVote(eventId, selectedOption, commitment);
+    return await this.votingEventService.submitVote(signedTx);
   }
 
   @Post(':eventId/validate-admin-token')
@@ -137,6 +141,27 @@ export class VotingEventController {
     @Param('eventId') eventId: number,
   ) {
     return await this.votingEventService.markInvitationsSent(eventId);
+  }
+
+  // Returns the Semaphore group Merkle proof for a participant.
+  // Frontend uses this as witness input when generating the ZK vote proof.
+  @Get(':eventId/merkle-proof/:userId')
+  async getMerkleProof(
+    @Param('eventId') eventId: number,
+    @Param('userId') userId: number,
+  ) {
+    return await this.votingEventService.getMerkleProof(eventId, userId);
+  }
+
+  // Inserts a nullifier into the MPF trie and returns the proof.
+  // Must be called before building the vote transaction (proof is needed as tx input).
+  // Throws 409 if the nullifier was already used (double-vote attempt).
+  @Post(':eventId/nullifier')
+  async insertNullifier(
+    @Param('eventId') eventId: number,
+    @Body('nullifier') nullifier: string,
+  ) {
+    return await this.votingEventService.insertNullifier(eventId, nullifier);
   }
 
   @Post(':eventId/save-blockchain-data')

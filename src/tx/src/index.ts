@@ -3,6 +3,8 @@
 // Transaction builder functions
 export { buildGroupMintTransaction } from './mint-group.js';
 export { buildSemaphoreVotingMintTransaction } from './mint-sv.js';
+export { buildVoteTransaction, VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } from './vote.js';
+export type { BuildVoteTransactionParams } from './vote.js';
 
 // Utility functions
 export * from './utils.js';

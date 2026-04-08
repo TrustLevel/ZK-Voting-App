@@ -81,6 +81,22 @@ export class VotingEvent {
   @Column({ name: 'blockchain_data', type: 'text', nullable: true })
   blockchainData: string | null;
 
+  // Minting OutputReference used in Phase 2 of bootstrap (semaphore + voting NFT mint).
+  // Required by the frontend to derive the parameterized validator CBORs via applyOrefParamToScript().
+  @Column({ name: 'minting_oref_tx_hash', type: 'text', nullable: true })
+  mintingOrefTxHash: string | null;
+
+  @Column({ name: 'minting_oref_index', type: 'integer', nullable: true })
+  mintingOrefIndex: number | null;
+
+  // VKey UTxO reference — points to the UTxO holding the Groth16 verification key datum.
+  // Must match SemaphoreDatum.vkey_ref_input on-chain. Consumed and re-created on each vote.
+  @Column({ name: 'vkey_ref_tx_hash', type: 'text', nullable: true })
+  vkeyRefTxHash: string | null;
+
+  @Column({ name: 'vkey_ref_index', type: 'integer', nullable: true })
+  vkeyRefIndex: number | null;
+
   @ManyToOne(() => User)
   @JoinColumn({ name: 'admin_user_id' })
   adminUser: User;

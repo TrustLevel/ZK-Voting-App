@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@meshsdk/core": "^1.7.8",
-    "@meshsdk/core-csl": "^1.7.8"
+    "@meshsdk/core-csl": "^1.7.8",
+    "@src/zk": "*"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",

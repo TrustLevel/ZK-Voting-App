@@ -22,7 +22,7 @@ source = "github"
 
 [[dependencies]]
 name = "modulo-p/cardano-semaphore"
-version = "v0.9.2"
+version = "v0.9.4"
 source = "github"
 
 [[dependencies]]
