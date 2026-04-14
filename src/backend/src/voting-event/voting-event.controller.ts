@@ -164,6 +164,21 @@ export class VotingEventController {
     return await this.votingEventService.insertNullifier(eventId, nullifier);
   }
 
+  // Rolls back a nullifier insertion if the vote TX failed after nullifier was inserted.
+  // This restores the trie to the pre-insertion state so the voter can retry.
+  @Delete(':eventId/nullifier')
+  async rollbackNullifier(
+    @Param('eventId') eventId: number,
+    @Body('nullifier') nullifier: string,
+  ) {
+    return await this.votingEventService.rollbackNullifier(eventId, nullifier);
+  }
+
+  @Get(':eventId/results')
+  async getResults(@Param('eventId') eventId: number) {
+    return await this.votingEventService.getResults(eventId);
+  }
+
   @Post(':eventId/save-blockchain-data')
   async saveBlockchainData(
     @Param('eventId') eventId: number,

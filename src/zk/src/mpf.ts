@@ -11,11 +11,14 @@ import { blake2b } from '@noble/hashes/blake2b';
  *   let nullifier_key   = crypto.blake2b_256(nullifier_value)
  */
 function nullifierToKeyValue(nullifier: bigint): { key: Buffer; value: Buffer } {
-  // Big-endian 32-byte representation of the nullifier integer
-  const hex = nullifier.toString(16).padStart(64, '0');
-  const bigEndian = Buffer.from(hex, 'hex');
-  // Little-endian = reverse of big-endian (integer_to_bytearray(False, 0, n))
-  const value = Buffer.from(bigEndian).reverse();
+  // On-chain: scalar.to_bytearray_little_endian(scalar.new(nullifier), 0)
+  // Uses size=0 = MINIMAL encoding: no leading zeros in big-endian = no trailing zeros in LE.
+  // Values < 2^248 produce fewer than 32 bytes; always using 32 bytes would give a different
+  // blake2b key and break the on-chain MPF root check.
+  const rawHex = nullifier.toString(16);
+  const paddedHex = rawHex.length % 2 ? '0' + rawHex : rawHex; // ensure even length
+  const bigEndian = Buffer.from(paddedHex, 'hex'); // minimal BE (no leading zeros)
+  const value = Buffer.from(Buffer.from(bigEndian).reverse()); // minimal LE
   // Key = blake2b_256(value)
   const key = Buffer.from(blake2b(value, { dkLen: 32 }));
   return { key, value };

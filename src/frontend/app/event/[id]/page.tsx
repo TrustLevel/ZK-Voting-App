@@ -25,6 +25,11 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Identity } from 'modp-semaphore-bls12381/packages/typescript/src/identity';
+import { useWallet } from '@meshsdk/react';
+import { BlockfrostProvider, deserializeAddress } from '@meshsdk/core';
+import { encodeVoteSignal, generateVoteProof, buildVoteTransaction, applyOrefParamToScript } from '@/lib/vote-helpers';
+import { VALIDATORS } from '@/lib/validators';
+import { createOutputReference } from '@/lib/blockchain-helpers';
 
 // ============================================================================
 // CONSTANTS
@@ -44,6 +49,15 @@ interface VotingEvent {
   endingDate: number | null;
   votingPower: number;
   groupSize: number;
+  // Blockchain fields (set after admin completes Phase 2 minting)
+  semaphoreAddress: string | null;
+  votingValidatorAddress: string | null;
+  semaphoreNft: string | null;   // Policy ID
+  votingNft: string | null;      // Policy ID
+  groupNft: string | null;       // Policy ID
+  groupMerkleRootHash: string;
+  mintingOrefTxHash: string | null;
+  mintingOrefIndex: number | null;
 }
 
 interface VotingOption {
@@ -72,6 +86,11 @@ export default function EventPage() {
   // --------------------------------------------------------------------------
   // STATE MANAGEMENT
   // --------------------------------------------------------------------------
+
+  // Wallet
+  const { connected, wallet, connect, name: walletName } = useWallet();
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
 
   // UI State
   const [activeTab, setActiveTab] = useState<Tab>('register');
@@ -106,6 +125,12 @@ export default function EventPage() {
   const [submitting, setSubmitting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
   const [votedOptionIndex, setVotedOptionIndex] = useState<number | null>(null);
+  const [voteStep, setVoteStep] = useState<string | null>(null);
+  const [voteTxHash, setVoteTxHash] = useState<string | null>(null);
+
+  // Results State
+  const [results, setResults] = useState<VotingOption[] | null>(null);
+  const [loadingResults, setLoadingResults] = useState(false);
 
   // File Upload State
   const [uploadingIdentity, setUploadingIdentity] = useState(false);
@@ -123,6 +148,16 @@ export default function EventPage() {
    * 1. Check localStorage for existing identity → load it and skip token validation
    * 2. No identity found → validate token from URL (first visit)
    */
+
+  // Fetch and display the connected wallet address whenever the wallet connects/disconnects
+  useEffect(() => {
+    if (connected && wallet) {
+      wallet.getChangeAddress().then(setConnectedAddress).catch(() => setConnectedAddress(null));
+    } else {
+      setConnectedAddress(null);
+    }
+  }, [connected, wallet]);
+
   useEffect(() => {
     const initializeSession = async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -403,93 +438,245 @@ export default function EventPage() {
   };
 
   /**
-   * Submit vote to backend
-   * Backend: POST /voting-event/:eventId/vote
-   * Submits the selected option and marks user as voted
+   * Submit vote — 8-step ZK vote flow.
+   * voteSignal: [[optionIndex, voteCount], ...]
    */
-  const submitVote = async (optionIndex: number) => {
+  const submitVote = async (voteSignal: Array<[number, number]>) => {
     try {
       setSubmitting(true);
+      setVoteStep(null);
 
-      // Validate userId
       if (!validatedUserId) {
         throw new Error('User ID not found. Please use a valid invitation link.');
       }
-
-      // ============================================================================
-      // ⚠️ TODO FOR ZK-PROOF IMPLEMENTATION
-      // ============================================================================
-      //
-      // CURRENT (FAKE - NOT ANONYMOUS):
-      // - Sends userId (reveals identity!)
-      // - No ZK-proof verification
-      //
-      // REQUIRED CHANGES:
-      //
-      // 1. FRONTEND: Generate ZK-proof using stored identity
-      //    const storedIdentityStr = localStorage.getItem(`identity_${eventId}_${validatedToken}`);
-      //    const storedIdentity: StoredIdentity = JSON.parse(storedIdentityStr);
-      //    const identity = new Identity(
-      //      JSON.stringify([storedIdentity.trapdoor, storedIdentity.nullifier])
-      //    );
-      //    const { proof, nullifier } = await generateProofForVote(
-      //      identity,
-      //      event.groupMerkleRootHash, // Current Merkle root
-      //      optionIndex
-      //    );
-      //
-      // 2. FRONTEND: Send proof + nullifier (NO userId!)
-      //    const votePayload = {
-      //      proof: proof,           // ZK-proof object
-      //      nullifier: nullifier,   // Computed nullifier (prevents double-voting)
-      //      signal: optionIndex     // The vote itself
-      //    };
-      //
-      // 3. BACKEND: Verify proof in submitVote()
-      //    - Verify proof against groupMerkleRootHash
-      //    - Check nullifier not already used
-      //    - Store nullifier (NOT userId!)
-      //
-      // ============================================================================
-
-      // Ensure user has commitment (identity)
-      if (!commitment) {
-        throw new Error('No commitment found. Please register first.');
+      if (!event) {
+        throw new Error('Event data not loaded.');
+      }
+      if (!event.semaphoreAddress) {
+        throw new Error('Voting not yet available — the event organizer has not completed the blockchain setup.');
+      }
+      if (!connected || !wallet) {
+        throw new Error('Wallet not connected. Please connect your wallet before voting.');
       }
 
-      const votePayload = {
-        selectedOption: optionIndex,
-        commitment: commitment, // ✅ Anonymous voting - track commitment, not userId
+      // Load stored identity
+      const storedIdentityStr = localStorage.getItem(`identity_${eventId}_${validatedToken}`);
+      if (!storedIdentityStr) {
+        throw new Error('No identity found. Please upload your identity file.');
+      }
+      const storedIdentity: StoredIdentity = JSON.parse(storedIdentityStr);
+
+      // Step 2: Fetch Merkle proof
+      setVoteStep('Fetching Merkle proof...');
+      const merkleResponse = await fetch(
+        `${BACKEND_API_URL}/voting-event/${eventId}/merkle-proof/${validatedUserId}`
+      );
+      if (!merkleResponse.ok) throw new Error('Failed to fetch Merkle proof');
+      const merkleData = await merkleResponse.json();
+
+      const merkleProof = {
+        root: BigInt(merkleData.root),
+        siblings: (merkleData.siblings as string[]).map(BigInt),
+        pathIndices: merkleData.pathIndices as number[],
       };
 
-      // Submit vote to backend
-      const response = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/vote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(votePayload)
+      // Step 3: Encode vote signal
+      setVoteStep('Encoding vote signal...');
+      const signalMessage = await encodeVoteSignal(voteSignal);
+
+      // Step 4: Generate ZK proof
+      setVoteStep('Generating ZK proof... (this may take ~30s)');
+      const externalNullifier = BigInt('0x' + event.semaphoreNft!);
+      const { zkProof, nullifierHash, publicSignals } = await generateVoteProof({
+        identityNullifier: BigInt(storedIdentity.nullifier),
+        identityTrapdoor: BigInt(storedIdentity.trapdoor),
+        merkleProof,
+        externalNullifier,
+        signal: signalMessage,
+      });
+      const signalHash = BigInt(publicSignals[2]);
+
+      // ── VOTE DIAGNOSTICS ────────────────────────────────────────────────────────
+      const BLS12_381_R = 52435875175126190479447740508185965837690552500527637822603658699938581184513n;
+      console.log('🗳️ VOTE DIAGNOSTICS:');
+      console.log('  externalNullifier  :', externalNullifier.toString());
+      console.log('  nullifierHash      :', nullifierHash.toString());
+      console.log('  signalHash         :', signalHash.toString());
+      console.log('  merkleRoot(backend):', merkleData.root);
+      console.log('  merkleRoot(circuit):', publicSignals[0]);
+      console.log('  groupMerkleRootHash:', event.groupMerkleRootHash);
+      console.log('  publicSignals      :', publicSignals);
+      console.log('  nullifierHash < 2^248?', nullifierHash < (1n << 248n), '(if true → MPF encoding edge-case)');
+      // NOTE: the checks below compare backend values to backend values — they do NOT verify
+      // the actual on-chain datum. Use the precision-loss check below for an early failure signal.
+      console.log('  merkle root match? backend==merkleProof:', merkleData.root === event.groupMerkleRootHash);
+      console.log('  merkle root match? circuit==backend:', publicSignals[0] === event.groupMerkleRootHash);
+      // Precision-loss early-warning: if the event was bootstrapped with parseInt() instead of
+      // BigInt(), the on-chain datum contains BigInt(Number(hash)) which differs from hash.
+      // Voting will ALWAYS fail for such events — create a new event and re-bootstrap.
+      const precisionLostRoot = BigInt(Number(event.groupMerkleRootHash));
+      const exactRoot = BigInt(event.groupMerkleRootHash);
+      if (precisionLostRoot !== exactRoot) {
+        console.error(
+          '❌ PRECISION LOSS DETECTED: groupMerkleRootHash is vulnerable to float conversion.\n' +
+          '   exact  :', exactRoot.toString(), '\n' +
+          '   as-float:', precisionLostRoot.toString(), '\n' +
+          '   → This event was likely bootstrapped with parseInt(). Voting will ALWAYS fail.\n' +
+          '   → Create a new event and re-bootstrap with the fixed code.'
+        );
+      } else {
+        console.log('  ✅ precision loss check: groupMerkleRootHash is safe (fits in float64)');
+      }
+      if (nullifierHash >= BLS12_381_R) {
+        console.error('❌ nullifierHash >= BLS12_381_R — invalid scalar!');
+      }
+      // ────────────────────────────────────────────────────────────────────────────
+
+      // Step 5: Insert nullifier
+      setVoteStep('Inserting nullifier...');
+      const nullifierResponse = await fetch(
+        `${BACKEND_API_URL}/voting-event/${eventId}/nullifier`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nullifier: nullifierHash.toString() }),
+        }
+      );
+      if (!nullifierResponse.ok) {
+        const errData = await nullifierResponse.json().catch(() => ({}));
+        if (nullifierResponse.status === 409) {
+          throw new Error(
+            'Your vote identity has already been used in a previous attempt. ' +
+            'If that transaction was never confirmed on-chain, please contact the event organizer.'
+          );
+        }
+        throw new Error(errData.message || 'Nullifier insertion failed.');
+      }
+      const nullifierResult = await nullifierResponse.json();
+      const mpfNewRoot: string = nullifierResult.newRoot;
+      const mpfProofSteps: Array<object> = nullifierResult.proofSteps;
+      console.log('  mpfNewRoot         :', mpfNewRoot);
+      console.log('  mpfProofSteps      :', JSON.stringify(mpfProofSteps));
+
+      // Step 6: Build vote transaction
+      setVoteStep('Building transaction...');
+
+      const walletAddress = await wallet.getChangeAddress();
+      const walletUtxos = await wallet.getUtxos();
+      const { pubKeyHash: paymentKeyHash } = deserializeAddress(walletAddress);
+
+      // ── COLLATERAL DIAGNOSTICS ───────────────────────────────────────────────
+      console.log('💰 Wallet UTxOs (' + walletUtxos.length + ' total):');
+      walletUtxos.forEach((u, i) => {
+        const units = u.output.amount.map(a => a.unit === 'lovelace' ? (parseInt(a.quantity)/1_000_000).toFixed(2) + ' ADA' : a.unit.slice(0,16) + '…');
+        const isPureAda = u.output.amount.length === 1 && u.output.amount[0].unit === 'lovelace';
+        const lovelace = u.output.amount.find(a => a.unit === 'lovelace')?.quantity ?? '0';
+        console.log(`  [${i}] ${u.input.txHash.slice(0,12)}…#${u.input.outputIndex} pureADA=${isPureAda} lovelace=${lovelace} assets=[${units.join(', ')}]`);
+      });
+      const pureAdaUtxos = walletUtxos.filter(u => u.output.amount.length === 1 && u.output.amount[0].unit === 'lovelace');
+      console.log('  Pure-ADA UTxOs (collateral candidates):', pureAdaUtxos.length);
+      // ────────────────────────────────────────────────────────────────────────
+
+      const mintingOref = createOutputReference(
+        event.mintingOrefTxHash!,
+        event.mintingOrefIndex!
+      );
+      const semaphoreValidatorCbor = await applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
+      const votingValidatorCbor = await applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
+
+      const currentOptions: Array<[number, number]> = JSON.parse(event.options).map(
+        (o: { index: number; votes: number }) => [o.index, o.votes] as [number, number]
+      );
+
+      const provider = new BlockfrostProvider(
+        process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY!
+      );
+
+      const unsignedTx = await buildVoteTransaction({
+        provider,
+        semaphoreScriptAddress: event.semaphoreAddress,
+        votingScriptAddress: event.votingValidatorAddress!,
+        semaphoreNftPolicyId: event.semaphoreNft!,
+        votingNftPolicyId: event.votingNft!,
+        groupNftPolicyId: event.groupNft!,
+        groupMerkleRoot: BigInt(event.groupMerkleRootHash),
+        semaphoreValidatorCbor,
+        votingValidatorCbor,
+        walletUtxos,
+        walletAddress,
+        paymentKeyHash,
+        zkProof,
+        nullifierHash,
+        signalHash,
+        signalMessage,
+        mpfProofSteps,
+        mpfNewRoot,
+        voteSignal,
+        currentOptions,
+        // weight in UrnaDatum is 0 for simple voting (votingPower===1), votingPower for weighted.
+        // Must match what was set at minting time: votingPower > 1 ? votingPower : 0.
+        weight: event.votingPower > 1 ? event.votingPower : 0,
+        eventStart: event.startingDate! * 1000,
+        eventEnd: event.endingDate! * 1000,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to submit vote');
+      // Helper: roll back nullifier if anything after insertion fails, so the voter can retry.
+      const rollbackNullifier = async () => {
+        try {
+          await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/nullifier`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nullifier: nullifierHash.toString() }),
+          });
+          console.log('↩️ Nullifier rolled back — voter can retry.');
+        } catch {
+          console.warn('⚠️ Nullifier rollback failed — voter may need organizer help to retry.');
+        }
+      };
+
+      // Step 7: Sign transaction
+      setVoteStep('Waiting for wallet signature...');
+      let signedTx: string;
+      try {
+        signedTx = await wallet.signTx(unsignedTx, true);
+      } catch (signErr: any) {
+        await rollbackNullifier();
+        const msg = signErr?.message ?? String(signErr);
+        if (msg.toLowerCase().includes('user declined') || msg.toLowerCase().includes('declined sign')) {
+          throw new Error('Wallet signature declined. Your vote was not submitted.');
+        }
+        throw new Error('Signing failed: ' + msg);
       }
 
-      // Check backend response for success
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to submit vote');
+      // Step 8: Submit to blockchain via backend
+      setVoteStep('Submitting to blockchain...');
+      const submitResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signedTx }),
+      });
+      if (!submitResponse.ok) {
+        await rollbackNullifier();
+        const errData = await submitResponse.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to submit transaction');
       }
+      const submitResult = await submitResponse.json();
+      const txHash: string = submitResult.txHash;
 
-      // Mark as voted in localStorage (with token to keep separate user sessions)
+      // Mark as voted locally
       if (validatedToken) {
         localStorage.setItem(`has_voted_${eventId}_${validatedToken}`, 'true');
-        localStorage.setItem(`voted_option_${eventId}_${validatedToken}`, optionIndex.toString());
+        const voteOptionIndex = voteSignal[0]?.[0] ?? null;
+        if (voteOptionIndex !== null) {
+          localStorage.setItem(`voted_option_${eventId}_${validatedToken}`, voteOptionIndex.toString());
+        }
       }
       setHasVoted(true);
-      setVotedOptionIndex(optionIndex);
+      setVotedOptionIndex(voteSignal[0]?.[0] ?? null);
+      setVoteTxHash(txHash);
+      setVoteStep(null);
       setSubmitting(false);
 
-      // Switch to results tab
       setTimeout(() => {
         setActiveTab('results');
       }, 1500);
@@ -498,6 +685,7 @@ export default function EventPage() {
       console.error('Error submitting vote:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to submit vote. Please try again.';
       setError(errorMessage);
+      setVoteStep(null);
       setSubmitting(false);
     }
   };
@@ -699,19 +887,17 @@ export default function EventPage() {
 
   /**
    * Handle simple voting (one vote per person)
-   * Validates selection and submits vote
    */
   const handleSimpleVote = async () => {
     if (selectedOption === null) {
       alert('Please select an option');
       return;
     }
-    await submitVote(selectedOption);
+    await submitVote([[selectedOption, 1]]);
   };
 
   /**
    * Handle weighted voting (distribute points across options)
-   * Validates total points and submits option with most points
    */
   const handleWeightedVote = async () => {
     if (!event) return;
@@ -723,17 +909,16 @@ export default function EventPage() {
       return;
     }
 
-    // Find the option with the most points
-    const maxPoints = Math.max(...Object.values(pointsDistribution));
-    const selectedOptionIndex = Object.entries(pointsDistribution)
-      .find(([_, points]) => points === maxPoints)?.[0];
+    const voteSignal: Array<[number, number]> = Object.entries(pointsDistribution)
+      .filter(([_, pts]) => pts > 0)
+      .map(([idx, pts]) => [parseInt(idx), pts]);
 
-    if (selectedOptionIndex === undefined) {
+    if (voteSignal.length === 0) {
       alert('Please distribute your points');
       return;
     }
 
-    await submitVote(parseInt(selectedOptionIndex));
+    await submitVote(voteSignal);
   };
 
   /**
@@ -757,6 +942,24 @@ export default function EventPage() {
    */
   const getTotalDistributedPoints = () => {
     return Object.values(pointsDistribution).reduce((sum, points) => sum + points, 0);
+  };
+
+  /**
+   * Load on-chain results from backend
+   */
+  const loadResults = async () => {
+    setLoadingResults(true);
+    try {
+      const response = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/results`);
+      if (!response.ok) throw new Error('Failed to load results');
+      const data = await response.json();
+      setResults(data.options);
+    } catch (err) {
+      console.error('Failed to load results:', err);
+      setResults(null);
+    } finally {
+      setLoadingResults(false);
+    }
   };
 
   /**
@@ -951,7 +1154,7 @@ export default function EventPage() {
 
                 {/* Results Tab */}
                 <button
-                  onClick={() => setActiveTab('results')}
+                  onClick={() => { setActiveTab('results'); loadResults(); }}
                   className="flex flex-col items-center cursor-pointer hover:opacity-80 transition"
                 >
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
@@ -1151,6 +1354,65 @@ export default function EventPage() {
             {/* Vote Tab */}
             {activeTab === 'vote' && (
               <div>
+                {/* Blockchain not ready */}
+                {!event.semaphoreAddress && (
+                  <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 mb-8">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center shrink-0">
+                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-gray-900 mb-1">Voting Not Yet Available</h3>
+                        <p className="text-sm text-gray-700">The event organizer has not completed the blockchain setup.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Wallet connected */}
+                {event.semaphoreAddress && connected && (
+                  <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4 mb-8">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center shrink-0">
+                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-green-900 capitalize">{walletName} connected</p>
+                        {connectedAddress && (
+                          <p className="text-xs text-green-700 font-mono truncate">{connectedAddress}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Wallet not connected */}
+                {event.semaphoreAddress && !connected && (
+                  <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6 mb-8">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center shrink-0">
+                        <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-yellow-900 mb-1">Wallet Required</h3>
+                        <p className="text-sm text-yellow-800 mb-3">Please connect your Cardano wallet to cast your vote.</p>
+                        <button
+                          onClick={() => setShowWalletModal(true)}
+                          className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-all font-semibold text-sm"
+                        >
+                          Connect Wallet
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Status Info Box */}
                 {!isRegistered ? (
                   // Not Registered - Show Registration Required
@@ -1263,7 +1525,7 @@ export default function EventPage() {
                       <h2 className="text-xl font-bold text-gray-900">Vote Submitted</h2>
                     </div>
                     <p className="text-sm text-gray-600 mb-4">
-                      Your vote has been recorded anonymously.
+                      Your vote has been recorded anonymously on-chain.
                     </p>
                     {votedOptionIndex !== null && (
                       <div className="bg-white rounded-lg p-3 border border-gray-200 mt-4">
@@ -1271,6 +1533,19 @@ export default function EventPage() {
                         <p className="text-sm font-semibold text-gray-900">
                           {options.find(opt => opt.index === votedOptionIndex)?.text || `Option ${votedOptionIndex}`}
                         </p>
+                      </div>
+                    )}
+                    {voteTxHash && (
+                      <div className="bg-white rounded-lg p-3 border border-gray-200 mt-3">
+                        <p className="text-xs text-gray-600 mb-1">Transaction:</p>
+                        <a
+                          href={`https://preprod.cardanoscan.io/transaction/${voteTxHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-mono text-blue-600 hover:underline break-all"
+                        >
+                          View on Explorer
+                        </a>
                       </div>
                     )}
                     <button
@@ -1398,7 +1673,7 @@ export default function EventPage() {
 
                     <button
                       onClick={isSimpleVote ? handleSimpleVote : handleWeightedVote}
-                      disabled={!isRegistered || !event.startingDate || Date.now() < event.startingDate * 1000 || (event.endingDate && Date.now() > event.endingDate * 1000) || hasVoted || submitting || (isSimpleVote ? selectedOption === null : getTotalDistributedPoints() !== event.votingPower)}
+                      disabled={!isRegistered || !event.startingDate || Date.now() < event.startingDate * 1000 || (event.endingDate && Date.now() > event.endingDate * 1000) || hasVoted || submitting || !connected || !event.semaphoreAddress || (isSimpleVote ? selectedOption === null : getTotalDistributedPoints() !== event.votingPower)}
                       className="w-full px-6 py-4 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {submitting ? (
@@ -1418,6 +1693,9 @@ export default function EventPage() {
                         </>
                       )}
                     </button>
+                    {voteStep && (
+                      <p className="mt-3 text-sm text-gray-600 text-center">{voteStep}</p>
+                    )}
 
                     {!isSimpleVote && getTotalDistributedPoints() !== event.votingPower && (
                       <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
@@ -1477,21 +1755,30 @@ export default function EventPage() {
                     <h3 className="font-bold text-gray-900">Voting Results</h3>
                   </div>
 
-                  {/* Show pending message if voting hasn't ended yet */}
-                  {event.endingDate && Date.now() < event.endingDate * 1000 ? (
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-6 text-center">
-                      <p className="text-sm text-gray-700 mb-1">
-                        Results will be displayed here once voting ends. Check back after {formatDate(event.endingDate)}
-                      </p>
-                      <p className="text-xs text-gray-600">
-                        This page will automatically update when voting ends.
-                      </p>
+                  {/* Load results button */}
+                  <button
+                    onClick={loadResults}
+                    disabled={loadingResults}
+                    className="mb-4 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm font-medium disabled:opacity-50"
+                  >
+                    {loadingResults ? 'Loading...' : 'Refresh Results'}
+                  </button>
+
+                  {loadingResults ? (
+                    <div className="flex items-center justify-center py-8">
+                      <svg className="animate-spin h-8 w-8 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    </div>
+                  ) : results === null ? (
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
+                      <p className="text-sm text-gray-600">Results could not be loaded from the blockchain.</p>
                     </div>
                   ) : (
-                    // Show actual results if voting has ended
                     <div className="space-y-3">
-                      {fullOptions.sort((a, b) => (b.votes || 0) - (a.votes || 0)).map((option, index) => {
-                        const totalVotes = fullOptions.reduce((sum, opt) => sum + (opt.votes || 0), 0);
+                      {results.sort((a, b) => (b.votes || 0) - (a.votes || 0)).map((option, index) => {
+                        const totalVotes = results.reduce((sum, opt) => sum + (opt.votes || 0), 0);
                         const percentage = totalVotes > 0 ? ((option.votes || 0) / totalVotes * 100).toFixed(1) : '0.0';
 
                         return (
@@ -1528,6 +1815,51 @@ export default function EventPage() {
 
         </div>
       </div>
+
+      {/* Wallet Connect Modal */}
+      {showWalletModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Connect Your Wallet</h2>
+            <p className="text-gray-600 mb-6">Choose a wallet to cast your vote</p>
+
+            <div className="space-y-3">
+              {['eternl', 'lace', 'yoroi'].map((walletName) => (
+                <button
+                  key={walletName}
+                  onClick={async () => {
+                    try {
+                      setShowWalletModal(false);
+                      await connect(walletName);
+                    } catch (err) {
+                      console.error('Failed to connect wallet:', err);
+                      alert(`Failed to connect ${walletName}. Make sure the extension is installed.`);
+                    }
+                  }}
+                  className="w-full p-4 border-2 border-gray-300 rounded-xl hover:border-gray-900 hover:bg-gray-50 transition-all text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                      <span className="text-gray-700 font-semibold text-sm uppercase">{walletName[0]}</span>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900 capitalize">{walletName}</div>
+                      <div className="text-sm text-gray-600">Connect with {walletName.charAt(0).toUpperCase() + walletName.slice(1)}</div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setShowWalletModal(false)}
+              className="w-full mt-4 py-3 text-gray-600 hover:text-gray-900 font-medium"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

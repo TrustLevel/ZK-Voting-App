@@ -719,7 +719,7 @@ export default function EventDashboard() {
       const eventData = await eventResponse.json();
 
       // Extract merkle root and options
-      const merkleRoot = parseInt(eventData.groupMerkleRootHash || '0');
+      const merkleRoot = BigInt(eventData.groupMerkleRootHash || '0');
       const optionsArray = eventData.options ? JSON.parse(eventData.options) : options;
 
       console.log('Event data loaded:', {
@@ -789,11 +789,38 @@ export default function EventDashboard() {
       setTxStatus(`Group NFT minted! TX: ${groupResult.txHash.slice(0, 16)}... Waiting for confirmation...`);
 
       // Wait for transaction confirmation
-      const groupConfirmed = await waitForTxConfirmation(provider, groupResult.txHash, 30, 2000);
+      const groupConfirmed = await waitForTxConfirmation(provider, groupResult.txHash, 60, 3000);
       if (!groupConfirmed) {
-        console.warn('Group NFT transaction not confirmed yet, but continuing...');
-      } else {
-        console.log('✅ Group NFT transaction confirmed on-chain');
+        throw new Error('Group NFT transaction not confirmed after 3 minutes. Please try again.');
+      }
+      console.log('✅ Group NFT transaction confirmed on-chain');
+
+      // Wait for the Group NFT UTxO to be specifically visible at the script address.
+      //
+      // Previously: fixed 10s sleep. This was unreliable — sometimes the UTxO was
+      // not yet indexed, sometimes 10s was overkill.
+      //
+      // Now: active polling via Blockfrost until the UTxO appears at the script
+      // address. This is the correct signal that the node (and Blockfrost submission
+      // nodes) are ready to accept a TX referencing this UTxO. Max 90s before we
+      // warn and continue anyway (the Semaphore+Voting TX no longer uses an Ogmios
+      // evaluator, so the submission can succeed even if this check times out).
+      console.log('⏳ Waiting for Group NFT UTxO to be visible at script address...');
+      setTxStatus('Waiting for Group NFT to be available on-chain...');
+      let groupUtxoVisible = false;
+      for (let i = 0; i < 30; i++) {
+        try {
+          const utxosAtScript = await provider.fetchAddressUTxOs(groupResult.scriptAddress);
+          if (utxosAtScript.some(u => u.input.txHash === groupResult.txHash)) {
+            groupUtxoVisible = true;
+            console.log(`✅ Group NFT UTxO visible after ${(i + 1) * 3}s`);
+            break;
+          }
+        } catch { /* ignore fetch errors, keep polling */ }
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+      if (!groupUtxoVisible) {
+        console.warn('⚠️ Group NFT UTxO not yet visible — proceeding anyway (evaluator is disabled for TX 2)');
       }
 
       // ═══════════════════════════════════════════════════════════════════════
@@ -836,6 +863,7 @@ export default function EventDashboard() {
         groupPolicyId: groupResult.policyId,
         merkleRoot,
         options: optionsArray,
+        votingPower,
         startingDate,
         endingDate,
         selectedUtxo: votingUtxo,
@@ -899,6 +927,9 @@ export default function EventDashboard() {
         semaphoreAddress: svResult.semaphoreScriptAddr,
         votingNft: svResult.votingPolicyId,
         votingValidatorAddress: svResult.votingScriptAddr,
+        // Required for re-deriving parameterized validator CBORs during voting
+        mintingOrefTxHash: votingUtxo.input.txHash,
+        mintingOrefIndex: votingUtxo.input.outputIndex,
         txHashes: {
           groupMint: groupResult.txHash,
           semaphoreVotingMint: svResult.txHash,
