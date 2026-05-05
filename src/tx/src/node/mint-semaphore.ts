@@ -1,7 +1,7 @@
 // Script to mint a Semaphore NFT using the semaphore.ak validator
-import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference, createOutputReference } from './utils.js';
+import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference, createOutputReference } from '../utils.js';
 import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript, integer, byteString } from '@meshsdk/core';
-import { VALIDATORS } from './validators.js';
+import { VALIDATORS } from '../validators.js';
 import 'dotenv/config';
 
 console.log('╔════════════════════════════════════════════════════════════╗');

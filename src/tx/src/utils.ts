@@ -50,43 +50,8 @@ export function extractPaymentKeyHash(walletAddress: string): string {
     return addressInfo.pubKeyHash;
 }
 
-/**
- * Create an OutputReference structure for PlutusData
- *
- * This is used to reference a specific UTxO on-chain by its transaction hash and output index.
- * Common uses: one-shot minting validators, reference inputs, verification key references.
- *
- * @param txHash - Transaction hash (64-character hex string)
- * @param outputIndex - Output index in the transaction
- * @returns OutputReference object formatted for PlutusData
- *
- * @example
- * const oref = createOutputReference(
- *   "4b3ae50d2732cfac39725e83b31b76aaa0c088c35cb263e0be5c226fedd1d62a",
- *   0
- * );
- */
-export function createOutputReference(txHash: string, outputIndex: number): any {
-  if (!txHash || txHash.length !== 64) {
-    throw new Error('Transaction hash must be a 64-character hex string');
-  }
-
-  if (outputIndex < 0) {
-    throw new Error('Output index must be non-negative');
-  }
-
-  return {
-    constructor: 0,
-    fields: [
-      {
-        bytes: txHash
-      },
-      {
-        int: outputIndex
-      }
-    ]
-  };
-}
+import { createOutputReference, createUrnaDatum, selectUtxoForCollateral } from './browser/utils-browser.js';
+export { createOutputReference, createUrnaDatum, selectUtxoForCollateral };
 
 /**
  * Select a UTxO and create an OutputReference for one-shot minting
@@ -282,70 +247,4 @@ export function createGroupDatum(merkleRoot: number, adminPkh: string): any {
     byteString(adminPkh)      // admin_pkh: ByteArray
   ]);
 }
-
-/**
- * Create UrnaDatum for a voting event
- *
- * UrnaDatum structure from voting.ak:
- * - weight: Int (0 for simple voting, >0 for weighted voting)
- * - options: List<(Int, Int)> (option index, vote count pairs)
- * - event_date: (Int, Int) (start_time, end_time in POSIX ms)
- * - semaphore_nft: PolicyId (ZK proof NFT policy)
- *
- * @param params - Voting event configuration
- * @param params.weight - Voting weight (0 = simple, 1+ = weighted)
- * @param params.options - Array of voting options (use generateInitialOptions())
- * @param params.eventStart - Event start timestamp (POSIX ms)
- * @param params.eventEnd - Event end timestamp (POSIX ms)
- * @param params.semaphoreNftPolicyId - Semaphore NFT policy ID (hex string)
- * @returns Properly formatted UrnaDatum for the voting script
- *
- * @example
- * const options = generateInitialOptions(3);
- * const { eventStart, eventEnd } = generateEventTiming({ startsInMinutes: 60, durationMinutes: 1440 });
- *
- * const datum = createUrnaDatum({
- *   weight: 0,
- *   options: options,
- *   eventStart: eventStart,
- *   eventEnd: eventEnd,
- *   semaphoreNftPolicyId: "1779325f22a306fd4062a0c714dff772ef9446d3538dfb4910a75c99"
- * });
- */
-export function createUrnaDatum(params: {
-  weight: number;
-  options: any[];
-  eventStart: number;
-  eventEnd: number;
-  semaphoreNftPolicyId: string;
-}): any {
-  const { weight, options, eventStart, eventEnd, semaphoreNftPolicyId } = params;
-
-  // Validate inputs
-  if (weight < 0) {
-    throw new Error('Weight must be non-negative (0 for simple voting, >0 for weighted)');
-  }
-
-  if (!options || options.length < 2) {
-    throw new Error('Must have at least 2 options (use generateInitialOptions())');
-  }
-
-  if (eventEnd <= eventStart) {
-    throw new Error('Event end time must be after start time');
-  }
-
-  if (!semaphoreNftPolicyId || semaphoreNftPolicyId.length !== 56) {
-    throw new Error('Semaphore NFT policy ID must be a 56-character hex string');
-  }
-
-  // Construct UrnaDatum following the voting.ak structure
-  return conStr(0, [
-    integer(weight),                                          // weight: Int
-    list(options),                                           // options: List<(Int, Int)>
-    list([integer(eventStart), integer(eventEnd)]),         // event_date: (Int, Int)
-    byteString(semaphoreNftPolicyId)                        // semaphore_nft: PolicyId
-  ]);
-}
-
-
 

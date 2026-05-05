@@ -13,7 +13,7 @@ import {
   generateInitialOptions,
   generateEventTiming,
   createUrnaDatum
-} from './utils.js';
+} from '../utils.js';
 import {
   BlockfrostProvider,
   conStr,
@@ -26,7 +26,7 @@ import {
   byteString,
   UTxO
 } from '@meshsdk/core';
-import { VALIDATORS } from './validators.js';
+import { VALIDATORS } from '../validators.js';
 import 'dotenv/config';
 
 /**
