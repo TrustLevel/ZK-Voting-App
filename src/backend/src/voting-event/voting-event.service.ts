@@ -659,6 +659,7 @@ export class VotingEventService {
     const key = Buffer.from(blake2b(value, { dkLen: 32 }));
 
     const store = new Store(`nullifiers-db/${eventId}`);
+    await store.ready();
     const trie = await Trie.load(store).catch(() => new Trie(store));
 
     // Throws if nullifier already exists — prevents double voting at the backend level.
@@ -718,6 +719,7 @@ export class VotingEventService {
     const key = Buffer.from(blake2b(value, { dkLen: 32 }));
 
     const store = new Store(`nullifiers-db/${eventId}`);
+    await store.ready();
     const trie = await Trie.load(store).catch(() => new Trie(store));
 
     try {
