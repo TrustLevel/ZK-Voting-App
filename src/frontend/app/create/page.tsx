@@ -211,18 +211,19 @@ export default function CreateEventForm() {
     }
 
     // Validate dates
+    // datetime-local input values are in the user's local time ("YYYY-MM-DDTHH:MM").
+    // new Date(value) (no 'Z') interprets them as local time and produces a correct UTC epoch.
     if (startDate) {
-      const startingTimestamp = new Date(startDate + ':00.000Z').getTime();
-      const nowUtc = Date.now();
-      if (startingTimestamp < nowUtc) {
-        setError('Start date cannot be in the past (UTC time)');
+      const startingTimestamp = new Date(startDate).getTime();
+      if (startingTimestamp < Date.now()) {
+        setError('Start date cannot be in the past');
         return;
       }
     }
 
     if (endDate && startDate) {
-      const startingTimestamp = new Date(startDate + ':00.000Z').getTime();
-      const endingTimestamp = new Date(endDate + ':00.000Z').getTime();
+      const startingTimestamp = new Date(startDate).getTime();
+      const endingTimestamp = new Date(endDate).getTime();
       if (endingTimestamp <= startingTimestamp) {
         setError('End date must be after start date');
         return;
@@ -238,12 +239,10 @@ export default function CreateEventForm() {
     try {
       setIsCreating(true);
 
-      // Convert datetime-local values to POSIX timestamps (seconds)
-      // Note: Appending ':00.000Z' forces UTC interpretation of the input
-      // Input format: "2025-12-16T15:30" -> "2025-12-16T15:30:00.000Z" (UTC)
-      // Output: POSIX timestamp in seconds (not milliseconds)
-      const startingDate = startDate ? Math.floor(new Date(startDate + ':00.000Z').getTime() / 1000) : null;
-      const endingDate = endDate ? Math.floor(new Date(endDate + ':00.000Z').getTime() / 1000) : null;
+      // Convert datetime-local (local time) to POSIX seconds.
+      // new Date(value) without 'Z' interprets the string as local time; .getTime() gives UTC epoch ms.
+      const startingDate = startDate ? Math.floor(new Date(startDate).getTime() / 1000) : null;
+      const endingDate = endDate ? Math.floor(new Date(endDate).getTime() / 1000) : null;
 
       // Create voting event via backend API
       const response = await fetch(`${BACKEND_API_URL}/voting-event`, {
@@ -513,7 +512,7 @@ export default function CreateEventForm() {
                 <h3 className="font-bold text-gray-900">Voting Period</h3>
               </div>
               <p className="text-sm text-gray-600 mb-4">
-                Set the planned start and end dates for your voting event (UTC timezone).
+                Set the planned start and end dates for your voting event (your local time).
               </p>
 
               {error && (error.includes('date') || error.includes('Date')) && (
@@ -531,7 +530,7 @@ export default function CreateEventForm() {
                 {/* Start Date */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-2">
-                    Start Date & Time (UTC)
+                    Start Date & Time
                   </label>
                   <input
                     type="datetime-local"
@@ -544,7 +543,7 @@ export default function CreateEventForm() {
                 {/* End Date */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-2">
-                    End Date & Time (UTC)
+                    End Date & Time
                   </label>
                   <input
                     type="datetime-local"
