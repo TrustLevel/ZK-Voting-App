@@ -214,26 +214,19 @@ export default function EventDashboard() {
    */
   useEffect(() => {
     const getWalletAddress = async () => {
-      if (wallet) {
-        try {
-          // Get wallet UTxOs to extract address
-          const utxos = await wallet.getUtxos();
-          if (utxos && utxos.length > 0) {
-            // Extract address from first UTxO
-            setWalletAddress(utxos[0].output.address);
-          } else {
-            console.warn('Wallet has no UTxOs. Please fund your wallet.');
-          }
-        } catch (error) {
-          console.error('Failed to get wallet address:', error);
-        } finally {
-          setIsConnecting(false);
-        }
+      if (!connected || !wallet) return;
+      try {
+        const address = await wallet.getChangeAddress();
+        setWalletAddress(address);
+      } catch (error) {
+        console.error('Failed to get wallet address:', error);
+      } finally {
+        setIsConnecting(false);
       }
     };
 
     getWalletAddress();
-  }, [wallet]);
+  }, [connected, wallet]);
 
   /**
    * Load event data on mount after token validation
@@ -843,12 +836,38 @@ export default function EventDashboard() {
         index: votingUtxo.input.outputIndex,
       });
 
-      // Calculate TX validity window (5 minutes from now)
-      const currentSlot = await provider.fetchLatestBlock().then(block => parseInt(block.slot));
-      const txValidityEndSlot = currentSlot + (5 * 60); // 5 minutes in slots
+      // Calculate TX validity window.
+      //
+      // The Aiken voting validator enforces is_entirely_before(validity_range, event_start),
+      // meaning the TX validity upper bound (expressed as POSIX ms on-chain) must be
+      // strictly less than event_start. We therefore derive the window from the current
+      // block's timestamp and the user-chosen event start:
+      //
+      //   window = min(120s, (startingDate - block.time) - 60s)
+      //
+      // The 60-second buffer guards against slot drift between block.time and submission.
+      // We cap at 120 slots (2 min) so stale TXs don't linger in the mempool.
+      const latestBlock = await provider.fetchLatestBlock();
+      const currentSlot = parseInt(latestBlock.slot);
+      const currentTimeSec = latestBlock.time; // POSIX seconds
+      const secondsToStart = startingDate - currentTimeSec;
+
+      if (secondsToStart < 90) {
+        throw new Error(
+          `Event start is too soon (only ${Math.round(secondsToStart)}s away). ` +
+          `Please set the event to start at least 90 seconds from now.`
+        );
+      }
+
+      // Window: up to 120s but always ≥60s before event start so is_entirely_before passes.
+      const validityWindowSecs = Math.min(120, secondsToStart - 60);
+      const txValidityEndSlot = currentSlot + validityWindowSecs;
 
       console.log('Transaction validity:', {
         currentSlot,
+        currentTimeSec,
+        secondsToStart,
+        validityWindowSecs,
         expiresAt: txValidityEndSlot,
       });
 
