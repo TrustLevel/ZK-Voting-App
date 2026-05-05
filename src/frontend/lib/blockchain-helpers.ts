@@ -18,7 +18,7 @@ import {
   list,
   IWallet,
 } from '@meshsdk/core';
-import { VALIDATORS } from './validators';
+import { VALIDATORS } from '@src/tx/browser';
 
 /**
  * Lazy load applyParamsToScript from @meshsdk/core-csl

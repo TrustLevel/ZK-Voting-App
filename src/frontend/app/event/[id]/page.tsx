@@ -28,7 +28,7 @@ import { Identity } from 'modp-semaphore-bls12381/packages/typescript/src/identi
 import { useWallet } from '@meshsdk/react';
 import { BlockfrostProvider, deserializeAddress } from '@meshsdk/core';
 import { encodeVoteSignal, generateVoteProof, buildVoteTransaction, applyOrefParamToScript } from '@/lib/vote-helpers';
-import { VALIDATORS } from '@/lib/validators';
+import { VALIDATORS } from '@src/tx/browser';
 import { createOutputReference } from '@/lib/blockchain-helpers';
 
 // ============================================================================
