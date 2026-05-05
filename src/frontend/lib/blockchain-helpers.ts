@@ -566,8 +566,8 @@ export async function buildAndSubmitSemaphoreVotingMintTx(
   const urnaDatum = createUrnaDatum({
     weight,
     options: initialOptions,
-    eventStart: startingDate,
-    eventEnd: endingDate,
+    eventStart: startingDate * 1000,  // backend stores seconds; on-chain datum expects POSIX ms
+    eventEnd: endingDate * 1000,
     semaphoreNftPolicyId: semaphorePolicyId
   });
 
@@ -678,11 +678,23 @@ export async function buildAndSubmitSemaphoreVotingMintTx(
     console.log('🔏 Signing transaction...');
     const signedTx = await wallet.signTx(unsignedTx, true);
 
-    // Submit transaction
+    // Submit transaction.
+    // wallet.submitTx routes through the Eternl extension's own submission endpoint.
+    // When the node rejects with an error Eternl can't classify it returns a generic
+    // "Unknown error" instead of the actual Blockfrost rejection message.
+    // Fall back to provider.submitTx (direct Blockfrost) in that case so we get a
+    // real error string (and so valid TXs aren't blocked by Eternl's error parser).
     console.log('🚀 Submitting transaction...');
-    const txHash = await wallet.submitTx(signedTx);
-
-    console.log('✅ Transaction submitted:', txHash);
+    let txHash: string;
+    try {
+      txHash = await wallet.submitTx(signedTx);
+      console.log('✅ Transaction submitted via wallet:', txHash);
+    } catch (walletSubmitErr: any) {
+      const walletErrMsg = walletSubmitErr?.message || String(walletSubmitErr);
+      console.warn('⚠️ wallet.submitTx failed:', walletErrMsg, '— retrying via Blockfrost...');
+      txHash = await provider.submitTx(signedTx);
+      console.log('✅ Transaction submitted via Blockfrost fallback:', txHash);
+    }
 
     return {
       txHash,
