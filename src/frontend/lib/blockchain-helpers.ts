@@ -275,7 +275,7 @@ export function createUrnaDatum(params: {
   return conStr(0, [
     integer(weight),
     list(options),
-    list([integer(eventStart * 1000), integer(eventEnd * 1000)]), // Convert to milliseconds
+    list([integer(eventStart), integer(eventEnd)]),
     byteString(semaphoreNftPolicyId)
   ]);
 }
