@@ -507,26 +507,8 @@ export default function EventPage() {
       console.log('  groupMerkleRootHash:', event.groupMerkleRootHash);
       console.log('  publicSignals      :', publicSignals);
       console.log('  nullifierHash < 2^248?', nullifierHash < (1n << 248n), '(if true → MPF encoding edge-case)');
-      // NOTE: the checks below compare backend values to backend values — they do NOT verify
-      // the actual on-chain datum. Use the precision-loss check below for an early failure signal.
       console.log('  merkle root match? backend==merkleProof:', merkleData.root === event.groupMerkleRootHash);
       console.log('  merkle root match? circuit==backend:', publicSignals[0] === event.groupMerkleRootHash);
-      // Precision-loss early-warning: if the event was bootstrapped with parseInt() instead of
-      // BigInt(), the on-chain datum contains BigInt(Number(hash)) which differs from hash.
-      // Voting will ALWAYS fail for such events — create a new event and re-bootstrap.
-      const precisionLostRoot = BigInt(Number(event.groupMerkleRootHash));
-      const exactRoot = BigInt(event.groupMerkleRootHash);
-      if (precisionLostRoot !== exactRoot) {
-        console.error(
-          '❌ PRECISION LOSS DETECTED: groupMerkleRootHash is vulnerable to float conversion.\n' +
-          '   exact  :', exactRoot.toString(), '\n' +
-          '   as-float:', precisionLostRoot.toString(), '\n' +
-          '   → This event was likely bootstrapped with parseInt(). Voting will ALWAYS fail.\n' +
-          '   → Create a new event and re-bootstrap with the fixed code.'
-        );
-      } else {
-        console.log('  ✅ precision loss check: groupMerkleRootHash is safe (fits in float64)');
-      }
       if (nullifierHash >= BLS12_381_R) {
         console.error('❌ nullifierHash >= BLS12_381_R — invalid scalar!');
       }
@@ -584,13 +566,16 @@ export default function EventPage() {
       const semaphoreValidatorCbor = await applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
       const votingValidatorCbor = await applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
 
-      const currentOptions: Array<[number, number]> = JSON.parse(event.options).map(
-        (o: { index: number; votes: number }) => [o.index, o.votes] as [number, number]
-      );
-
       const provider = new BlockfrostProvider(
         process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY!
       );
+
+      const collateralUtxo = walletUtxos.find(u =>
+        u.output.amount.length === 1 &&
+        u.output.amount[0].unit === 'lovelace' &&
+        parseInt(u.output.amount[0].quantity) >= 5000000
+      );
+      if (!collateralUtxo) throw new Error('No suitable collateral UTxO found. Please ensure you have a UTxO with at least 5 ADA containing only ADA (no other tokens).');
 
       const unsignedTx = await buildVoteTransaction({
         provider,
@@ -612,9 +597,8 @@ export default function EventPage() {
         mpfProofSteps,
         mpfNewRoot,
         voteSignal,
-        currentOptions,
+        collateralUtxo,
         // weight in UrnaDatum is 0 for simple voting (votingPower===1), votingPower for weighted.
-        // Must match what was set at minting time: votingPower > 1 ? votingPower : 0.
         weight: event.votingPower > 1 ? event.votingPower : 0,
         eventStart: event.startingDate! * 1000,
         eventEnd: event.endingDate! * 1000,
