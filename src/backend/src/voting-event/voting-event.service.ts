@@ -814,6 +814,23 @@ export class VotingEventService {
     }
   }
 
+  // Update groupMerkleRootHash in the DB after a group-update TX is confirmed on-chain.
+  // Called by the frontend after wallet.submitTx resolves successfully.
+  async confirmGroupUpdate(
+    eventId: number,
+    newMerkleRoot: string,
+    txHash: string,
+  ): Promise<{ success: boolean }> {
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
+
+    event.groupMerkleRootHash = newMerkleRoot;
+    await this.votingEventRepository.save(event);
+
+    console.log(`[confirmGroupUpdate] event ${eventId}: root updated to ${newMerkleRoot} (tx ${txHash})`);
+    return { success: true };
+  }
+
   // Build an unsigned group-update transaction for the admin to sign via CIP-30.
   // The frontend passes wallet-specific data (UTxOs, address, collateral) because
   // the admin's key never leaves the browser. The backend only contributes the

@@ -187,6 +187,16 @@ export class VotingEventController {
     return await this.votingEventService.saveBlockchainData(eventId, blockchainData);
   }
 
+  // Updates groupMerkleRootHash in DB after the group-update TX is confirmed on-chain.
+  @Post(':eventId/confirm-group-update')
+  async confirmGroupUpdate(
+    @Param('eventId') eventId: number,
+    @Body('newMerkleRoot') newMerkleRoot: string,
+    @Body('txHash') txHash: string,
+  ) {
+    return await this.votingEventService.confirmGroupUpdate(eventId, newMerkleRoot, txHash);
+  }
+
   // Returns an unsigned TX hex for the admin to sign via CIP-30.
   // Body: { newMerkleRoot, walletUtxos, walletAddress, paymentKeyHash, collateralUtxo }
   @Post(':eventId/build-update-group-tx')
