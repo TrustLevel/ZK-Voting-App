@@ -25,6 +25,7 @@ import {
   generateInitialOptions,
   selectUtxoAndCreateOutputReference,
   selectUtxoForCollateral,
+  applyOrefParamToScript,
   buildGroupMintTransaction,
   buildSemaphoreVotingMintTransaction,
 } from '@src/tx/browser';
@@ -36,36 +37,8 @@ export {
   createGroupDatum,
   generateInitialOptions,
   selectUtxoAndCreateOutputReference,
+  applyOrefParamToScript,
 };
-
-/**
- * Lazy load applyParamsToScript from @meshsdk/core-csl
- * WASM modules can only be loaded in the browser
- */
-let cslModuleCache: any = null;
-
-async function getCsl() {
-  if (cslModuleCache) return cslModuleCache;
-  try {
-    cslModuleCache = await import('@meshsdk/core-csl');
-    return cslModuleCache;
-  } catch (error) {
-    console.error('Failed to load @meshsdk/core-csl:', error);
-    throw new Error('Failed to load WASM module. Please refresh the page and try again.');
-  }
-}
-
-let applyParamsToScriptCache: any = null;
-
-async function getApplyParamsToScript() {
-  if (applyParamsToScriptCache) return applyParamsToScriptCache;
-  const module = await getCsl();
-  if (!module.applyParamsToScript) {
-    throw new Error('@meshsdk/core-csl module loaded but applyParamsToScript is undefined');
-  }
-  applyParamsToScriptCache = module.applyParamsToScript;
-  return applyParamsToScriptCache;
-}
 
 // ============================================================================
 // TYPES
@@ -120,11 +93,6 @@ export interface SemaphoreVotingMintResult {
 // ============================================================================
 // UTILITY FUNCTIONS (browser-only, not in @src/tx/browser)
 // ============================================================================
-
-export async function applyOrefParamToScript(validatorCbor: string, oref: any): Promise<string> {
-  const applyParamsToScript = await getApplyParamsToScript();
-  return applyParamsToScript(validatorCbor, [oref], "JSON");
-}
 
 /**
  * Get wallet UTxOs from browser wallet

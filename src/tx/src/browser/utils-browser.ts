@@ -3,6 +3,21 @@ import { UTxO, integer, list, conStr, byteString } from "@meshsdk/core";
 // Browser-safe utilities — no Node.js APIs (no fs, no MeshWallet).
 // utils.ts re-exports everything here for Node.js callers, keeping backward compat.
 
+// ── CSL lazy-load ─────────────────────────────────────────────────────────────
+
+let _csl: any = null;
+async function getCsl() {
+  if (_csl) return _csl;
+  _csl = await import('@meshsdk/core-csl');
+  return _csl;
+}
+
+export async function applyOrefParamToScript(validatorCbor: string, oref: any): Promise<string> {
+  const module = await getCsl();
+  if (!module.applyParamsToScript) throw new Error('applyParamsToScript not found in @meshsdk/core-csl');
+  return module.applyParamsToScript(validatorCbor, [oref], 'JSON');
+}
+
 export function textToHex(text: string): string {
   return Array.from(text)
     .map(c => c.charCodeAt(0).toString(16).padStart(2, '0'))

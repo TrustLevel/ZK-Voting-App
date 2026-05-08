@@ -20,6 +20,7 @@ export {
   createGroupDatum,
   generateInitialOptions,
   selectUtxoAndCreateOutputReference,
+  applyOrefParamToScript,
 } from './utils-browser.js';
 
 export * from '../validators.js';

@@ -19,33 +19,9 @@ export type { BuildVoteTransactionParams } from '@src/tx/browser';
 import { createOutputReference } from '@src/tx/browser';
 export { createOutputReference };
 
+export { applyOrefParamToScript } from '@src/tx/browser';
+
 const BLS12_381_R = 52435875175126190479447740508185965837690552500527637822603658699938581184513n;
-
-// ── WASM lazy-load cache ───────────────────────────────────────────────────────
-
-let cslModuleCache: any = null;
-async function getCsl() {
-  if (cslModuleCache) return cslModuleCache;
-  cslModuleCache = await import('@meshsdk/core-csl');
-  return cslModuleCache;
-}
-
-let applyParamsToScriptCache: any = null;
-async function getApplyParamsToScript() {
-  if (applyParamsToScriptCache) return applyParamsToScriptCache;
-  const module = await getCsl();
-  if (!module.applyParamsToScript) throw new Error('@meshsdk/core-csl: applyParamsToScript undefined');
-  applyParamsToScriptCache = module.applyParamsToScript;
-  return applyParamsToScriptCache;
-}
-
-export async function applyOrefParamToScript(
-  validatorCbor: string,
-  oref: ReturnType<typeof createOutputReference>,
-): Promise<string> {
-  const applyParamsToScript = await getApplyParamsToScript();
-  return applyParamsToScript(validatorCbor, [oref], 'JSON');
-}
 
 // ── G1 / G2 point compression (BLS12-381) ─────────────────────────────────────
 
