@@ -813,4 +813,51 @@ export class VotingEventService {
       return { success: false, message: 'Failed to save blockchain data' };
     }
   }
+
+  // Build an unsigned group-update transaction for the admin to sign via CIP-30.
+  // The frontend passes wallet-specific data (UTxOs, address, collateral) because
+  // the admin's key never leaves the browser. The backend only contributes the
+  // group validator CBOR and script address stored at bootstrap time.
+  async buildUpdateGroupTx(
+    eventId: number,
+    params: {
+      newMerkleRoot: string;
+      walletUtxos: any[];
+      walletAddress: string;
+      paymentKeyHash: string;
+      collateralUtxo: any;
+    },
+  ): Promise<{ unsignedTx: string }> {
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
+
+    if (!event.groupValidatorCbor)
+      throw new HttpException('groupValidatorCbor not set — re-bootstrap the event', HttpStatus.BAD_REQUEST);
+    if (!event.groupValidatorAddress)
+      throw new HttpException('groupValidatorAddress not set — re-bootstrap the event', HttpStatus.BAD_REQUEST);
+    if (!event.groupNft)
+      throw new HttpException('groupNft not set — re-bootstrap the event', HttpStatus.BAD_REQUEST);
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BlockfrostProvider } = require('@meshsdk/core');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { buildUpdateGroupTransaction } = require('@src/tx');
+
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    const unsignedTx = await buildUpdateGroupTransaction({
+      provider,
+      groupScriptAddress: event.groupValidatorAddress,
+      groupNftPolicyId: event.groupNft,
+      groupValidatorCbor: event.groupValidatorCbor,
+      walletUtxos: params.walletUtxos,
+      walletAddress: params.walletAddress,
+      paymentKeyHash: params.paymentKeyHash,
+      collateralUtxo: params.collateralUtxo,
+      newMerkleRoot: BigInt(params.newMerkleRoot),
+    });
+
+    return { unsignedTx };
+  }
 }

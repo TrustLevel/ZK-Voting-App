@@ -186,4 +186,20 @@ export class VotingEventController {
   ) {
     return await this.votingEventService.saveBlockchainData(eventId, blockchainData);
   }
+
+  // Returns an unsigned TX hex for the admin to sign via CIP-30.
+  // Body: { newMerkleRoot, walletUtxos, walletAddress, paymentKeyHash, collateralUtxo }
+  @Post(':eventId/build-update-group-tx')
+  async buildUpdateGroupTx(
+    @Param('eventId') eventId: number,
+    @Body() body: {
+      newMerkleRoot: string;
+      walletUtxos: any[];
+      walletAddress: string;
+      paymentKeyHash: string;
+      collateralUtxo: any;
+    },
+  ) {
+    return await this.votingEventService.buildUpdateGroupTx(eventId, body);
+  }
 }
