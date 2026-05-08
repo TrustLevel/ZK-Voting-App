@@ -7,7 +7,6 @@
 
 import {
   BlockfrostProvider,
-  MeshTxBuilder,
   Asset,
   UTxO,
   conStr,
@@ -26,6 +25,8 @@ import {
   generateInitialOptions,
   selectUtxoAndCreateOutputReference,
   selectUtxoForCollateral,
+  buildGroupMintTransaction,
+  buildSemaphoreVotingMintTransaction,
 } from '@src/tx/browser';
 
 export {
@@ -64,47 +65,6 @@ async function getApplyParamsToScript() {
   }
   applyParamsToScriptCache = module.applyParamsToScript;
   return applyParamsToScriptCache;
-}
-
-/**
- * Serializes a MeshSDK data object to CBOR hex using CSL primitives directly.
- * Handles: {int}, {bytes}, {list}, {alternative/fields}, {constructor/fields}
- *
- * Replaces the 'JSON' format path (JSONbig.stringify → csl.from_json) which
- * loses precision for integers > 2^53 in the browser WASM CSL JSON parser.
- */
-async function toCborHex(data: any): Promise<string> {
-  const { csl } = await getCsl();
-
-  function convert(d: any): any {
-    if (d === null || d === undefined) {
-      throw new Error('toCborHex: null/undefined datum field');
-    }
-    if (typeof d === 'object' && 'int' in d) {
-      const v = d.int;
-      const s = typeof v === 'bigint' ? v.toString() : String(v);
-      return csl.PlutusData.new_integer(csl.BigInt.from_str(s));
-    }
-    if (typeof d === 'object' && 'bytes' in d) {
-      return csl.PlutusData.new_bytes(Buffer.from(d.bytes, 'hex'));
-    }
-    if (typeof d === 'object' && 'list' in d) {
-      const pl = csl.PlutusList.new();
-      for (const item of d.list) pl.add(convert(item));
-      return csl.PlutusData.new_list(pl);
-    }
-    if (typeof d === 'object' && ('alternative' in d || 'constructor' in d)) {
-      const alt = d.alternative ?? d.constructor;
-      const pl = csl.PlutusList.new();
-      for (const field of d.fields) pl.add(convert(field));
-      return csl.PlutusData.new_constr_plutus_data(
-        csl.ConstrPlutusData.new(csl.BigNum.from_str(String(alt)), pl)
-      );
-    }
-    throw new Error(`toCborHex: unknown datum shape: ${JSON.stringify(d)}`);
-  }
-
-  return convert(data).to_hex();
 }
 
 // ============================================================================
@@ -225,151 +185,79 @@ export async function buildAndSubmitGroupMintTx(
 
   console.log('🔨 Building Group NFT mint transaction...');
 
-  // Create output reference for one-shot minting
   const outputReference = createOutputReference(
     selectedUtxo.input.txHash,
     selectedUtxo.input.outputIndex
   );
 
-  // Load and parameterize group validator
-  const validatorNaked = VALIDATORS.group.mint;
-  const clothedCbor = await applyOrefParamToScript(validatorNaked, outputReference);
-
-  // Calculate policy ID and script address
-  const policyId = resolveScriptHash(clothedCbor, "V3");
-  const scriptAddr = resolvePlutusScriptAddress({ code: clothedCbor, version: "V3" }, 0);
+  const clothedCbor = await applyOrefParamToScript(VALIDATORS.group.mint, outputReference);
+  const policyId = resolveScriptHash(clothedCbor, 'V3');
+  const scriptAddr = resolvePlutusScriptAddress({ code: clothedCbor, version: 'V3' }, 0);
 
   console.log('Group NFT Policy ID:', policyId);
 
-  // Create redeemer and datum, pre-convert to CBOR hex to avoid WASM JSON precision loss
-  const createRedeemer = conStr(0, []);
-  const groupDatum = createGroupDatum(merkleRoot, paymentKeyHash);
-  const [createRedeemerCbor, groupDatumCbor] = await Promise.all([
-    toCborHex(createRedeemer),
-    toCborHex(groupDatum),
-  ]);
-
-  // Asset details
-  const assetName = textToHex("zkvapp-group");
+  const assetName = textToHex('zkvapp-group');
   const mintValue: Asset[] = [
-    { unit: "lovelace", quantity: "5000000" },
-    { unit: policyId + assetName, quantity: "1" },
+    { unit: 'lovelace', quantity: '5000000' },
+    { unit: policyId + assetName, quantity: '1' },
   ];
 
-  // Find collateral UTxO
   const collateralUtxo = selectUtxoForCollateral(walletUtxos, 5000000);
   if (!collateralUtxo) {
     throw new Error('No suitable collateral UTxO found. Please ensure you have a UTxO with at least 5 ADA that contains only ADA (no other tokens).');
   }
 
-  console.log('Selected collateral UTxO:', {
-    txHash: collateralUtxo.input.txHash.slice(0, 16) + '...',
-    index: collateralUtxo.input.outputIndex,
-    lovelace: collateralUtxo.output.amount[0].quantity,
+  const unsignedTx = await buildGroupMintTransaction({
+    provider: provider as any, // dual node_modules structural mismatch — same at runtime
+    policyId,
+    assetName,
+    clothedCbor,
+    createRedeemer: conStr(0, []),
+    selectedUtxo,
+    walletUtxos,
+    walletAddress,
+    scriptAddr,
+    mintValue,
+    groupDatum: createGroupDatum(merkleRoot, paymentKeyHash),
+    paymentKeyHash,
+    collateralUtxo,
   });
 
-  // Build transaction.
-  // NOTE: We use evaluator: provider here (Blockfrost/Ogmios) for the Group NFT TX.
-  // This TX has no reference inputs to other NFTs, so there is no timing issue with
-  // Ogmios not knowing about recently-minted UTxOs. The evaluator computes accurate
-  // execution units for the fee.
-  const txBuilder = new MeshTxBuilder({
-    fetcher: provider,
-    evaluator: provider,
-    verbose: false,
-  });
+  console.log('✅ Transaction built (length:', unsignedTx.length, ')');
 
+  console.log('🔏 Signing transaction...');
+  let signedTx: string;
   try {
-    const unsignedTx = await txBuilder
-      .setNetwork("preprod")
-      .mintPlutusScriptV3()
-      .mint("1", policyId, assetName)
-      .mintingScript(clothedCbor)
-      .mintRedeemerValue(createRedeemerCbor, "CBOR", {
-        mem: 14000000,
-        steps: 10000000000
-      })
-      .txIn(
-        selectedUtxo.input.txHash,
-        selectedUtxo.input.outputIndex,
-        selectedUtxo.output.amount,
-        walletAddress
-      )
-      .selectUtxosFrom(walletUtxos)
-      .txInCollateral(
-        collateralUtxo.input.txHash,
-        collateralUtxo.input.outputIndex,
-        collateralUtxo.output.amount,
-        collateralUtxo.output.address
-      )
-      .txOut(scriptAddr, mintValue)
-      .txOutInlineDatumValue(groupDatumCbor, "CBOR")
-      .changeAddress(walletAddress)
-      .requiredSignerHash(paymentKeyHash)
-      .complete();
-
-    console.log('✅ Transaction built (length:', unsignedTx.length, ')');
-
-    // Sign transaction
-    console.log('🔏 Signing transaction...');
-    const signedTx = await wallet.signTx(unsignedTx, true);
-
-    // Submit transaction
-    console.log('🚀 Submitting transaction...');
-    const txHash = await wallet.submitTx(signedTx);
-
-    console.log('✅ Transaction submitted:', txHash);
-
-    return {
-      txHash,
-      policyId,
-      assetName,
-      scriptAddress: scriptAddr,
-      validatorCbor: clothedCbor,
-    };
-
-  } catch (evalError: any) {
-    console.error('❌ Transaction build error:', evalError);
-
-    const errorMessage = evalError?.message || evalError?.toString() || String(evalError);
-
-    // User declined the wallet signing dialog — surface this clearly, do not attempt bypass.
-    if (errorMessage.toLowerCase().includes('user declined') ||
-        errorMessage.toLowerCase().includes('declined sign') ||
-        errorMessage.toLowerCase().includes('user rejected')) {
+    signedTx = await wallet.signTx(unsignedTx, true);
+  } catch (signError: any) {
+    const msg = signError?.message || String(signError);
+    if (msg.toLowerCase().includes('user declined') ||
+        msg.toLowerCase().includes('declined sign') ||
+        msg.toLowerCase().includes('user rejected')) {
       throw new Error('Wallet signature declined. Please accept the signing request in Eternl to continue.');
     }
-
-    // Handle Ogmios evaluation errors: MeshSDK appends the raw TX hex to the error message
-    // so we can extract it and bypass the evaluator by submitting directly via Blockfrost.
-    // This path should not normally be needed for the Group NFT TX (no timing-sensitive
-    // reference inputs), but is kept as a safety net.
-    const match = errorMessage.match(/For txHex: ([0-9a-f]+)/);
-
-    if (match) {
-      const unsignedTx = match[1];
-      console.log('⚠️ Ogmios evaluation failed, extracted TX hex, submitting via Blockfrost...');
-
-      try {
-        const signedTx = await wallet.signTx(unsignedTx, true);
-        const txHash = await provider.submitTx(signedTx);
-        console.log('✅ Transaction submitted via Blockfrost:', txHash);
-        return {
-          txHash,
-          policyId,
-          assetName,
-          scriptAddress: scriptAddr,
-          validatorCbor: clothedCbor,
-        };
-      } catch (submitError: any) {
-        const submitMsg = submitError?.message || submitError?.toString() || String(submitError);
-        console.error('❌ TX submission failed:', submitMsg);
-        throw new Error('TX submission failed: ' + submitMsg);
-      }
-    }
-
-    throw new Error('Transaction build failed: ' + errorMessage);
+    throw signError;
   }
+
+  console.log('🚀 Submitting transaction...');
+  let txHash: string;
+  try {
+    txHash = await wallet.submitTx(signedTx);
+    console.log('✅ Transaction submitted via wallet:', txHash);
+  } catch (walletSubmitErr: any) {
+    const walletErrMsg = walletSubmitErr?.message || String(walletSubmitErr);
+    console.warn('⚠️ wallet.submitTx failed:', walletErrMsg, '— retrying via Blockfrost...');
+    txHash = await provider.submitTx(signedTx);
+    console.log('✅ Transaction submitted via Blockfrost fallback:', txHash);
+  }
+
+  return {
+    txHash,
+    policyId,
+    assetName,
+    scriptAddress: scriptAddr,
+    validatorCbor: clothedCbor,
+  };
 }
 
 /**
@@ -399,227 +287,119 @@ export async function buildAndSubmitSemaphoreVotingMintTx(
 
   console.log('🔨 Building Semaphore + Voting NFT mint transaction...');
 
-  // Create output reference (same for both NFTs)
   const outputReference = createOutputReference(
     selectedUtxo.input.txHash,
     selectedUtxo.input.outputIndex
   );
 
-  // Prepare Semaphore validator
   const semaphoreValidatorCbor = await applyOrefParamToScript(VALIDATORS.semaphore.mint, outputReference);
-  const semaphoreScriptAddr = resolvePlutusScriptAddress({ code: semaphoreValidatorCbor, version: "V3" }, 0);
-  const semaphorePolicyId = resolveScriptHash(semaphoreValidatorCbor, "V3");
+  const semaphoreScriptAddr = resolvePlutusScriptAddress({ code: semaphoreValidatorCbor, version: 'V3' }, 0);
+  const semaphorePolicyId = resolveScriptHash(semaphoreValidatorCbor, 'V3');
   console.log('1️⃣ Semaphore Policy ID:', semaphorePolicyId);
 
-  // Prepare Voting validator
   const votingValidatorCbor = await applyOrefParamToScript(VALIDATORS.voting.mint, outputReference);
-  const votingScriptAddr = resolvePlutusScriptAddress({ code: votingValidatorCbor, version: "V3" }, 0);
-  const votingPolicyId = resolveScriptHash(votingValidatorCbor, "V3");
+  const votingScriptAddr = resolvePlutusScriptAddress({ code: votingValidatorCbor, version: 'V3' }, 0);
+  const votingPolicyId = resolveScriptHash(votingValidatorCbor, 'V3');
   console.log('2️⃣ Voting Policy ID:', votingPolicyId);
 
-  // Create datums
   // VKEY_REF_TX_HASH: permanent UTxO holding the Groth16 verification key, locked at the
   // always-false script address (addr_test1wzl94ddu5xplr7p8f55ldtxjvw6cqqsh57jkj4vndwthtkgdw2fq8).
-  // Must match VKEY_REF_TX_HASH / VKEY_REF_OUTPUT_INDEX in vote-helpers.ts and src/tx/src/vote.ts.
-  // Previously this was "0000...0000" — wrong, caused on-chain find_input(reference_inputs, ...) to fail.
-  const vkeyRefTxHash = "3dc5c982ea80091afc75f4392ac9e91af8d9124a3318a0d76a26de4e934da083";
+  const vkeyRefTxHash = '3dc5c982ea80091afc75f4392ac9e91af8d9124a3318a0d76a26de4e934da083';
   const vkeyRefOutputIndex = 0;
-  // Initial nullifier MPF root: all zeros = empty trie (matches MPF library's empty-trie root).
-  const nullHash = "0000000000000000000000000000000000000000000000000000000000000000";
+  const nullHash = '0000000000000000000000000000000000000000000000000000000000000000';
 
   const semaphoreDatum = conStr(0, [
     byteString(groupPolicyId),
     integer(merkleRoot),
     byteString(nullHash),
-    createOutputReference(vkeyRefTxHash, vkeyRefOutputIndex)
+    createOutputReference(vkeyRefTxHash, vkeyRefOutputIndex),
   ]);
 
   const weight = votingPower > 1 ? votingPower : 0;
-  const initialOptions = generateInitialOptions(options.length);
   const urnaDatum = createUrnaDatum({
     weight,
-    options: initialOptions,
-    eventStart: startingDate * 1000,  // backend stores seconds; on-chain datum expects POSIX ms
+    options: generateInitialOptions(options.length),
+    eventStart: startingDate * 1000,
     eventEnd: endingDate * 1000,
-    semaphoreNftPolicyId: semaphorePolicyId
+    semaphoreNftPolicyId: semaphorePolicyId,
   });
 
-  // Pre-convert datums/redeemers to CBOR hex to avoid WASM JSON precision loss
-  const [semaphoreRedeemerCbor, votingRedeemerCbor, semaphoreDatumCbor, urnaDatumCbor] = await Promise.all([
-    toCborHex(conStr(0, [])),
-    toCborHex(conStr(0, [])),
-    toCborHex(semaphoreDatum),
-    toCborHex(urnaDatum),
-  ]);
-
-  // Asset details
-  const semaphoreAssetName = textToHex("Semaphore1");
+  const semaphoreAssetName = textToHex('Semaphore1');
   const semaphoreMintValue: Asset[] = [
-    { unit: "lovelace", quantity: "5000000" },
-    { unit: semaphorePolicyId + semaphoreAssetName, quantity: "1" }
+    { unit: 'lovelace', quantity: '5000000' },
+    { unit: semaphorePolicyId + semaphoreAssetName, quantity: '1' },
   ];
 
-  const votingAssetName = textToHex("VotingEvent1");
+  const votingAssetName = textToHex('VotingEvent1');
   const votingMintValue: Asset[] = [
-    { unit: "lovelace", quantity: "5000000" },
-    { unit: votingPolicyId + votingAssetName, quantity: "1" }
+    { unit: 'lovelace', quantity: '5000000' },
+    { unit: votingPolicyId + votingAssetName, quantity: '1' },
   ];
 
-  // Find collateral UTxO
   const collateralUtxo = selectUtxoForCollateral(walletUtxos, 5000000);
   if (!collateralUtxo) {
     throw new Error('No suitable collateral UTxO found. Please ensure you have a UTxO with at least 5 ADA that contains only ADA (no other tokens).');
   }
 
-  console.log('Selected collateral UTxO:', {
-    txHash: collateralUtxo.input.txHash.slice(0, 16) + '...',
-    index: collateralUtxo.input.outputIndex,
-    lovelace: collateralUtxo.output.amount[0].quantity,
+  const unsignedTx = await buildSemaphoreVotingMintTransaction({
+    provider: provider as any, // dual node_modules structural mismatch — same at runtime
+    txValidityEndSlot,
+    groupNftTxHash,
+    groupNftOutputIndex,
+    semaphorePolicyId,
+    semaphoreAssetName,
+    semaphoreValidatorCbor,
+    votingPolicyId,
+    votingAssetName,
+    votingValidatorCbor,
+    selectedUtxo,
+    walletUtxos,
+    walletAddress,
+    semaphoreScriptAddr,
+    semaphoreMintValue,
+    semaphoreDatum,
+    votingScriptAddr,
+    votingMintValue,
+    urnaDatum,
+    paymentKeyHash,
+    collateralUtxo,
   });
 
-  // Build transaction.
-  //
-  // IMPORTANT — evaluator intentionally omitted here (previously: evaluator: provider).
-  //
-  // Reason: The Semaphore+Voting TX uses the Group NFT UTxO as a read-only reference
-  // input (.readOnlyTxInReference). The Group NFT was just minted in TX 1. Ogmios
-  // evaluates scripts at build-time and requires all reference inputs to already be
-  // in the node's ledger state. Even after Blockfrost confirms TX 1, Ogmios can lag
-  // behind and return EvaluationFailure { ScriptFailures: {} } (empty map = UTxO not
-  // found, not an actual script bug). By omitting the evaluator, MeshSDK uses the
-  // hardcoded execution units below instead of calling Ogmios — eliminating the race
-  // condition entirely. The hardcoded values are conservative upper bounds that are
-  // safe to overpay; the node enforces actual budget limits at inclusion time.
-  const txBuilder = new MeshTxBuilder({
-    fetcher: provider,
-    // evaluator: provider — intentionally removed, see comment above
-    verbose: false
-  });
+  console.log('✅ Transaction built (length:', unsignedTx.length, ')');
 
+  console.log('🔏 Signing transaction...');
+  let signedTx: string;
   try {
-    const unsignedTx = await txBuilder
-      .setNetwork("preprod")
-      .invalidHereafter(txValidityEndSlot)
-
-      // Reference input to existing Group NFT (required by Semaphore validator)
-      .readOnlyTxInReference(groupNftTxHash, groupNftOutputIndex)
-
-      // Mint Semaphore NFT
-      .mintPlutusScriptV3()
-      .mint("1", semaphorePolicyId, semaphoreAssetName)
-      .mintingScript(semaphoreValidatorCbor)
-      .mintRedeemerValue(semaphoreRedeemerCbor, "CBOR", {
-        mem: 5500000,
-        steps: 3400000000
-      })
-
-      // Mint Voting NFT
-      .mintPlutusScriptV3()
-      .mint("1", votingPolicyId, votingAssetName)
-      .mintingScript(votingValidatorCbor)
-      .mintRedeemerValue(votingRedeemerCbor, "CBOR", {
-        mem: 5500000,
-        steps: 3300000000
-      })
-
-      // Consume UTxO
-      .txIn(selectedUtxo.input.txHash, selectedUtxo.input.outputIndex, selectedUtxo.output.amount, walletAddress)
-      .selectUtxosFrom(walletUtxos)
-      .txInCollateral(
-        collateralUtxo.input.txHash,
-        collateralUtxo.input.outputIndex,
-        collateralUtxo.output.amount,
-        collateralUtxo.output.address
-      )
-
-      // Output Semaphore NFT
-      .txOut(semaphoreScriptAddr, semaphoreMintValue)
-      .txOutInlineDatumValue(semaphoreDatumCbor, "CBOR")
-
-      // Output Voting NFT
-      .txOut(votingScriptAddr, votingMintValue)
-      .txOutInlineDatumValue(urnaDatumCbor, "CBOR")
-
-      // Change and signature
-      .changeAddress(walletAddress)
-      .requiredSignerHash(paymentKeyHash)
-      .complete();
-
-    console.log('✅ Transaction built (length:', unsignedTx.length, ')');
-
-    // Sign transaction
-    console.log('🔏 Signing transaction...');
-    const signedTx = await wallet.signTx(unsignedTx, true);
-
-    // Submit transaction.
-    // wallet.submitTx routes through the Eternl extension's own submission endpoint.
-    // When the node rejects with an error Eternl can't classify it returns a generic
-    // "Unknown error" instead of the actual Blockfrost rejection message.
-    // Fall back to provider.submitTx (direct Blockfrost) in that case so we get a
-    // real error string (and so valid TXs aren't blocked by Eternl's error parser).
-    console.log('🚀 Submitting transaction...');
-    let txHash: string;
-    try {
-      txHash = await wallet.submitTx(signedTx);
-      console.log('✅ Transaction submitted via wallet:', txHash);
-    } catch (walletSubmitErr: any) {
-      const walletErrMsg = walletSubmitErr?.message || String(walletSubmitErr);
-      console.warn('⚠️ wallet.submitTx failed:', walletErrMsg, '— retrying via Blockfrost...');
-      txHash = await provider.submitTx(signedTx);
-      console.log('✅ Transaction submitted via Blockfrost fallback:', txHash);
-    }
-
-    return {
-      txHash,
-      semaphorePolicyId,
-      semaphoreAssetName,
-      semaphoreScriptAddr,
-      votingPolicyId,
-      votingAssetName,
-      votingScriptAddr,
-    };
-
-  } catch (evalError: any) {
-    console.error('❌ Transaction build error:', evalError);
-
-    const errorMessage = evalError?.message || evalError?.toString() || String(evalError);
-
-    // User declined the wallet signing dialog — surface this clearly.
-    if (errorMessage.toLowerCase().includes('user declined') ||
-        errorMessage.toLowerCase().includes('declined sign') ||
-        errorMessage.toLowerCase().includes('user rejected')) {
+    signedTx = await wallet.signTx(unsignedTx, true);
+  } catch (signError: any) {
+    const msg = signError?.message || String(signError);
+    if (msg.toLowerCase().includes('user declined') ||
+        msg.toLowerCase().includes('declined sign') ||
+        msg.toLowerCase().includes('user rejected')) {
       throw new Error('Wallet signature declined. Please accept the signing request in Eternl to continue.');
     }
-
-    // NOTE: With the evaluator removed, the Ogmios "For txHex:" error should no longer
-    // occur for this TX. This block is kept as a fallback in case MeshSDK internally
-    // triggers evaluation for another reason (e.g. future SDK version change).
-    const match = errorMessage.match(/For txHex: ([0-9a-f]+)/);
-
-    if (match) {
-      const unsignedTx = match[1];
-      console.log('⚠️ Unexpected Ogmios evaluation error — submitting via Blockfrost as fallback...');
-
-      try {
-        const signedTx = await wallet.signTx(unsignedTx, true);
-        const txHash = await provider.submitTx(signedTx);
-        console.log('✅ Transaction submitted via Blockfrost fallback:', txHash);
-        return {
-          txHash,
-          semaphorePolicyId,
-          semaphoreAssetName,
-          semaphoreScriptAddr,
-          votingPolicyId,
-          votingAssetName,
-          votingScriptAddr,
-        };
-      } catch (submitError: any) {
-        const submitMsg = submitError?.message || submitError?.toString() || String(submitError);
-        console.error('❌ TX submission failed:', submitMsg);
-        throw new Error('TX submission failed: ' + submitMsg);
-      }
-    }
-
-    throw new Error('Transaction build failed: ' + errorMessage);
+    throw signError;
   }
+
+  console.log('🚀 Submitting transaction...');
+  let txHash: string;
+  try {
+    txHash = await wallet.submitTx(signedTx);
+    console.log('✅ Transaction submitted via wallet:', txHash);
+  } catch (walletSubmitErr: any) {
+    const walletErrMsg = walletSubmitErr?.message || String(walletSubmitErr);
+    console.warn('⚠️ wallet.submitTx failed:', walletErrMsg, '— retrying via Blockfrost...');
+    txHash = await provider.submitTx(signedTx);
+    console.log('✅ Transaction submitted via Blockfrost fallback:', txHash);
+  }
+
+  return {
+    txHash,
+    semaphorePolicyId,
+    semaphoreAssetName,
+    semaphoreScriptAddr,
+    votingPolicyId,
+    votingAssetName,
+    votingScriptAddr,
+  };
 }
