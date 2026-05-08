@@ -11,14 +11,31 @@ import {
   Asset,
   UTxO,
   conStr,
-  resolveScriptHash,
-  resolvePlutusScriptAddress,
   integer,
   byteString,
-  list,
+  resolveScriptHash,
+  resolvePlutusScriptAddress,
   IWallet,
 } from '@meshsdk/core';
-import { VALIDATORS } from '@src/tx/browser';
+import {
+  VALIDATORS,
+  textToHex,
+  createOutputReference,
+  createUrnaDatum,
+  createGroupDatum,
+  generateInitialOptions,
+  selectUtxoAndCreateOutputReference,
+  selectUtxoForCollateral,
+} from '@src/tx/browser';
+
+export {
+  textToHex,
+  createOutputReference,
+  createUrnaDatum,
+  createGroupDatum,
+  generateInitialOptions,
+  selectUtxoAndCreateOutputReference,
+};
 
 /**
  * Lazy load applyParamsToScript from @meshsdk/core-csl
@@ -94,11 +111,6 @@ async function toCborHex(data: any): Promise<string> {
 // TYPES
 // ============================================================================
 
-export interface OutputReference {
-  constructor: number;
-  fields: Array<{ bytes?: string; int?: number }>;
-}
-
 export interface BuildGroupMintTxParams {
   provider: BlockfrostProvider;
   wallet: IWallet;
@@ -146,139 +158,12 @@ export interface SemaphoreVotingMintResult {
 }
 
 // ============================================================================
-// UTILITY FUNCTIONS (from utils.ts)
+// UTILITY FUNCTIONS (browser-only, not in @src/tx/browser)
 // ============================================================================
 
-/**
- * Convert text to hex for asset names
- */
-export function textToHex(text: string): string {
-  return Array.from(text)
-    .map(character => character.charCodeAt(0).toString(16).padStart(2, '0'))
-    .join('');
-}
-
-/**
- * Create an OutputReference structure for PlutusData
- */
-export function createOutputReference(txHash: string, outputIndex: number): OutputReference {
-  if (!txHash || txHash.length !== 64) {
-    throw new Error('Transaction hash must be a 64-character hex string');
-  }
-
-  if (outputIndex < 0) {
-    throw new Error('Output index must be non-negative');
-  }
-
-  return {
-    constructor: 0,
-    fields: [
-      { bytes: txHash },
-      { int: outputIndex }
-    ]
-  };
-}
-
-/**
- * Select a UTxO and create an OutputReference
- */
-export function selectUtxoAndCreateOutputReference(
-  walletUtxos: UTxO[],
-  index: number = 0
-): { selectedUtxo: UTxO; outputReference: OutputReference } {
-  if (!walletUtxos || walletUtxos.length === 0) {
-    throw new Error('No UTxOs available in wallet');
-  }
-
-  if (index < 0 || index >= walletUtxos.length) {
-    throw new Error(`Invalid UTxO index: ${index}. Available UTxOs: ${walletUtxos.length}`);
-  }
-
-  const selectedUtxo = walletUtxos[index];
-  const outputReference = createOutputReference(
-    selectedUtxo.input.txHash,
-    selectedUtxo.input.outputIndex
-  );
-
-  return { selectedUtxo, outputReference };
-}
-
-/**
- * Apply OutputReference parameter to validator script
- */
-export async function applyOrefParamToScript(validatorCbor: string, oref: OutputReference): Promise<string> {
+export async function applyOrefParamToScript(validatorCbor: string, oref: any): Promise<string> {
   const applyParamsToScript = await getApplyParamsToScript();
   return applyParamsToScript(validatorCbor, [oref], "JSON");
-}
-
-/**
- * Create GroupDatum for Cardano Semaphore group
- */
-export function createGroupDatum(merkleRoot: bigint, adminPkh: string): any {
-  if (merkleRoot < 0n) {
-    throw new Error('Merkle root must be non-negative');
-  }
-
-  if (!adminPkh || adminPkh.length !== 56) {
-    throw new Error('Admin PKH must be a 56-character hex string');
-  }
-
-  return conStr(0, [
-    integer(merkleRoot),
-    byteString(adminPkh)
-  ]);
-}
-
-/**
- * Generate initial voting options with zero vote counts
- */
-export function generateInitialOptions(numOptions: number): any[] {
-  if (numOptions < 2) {
-    throw new Error('Minimum 2 options required');
-  }
-
-  const options = [];
-  for (let i = 0; i < numOptions; i++) {
-    options.push(list([integer(i), integer(0)]));
-  }
-
-  return options;
-}
-
-/**
- * Create UrnaDatum for a voting event
- */
-export function createUrnaDatum(params: {
-  weight: number;
-  options: any[];
-  eventStart: number;
-  eventEnd: number;
-  semaphoreNftPolicyId: string;
-}): any {
-  const { weight, options, eventStart, eventEnd, semaphoreNftPolicyId } = params;
-
-  if (weight < 0) {
-    throw new Error('Weight must be non-negative');
-  }
-
-  if (!options || options.length < 2) {
-    throw new Error('Must have at least 2 options');
-  }
-
-  if (eventEnd <= eventStart) {
-    throw new Error('Event end time must be after start time');
-  }
-
-  if (!semaphoreNftPolicyId || semaphoreNftPolicyId.length !== 56) {
-    throw new Error('Semaphore NFT policy ID must be a 56-character hex string');
-  }
-
-  return conStr(0, [
-    integer(weight),
-    list(options),
-    list([integer(eventStart), integer(eventEnd)]),
-    byteString(semaphoreNftPolicyId)
-  ]);
 }
 
 /**
@@ -292,22 +177,7 @@ export async function getWalletUtxos(wallet: IWallet): Promise<UTxO[]> {
   return utxos;
 }
 
-/**
- * Find a suitable collateral UTxO from wallet
- * Collateral must be pure ADA (no other tokens) and have enough funds
- */
-export function findCollateralUtxo(utxos: UTxO[], minLovelace: number = 5000000): UTxO | null {
-  for (const utxo of utxos) {
-    // Check if UTxO only contains lovelace (no other tokens)
-    if (utxo.output.amount.length === 1 && utxo.output.amount[0].unit === 'lovelace') {
-      const lovelaceAmount = parseInt(utxo.output.amount[0].quantity);
-      if (lovelaceAmount >= minLovelace) {
-        return utxo;
-      }
-    }
-  }
-  return null;
-}
+export { selectUtxoForCollateral };
 
 /**
  * Wait for transaction confirmation
@@ -387,7 +257,7 @@ export async function buildAndSubmitGroupMintTx(
   ];
 
   // Find collateral UTxO
-  const collateralUtxo = findCollateralUtxo(walletUtxos, 5000000);
+  const collateralUtxo = selectUtxoForCollateral(walletUtxos, 5000000);
   if (!collateralUtxo) {
     throw new Error('No suitable collateral UTxO found. Please ensure you have a UTxO with at least 5 ADA that contains only ADA (no other tokens).');
   }
@@ -596,7 +466,7 @@ export async function buildAndSubmitSemaphoreVotingMintTx(
   ];
 
   // Find collateral UTxO
-  const collateralUtxo = findCollateralUtxo(walletUtxos, 5000000);
+  const collateralUtxo = selectUtxoForCollateral(walletUtxos, 5000000);
   if (!collateralUtxo) {
     throw new Error('No suitable collateral UTxO found. Please ensure you have a UTxO with at least 5 ADA that contains only ADA (no other tokens).');
   }

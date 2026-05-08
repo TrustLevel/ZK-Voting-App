@@ -13,6 +13,10 @@ export {
   createOutputReference,
   createUrnaDatum,
   selectUtxoForCollateral,
+  textToHex,
+  createGroupDatum,
+  generateInitialOptions,
+  selectUtxoAndCreateOutputReference,
 } from './utils-browser.js';
 
 export * from '../validators.js';
