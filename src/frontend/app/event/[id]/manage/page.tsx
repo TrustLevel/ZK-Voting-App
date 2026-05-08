@@ -942,6 +942,7 @@ export default function EventDashboard() {
       const blockchainData = {
         groupNft: groupResult.policyId,
         groupValidatorAddress: groupResult.scriptAddress,
+        groupValidatorCbor: groupResult.validatorCbor,
         semaphoreNft: svResult.semaphorePolicyId,
         semaphoreAddress: svResult.semaphoreScriptAddr,
         votingNft: svResult.votingPolicyId,

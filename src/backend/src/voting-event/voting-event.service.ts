@@ -800,6 +800,7 @@ export class VotingEventService {
       if (blockchainData.votingNft) event.votingNft = blockchainData.votingNft;
       if (blockchainData.groupNft) event.groupNft = blockchainData.groupNft;
       if (blockchainData.groupValidatorAddress) event.groupValidatorAddress = blockchainData.groupValidatorAddress;
+      if (blockchainData.groupValidatorCbor) event.groupValidatorCbor = blockchainData.groupValidatorCbor;
       if (blockchainData.mintingOrefTxHash) event.mintingOrefTxHash = blockchainData.mintingOrefTxHash;
       if (blockchainData.mintingOrefIndex !== undefined && blockchainData.mintingOrefIndex !== null) {
         event.mintingOrefIndex = blockchainData.mintingOrefIndex;

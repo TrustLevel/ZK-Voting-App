@@ -132,6 +132,7 @@ export interface MintResult {
   policyId: string;
   assetName: string;
   scriptAddress: string;
+  validatorCbor: string;
 }
 
 export interface SemaphoreVotingMintResult {
@@ -454,6 +455,7 @@ export async function buildAndSubmitGroupMintTx(
       policyId,
       assetName,
       scriptAddress: scriptAddr,
+      validatorCbor: clothedCbor,
     };
 
   } catch (evalError: any) {
@@ -487,6 +489,7 @@ export async function buildAndSubmitGroupMintTx(
           policyId,
           assetName,
           scriptAddress: scriptAddr,
+          validatorCbor: clothedCbor,
         };
       } catch (submitError: any) {
         const submitMsg = submitError?.message || submitError?.toString() || String(submitError);

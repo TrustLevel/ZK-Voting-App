@@ -45,6 +45,9 @@ export class VotingEvent {
   @Column({ name: 'group_validator_address', type: 'text', nullable: true })
   groupValidatorAddress: string | null;
 
+  @Column({ name: 'group_validator_cbor', type: 'text', nullable: true })
+  groupValidatorCbor: string | null;
+
   @Column({ name: 'group_merkle_root_hash', type: 'text' })
   groupMerkleRootHash: string;
 
