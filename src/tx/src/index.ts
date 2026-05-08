@@ -2,6 +2,7 @@
 
 // Transaction builder functions
 export { buildGroupMintTransaction } from './node/mint-group.js';
+export { buildUpdateGroupTransaction } from './node/update-group.js';
 export { buildSemaphoreVotingMintTransaction } from './node/mint-sv.js';
 export { buildVoteTransaction, VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } from './browser/vote-browser.js';
 export type { BuildVoteTransactionParams } from './browser/vote-browser.js';
