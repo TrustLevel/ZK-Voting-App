@@ -4,6 +4,10 @@
   "description": "ZK proof generation utilities for ZK Voting App",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./browser": "./dist/browser/index.js"
+  },
   "type": "module",
   "private": true,
   "scripts": {
