@@ -17,4 +17,4 @@ export type { BuildVoteTransactionParams } from '@src/tx/browser';
 
 export { createOutputReference, applyOrefParamToScript } from '@src/tx/browser';
 
-export { encodeVoteSignal, generateVoteProof } from '@src/zk';
+export { encodeVoteSignal, generateVoteProof } from '@src/zk/browser';
