@@ -534,7 +534,7 @@ export default function EventPage() {
       console.log('  mpfProofSteps      :', JSON.stringify(mpfProofSteps));
 
       // Step 6: Send proof to backend — relay wallet builds, signs, and submits
-      setVoteStep('Submitting vote to blockchain...');
+      setVoteStep('Submitting your vote… the relay is building and signing the transaction. This may take up to 30 seconds.');
       const submitResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1429,14 +1429,15 @@ export default function EventPage() {
                     )}
                     {voteTxHash && (
                       <div className="bg-white rounded-lg p-3 border border-gray-200 mt-3">
-                        <p className="text-xs text-gray-600 mb-1">Transaction:</p>
+                        <p className="text-xs text-gray-600 mb-1">Transaction ID:</p>
+                        <p className="text-xs font-mono text-gray-800 break-all mb-2">{voteTxHash}</p>
                         <a
                           href={`https://preprod.cardanoscan.io/transaction/${voteTxHash}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs font-mono text-blue-600 hover:underline break-all"
+                          className="text-xs text-blue-600 hover:underline"
                         >
-                          View on Explorer
+                          View on Cardanoscan ↗
                         </a>
                       </div>
                     )}
