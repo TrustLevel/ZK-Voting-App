@@ -28,14 +28,11 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useWallet } from '@meshsdk/react';
-import { BlockfrostProvider, deserializeAddress } from '@meshsdk/core';
+import { deserializeAddress } from '@meshsdk/core';
 import {
-  buildAndSubmitGroupMintTx,
-  buildAndSubmitSemaphoreVotingMintTx,
   getWalletUtxos,
   selectUtxoAndCreateOutputReference,
   selectUtxoForCollateral,
-  waitForTxConfirmation,
 } from '@/lib/blockchain-helpers';
 
 // ============================================================================
@@ -726,43 +723,23 @@ export default function EventDashboard() {
   };
 
   const handleStartVoting = async () => {
-    // ═══════════════════════════════════════════════════════════════════════
-    // A. VALIDATION
-    // ═══════════════════════════════════════════════════════════════════════
-
     if (!startDate || !endDate) {
       alert('Please select both start and end dates');
       return;
     }
 
-    // Parse as UTC by appending 'Z' to treat input as UTC time
     const start = new Date(startDate + ':00.000Z');
     const end = new Date(endDate + ':00.000Z');
     const now = new Date();
 
-    // Check if start date is in the past
-    if (start < now) {
-      alert('Start date cannot be in the past');
-      return;
-    }
+    if (start < now) { alert('Start date cannot be in the past'); return; }
+    if (end <= start) { alert('End date must be after start date'); return; }
+    if (end < now) { alert('End date cannot be in the past'); return; }
 
-    if (end <= start) {
-      alert('End date must be after start date');
-      return;
-    }
-
-    // Check if end date is in the past
-    if (end < now) {
-      alert('End date cannot be in the past');
-      return;
-    }
-
-    // Check wallet connection
     if (!connected || !wallet) {
       alert('Please connect your wallet to start the voting event');
       return;
     }
-
     if (!walletAddress) {
       alert('Wallet address not available. Please reconnect your wallet.');
       return;
@@ -773,311 +750,151 @@ export default function EventDashboard() {
     setTxStatus('Preparing blockchain transaction...');
 
     try {
-      // Convert dates to POSIX timestamps (seconds since epoch)
       const startingDate = Math.floor(start.getTime() / 1000);
       const endingDate = Math.floor(end.getTime() / 1000);
 
-      // ═══════════════════════════════════════════════════════════════════════
-      // B. FETCH EVENT DATA FROM BACKEND
-      // ═══════════════════════════════════════════════════════════════════════
-
+      // Load event data (merkle root + options)
       setTxStatus('Loading event data from backend...');
-
       const eventResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}`);
-      if (!eventResponse.ok) {
-        throw new Error('Failed to load event data');
-      }
+      if (!eventResponse.ok) throw new Error('Failed to load event data');
       const eventData = await eventResponse.json();
+      const merkleRoot: string = eventData.groupMerkleRootHash || '0';
+      const optionsArray: Array<{ text: string }> = eventData.options ? JSON.parse(eventData.options) : options;
+      const optionTexts = optionsArray.map(o => o.text);
 
-      // Extract merkle root and options
-      const merkleRoot = BigInt(eventData.groupMerkleRootHash || '0');
-      const optionsArray = eventData.options ? JSON.parse(eventData.options) : options;
+      const { pubKeyHash: paymentKeyHash } = deserializeAddress(walletAddress);
 
-      console.log('Event data loaded:', {
-        merkleRoot,
-        optionsCount: optionsArray.length,
-        startingDate,
-        endingDate,
-      });
-
-      // ═══════════════════════════════════════════════════════════════════════
-      // C. INITIALIZE BLOCKFROST PROVIDER
-      // ═══════════════════════════════════════════════════════════════════════
-
-      const blockfrostApiKey = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
-      if (!blockfrostApiKey) {
-        throw new Error('Blockfrost API key not configured. Please check .env.local');
-      }
-
-      console.log('Blockfrost API Key loaded:', blockfrostApiKey.slice(0, 10) + '...');
-      console.log('API Key starts with "preprod"?', blockfrostApiKey.startsWith('preprod'));
-
-      const provider = new BlockfrostProvider(blockfrostApiKey);
-
-      // Get payment key hash from wallet address
-      const addressInfo = deserializeAddress(walletAddress);
-      const paymentKeyHash = addressInfo.pubKeyHash;
-
-      console.log('Blockfrost provider initialized');
-      console.log('Payment Key Hash:', paymentKeyHash);
-
-      // ═══════════════════════════════════════════════════════════════════════
-      // D. TRANSACTION 1: MINT GROUP NFT
-      // ═══════════════════════════════════════════════════════════════════════
-
+      // ─── PHASE 1: Group NFT ────────────────────────────────────────────────
       setMintingStep('group');
-      setTxStatus('Step 1/2: Minting Group NFT with participant merkle tree...');
+      setTxStatus('Step 1/2: Building Group NFT transaction...');
 
-      // Get wallet UTxOs
       const walletUtxos = await getWalletUtxos(wallet);
-      console.log('Available wallet UTxOs:', walletUtxos.length);
+      const { selectedUtxo: groupUtxo } = selectUtxoAndCreateOutputReference(walletUtxos, 0);
 
-      // Select UTxO for Group NFT minting
-      const { selectedUtxo: groupUtxo } =
-        selectUtxoAndCreateOutputReference(walletUtxos, 0);
-
-      console.log('Selected UTxO for Group NFT:', {
-        txHash: groupUtxo.input.txHash,
-        index: groupUtxo.input.outputIndex,
+      const buildGroupRes = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/build-group-mint-tx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletUtxos, walletAddress, paymentKeyHash, collateralUtxo: selectUtxoForCollateral(walletUtxos, 5000000), selectedUtxo: groupUtxo, merkleRoot }),
       });
+      if (!buildGroupRes.ok) {
+        const err = await buildGroupRes.json().catch(() => ({}));
+        throw new Error((err as any).message || 'Failed to build Group NFT transaction');
+      }
+      const { unsignedTx: groupUnsignedTx, policyId: groupPolicyId, scriptAddress: groupScriptAddress, validatorCbor: groupValidatorCbor } = await buildGroupRes.json();
 
-      // Build and submit Group NFT mint transaction
-      const groupResult = await buildAndSubmitGroupMintTx({
-        provider,
-        wallet,
-        walletAddress,
-        paymentKeyHash,
-        merkleRoot,
-        selectedUtxo: groupUtxo,
-        walletUtxos,
+      setTxStatus('Step 1/2: Waiting for wallet signature (Group NFT)...');
+      const groupSignedTx = await wallet.signTx(groupUnsignedTx, true);
+
+      setTxStatus('Step 1/2: Submitting Group NFT — waiting for on-chain visibility (up to 90s)...');
+      const submitGroupRes = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/submit-group-mint-tx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signedTx: groupSignedTx, policyId: groupPolicyId, scriptAddress: groupScriptAddress }),
       });
-
-      console.log('✅ Group NFT minted:', {
-        txHash: groupResult.txHash,
-        policyId: groupResult.policyId,
-      });
-
-      setTxStatus(`Group NFT minted! TX: ${groupResult.txHash.slice(0, 16)}... Waiting for confirmation...`);
-
-      // Wait for transaction confirmation
-      const groupConfirmed = await waitForTxConfirmation(provider, groupResult.txHash, 60, 3000);
-      if (!groupConfirmed) {
-        throw new Error('Group NFT transaction not confirmed after 3 minutes. Please try again.');
+      if (!submitGroupRes.ok) {
+        const err = await submitGroupRes.json().catch(() => ({}));
+        throw new Error((err as any).message || 'Failed to submit Group NFT transaction');
       }
-      console.log('✅ Group NFT transaction confirmed on-chain');
+      const { txHash: groupTxHash } = await submitGroupRes.json();
+      console.log('✅ Group NFT minted and visible on-chain:', groupTxHash);
 
-      // Wait for the Group NFT UTxO to be specifically visible at the script address.
-      //
-      // Previously: fixed 10s sleep. This was unreliable — sometimes the UTxO was
-      // not yet indexed, sometimes 10s was overkill.
-      //
-      // Now: active polling via Blockfrost until the UTxO appears at the script
-      // address. This is the correct signal that the node (and Blockfrost submission
-      // nodes) are ready to accept a TX referencing this UTxO. Max 90s before we
-      // warn and continue anyway (the Semaphore+Voting TX no longer uses an Ogmios
-      // evaluator, so the submission can succeed even if this check times out).
-      console.log('⏳ Waiting for Group NFT UTxO to be visible at script address...');
-      setTxStatus('Waiting for Group NFT to be available on-chain...');
-      let groupUtxoVisible = false;
-      for (let i = 0; i < 30; i++) {
-        try {
-          const utxosAtScript = await provider.fetchAddressUTxOs(groupResult.scriptAddress);
-          if (utxosAtScript.some(u => u.input.txHash === groupResult.txHash)) {
-            groupUtxoVisible = true;
-            console.log(`✅ Group NFT UTxO visible after ${(i + 1) * 3}s`);
-            break;
-          }
-        } catch { /* ignore fetch errors, keep polling */ }
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      }
-      if (!groupUtxoVisible) {
-        console.warn('⚠️ Group NFT UTxO not yet visible — proceeding anyway (evaluator is disabled for TX 2)');
-      }
-
-      // ═══════════════════════════════════════════════════════════════════════
-      // E. TRANSACTION 2: MINT SEMAPHORE + VOTING NFTs
-      // ═══════════════════════════════════════════════════════════════════════
-
+      // ─── PHASE 2: Semaphore + Voting NFTs ─────────────────────────────────
       setMintingStep('voting');
-      setTxStatus('Step 2/2: Minting Semaphore + Voting NFTs...');
+      setTxStatus('Step 2/2: Building Semaphore + Voting NFT transaction...');
 
-      // Get fresh UTxOs (after Group NFT mint)
       const walletUtxos2 = await getWalletUtxos(wallet);
-      console.log('Available wallet UTxOs (after Group mint):', walletUtxos2.length);
+      const { selectedUtxo: svUtxo } = selectUtxoAndCreateOutputReference(walletUtxos2, 0);
 
-      // Select different UTxO for Semaphore + Voting NFT minting
-      const { selectedUtxo: votingUtxo } =
-        selectUtxoAndCreateOutputReference(walletUtxos2, 0);
-
-      console.log('Selected UTxO for Semaphore + Voting NFTs:', {
-        txHash: votingUtxo.input.txHash,
-        index: votingUtxo.input.outputIndex,
+      const buildSvRes = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/build-sv-mint-tx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          walletUtxos: walletUtxos2,
+          walletAddress,
+          paymentKeyHash,
+          collateralUtxo: selectUtxoForCollateral(walletUtxos2, 5000000),
+          selectedUtxo: svUtxo,
+          groupNftTxHash: groupTxHash,
+          groupNftOutputIndex: 0,
+          groupPolicyId,
+          startingDate,
+          endingDate,
+          votingPower,
+          optionTexts,
+          merkleRoot,
+        }),
       });
-
-      // Calculate TX validity window.
-      //
-      // The Aiken voting validator enforces is_entirely_before(validity_range, event_start),
-      // meaning the TX validity upper bound (expressed as POSIX ms on-chain) must be
-      // strictly less than event_start. We therefore derive the window from the current
-      // block's timestamp and the user-chosen event start:
-      //
-      //   window = min(120s, (startingDate - block.time) - 60s)
-      //
-      // The 60-second buffer guards against slot drift between block.time and submission.
-      // We cap at 120 slots (2 min) so stale TXs don't linger in the mempool.
-      const latestBlock = await provider.fetchLatestBlock();
-      const currentSlot = parseInt(latestBlock.slot);
-      const currentTimeSec = latestBlock.time; // POSIX seconds
-      const secondsToStart = startingDate - currentTimeSec;
-
-      if (secondsToStart < 90) {
-        throw new Error(
-          `Event start is too soon (only ${Math.round(secondsToStart)}s away). ` +
-          `Please set the event to start at least 90 seconds from now.`
-        );
+      if (!buildSvRes.ok) {
+        const err = await buildSvRes.json().catch(() => ({}));
+        throw new Error((err as any).message || 'Failed to build Semaphore+Voting transaction');
       }
+      const svBuildData = await buildSvRes.json();
 
-      // Window: up to 120s but always ≥60s before event start so is_entirely_before passes.
-      const validityWindowSecs = Math.min(120, secondsToStart - 60);
-      const txValidityEndSlot = currentSlot + validityWindowSecs;
+      setTxStatus('Step 2/2: Waiting for wallet signature (Semaphore + Voting NFTs)...');
+      const svSignedTx = await wallet.signTx(svBuildData.unsignedTx, true);
 
-      console.log('Transaction validity:', {
-        currentSlot,
-        currentTimeSec,
-        secondsToStart,
-        validityWindowSecs,
-        expiresAt: txValidityEndSlot,
+      setTxStatus('Step 2/2: Submitting Semaphore + Voting NFTs — saving to blockchain...');
+      const submitSvRes = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/submit-sv-mint-tx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          signedTx: svSignedTx,
+          semaphorePolicyId: svBuildData.semaphorePolicyId,
+          semaphoreScriptAddr: svBuildData.semaphoreScriptAddr,
+          votingPolicyId: svBuildData.votingPolicyId,
+          votingScriptAddr: svBuildData.votingScriptAddr,
+          groupNft: groupPolicyId,
+          groupValidatorAddress: groupScriptAddress,
+          groupValidatorCbor,
+          mintingOrefTxHash: svBuildData.mintingOrefTxHash,
+          mintingOrefIndex: svBuildData.mintingOrefIndex,
+        }),
       });
-
-      // Build and submit Semaphore + Voting NFT mint transaction
-      const svResult = await buildAndSubmitSemaphoreVotingMintTx({
-        provider,
-        wallet,
-        walletAddress,
-        paymentKeyHash,
-        groupNftTxHash: groupResult.txHash,
-        groupNftOutputIndex: 0,
-        groupPolicyId: groupResult.policyId,
-        merkleRoot,
-        options: optionsArray,
-        votingPower,
-        startingDate,
-        endingDate,
-        selectedUtxo: votingUtxo,
-        walletUtxos: walletUtxos2,
-        txValidityEndSlot,
-      });
-
-      console.log('✅ Semaphore + Voting NFTs minted:', {
-        txHash: svResult.txHash,
-        semaphorePolicyId: svResult.semaphorePolicyId,
-        votingPolicyId: svResult.votingPolicyId,
-      });
-
-      setTxStatus(`Voting NFTs minted! TX: ${svResult.txHash.slice(0, 16)}... Waiting for confirmation...`);
-
-      // Wait for transaction confirmation
-      const svConfirmed = await waitForTxConfirmation(provider, svResult.txHash, 30, 2000);
-      if (!svConfirmed) {
-        console.warn('Semaphore/Voting NFT transaction not confirmed yet, but continuing...');
-      } else {
-        console.log('✅ Semaphore/Voting NFT transaction confirmed on-chain');
+      if (!submitSvRes.ok) {
+        const err = await submitSvRes.json().catch(() => ({}));
+        throw new Error((err as any).message || 'Failed to submit Semaphore+Voting transaction');
       }
+      const { txHash: svTxHash } = await submitSvRes.json();
+      console.log('✅ Semaphore + Voting NFTs minted:', svTxHash);
 
+      // ─── BACKEND: update event dates ──────────────────────────────────────
       setMintingStep('complete');
       setTxStatus('Blockchain transactions complete! Updating backend...');
 
-      // ═══════════════════════════════════════════════════════════════════════
-      // F. BACKEND UPDATES
-      // ═══════════════════════════════════════════════════════════════════════
-
-      // Update event dates
       const dateResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          startingDate,
-          endingDate,
-        })
+        body: JSON.stringify({ startingDate, endingDate }),
       });
-
-      if (!dateResponse.ok) {
-        throw new Error(`Failed to update event dates: ${dateResponse.status}`);
-      }
-
+      if (!dateResponse.ok) throw new Error(`Failed to update event dates: ${dateResponse.status}`);
       const updatedEvent = await dateResponse.json();
-
-      // Update local state
       if (createdEvent) {
-        setCreatedEvent({
-          ...createdEvent,
-          startingDate: updatedEvent.startingDate,
-          endingDate: updatedEvent.endingDate,
-        });
+        setCreatedEvent({ ...createdEvent, startingDate: updatedEvent.startingDate, endingDate: updatedEvent.endingDate });
       }
 
-      // Save blockchain data (NFT policy IDs, addresses, TX hashes)
-      const blockchainData = {
-        groupNft: groupResult.policyId,
-        groupValidatorAddress: groupResult.scriptAddress,
-        groupValidatorCbor: groupResult.validatorCbor,
-        semaphoreNft: svResult.semaphorePolicyId,
-        semaphoreAddress: svResult.semaphoreScriptAddr,
-        votingNft: svResult.votingPolicyId,
-        votingValidatorAddress: svResult.votingScriptAddr,
-        // Required for re-deriving parameterized validator CBORs during voting
-        mintingOrefTxHash: votingUtxo.input.txHash,
-        mintingOrefIndex: votingUtxo.input.outputIndex,
-        txHashes: {
-          groupMint: groupResult.txHash,
-          semaphoreVotingMint: svResult.txHash,
-        },
-        mintedAt: Date.now(),
-        walletAddress,
-      };
-
-      await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/save-blockchain-data`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blockchainData })
-      });
-
-      console.log('✅ Backend updated with blockchain data');
-
-      // Store results for UI display
       setBlockchainResult({
-        groupTxHash: groupResult.txHash,
-        groupPolicyId: groupResult.policyId,
-        semaphoreVotingTxHash: svResult.txHash,
-        semaphorePolicyId: svResult.semaphorePolicyId,
-        votingPolicyId: svResult.votingPolicyId,
-        votingValidatorAddress: svResult.votingScriptAddr,
+        groupTxHash,
+        groupPolicyId,
+        semaphoreVotingTxHash: svTxHash,
+        semaphorePolicyId: svBuildData.semaphorePolicyId,
+        votingPolicyId: svBuildData.votingPolicyId,
+        votingValidatorAddress: svBuildData.votingScriptAddr,
       });
-
-      // ═══════════════════════════════════════════════════════════════════════
-      // G. SUCCESS
-      // ═══════════════════════════════════════════════════════════════════════
 
       setTxStatus('Voting event published to blockchain! 🎉');
-
       alert(
         `🎉 Voting event published to blockchain!\n\n` +
-        `Group NFT: ${groupResult.txHash.slice(0, 16)}...\n` +
-        `Voting NFTs: ${svResult.txHash.slice(0, 16)}...\n\n` +
+        `Group NFT: ${groupTxHash.slice(0, 16)}...\n` +
+        `Voting NFTs: ${svTxHash.slice(0, 16)}...\n\n` +
         `View transactions on Cardanoscan`
       );
 
     } catch (error) {
       console.error('❌ Error starting voting:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to start voting event';
-
       setTxStatus(`Error: ${errorMessage}`);
       setMintingStep('idle');
-
-      alert(
-        `Failed to start voting event:\n\n${errorMessage}\n\n` +
-        `Please check the console for details.`
-      );
+      alert(`Failed to start voting event:\n\n${errorMessage}\n\nPlease check the console for details.`);
     } finally {
       setIsStarting(false);
     }
