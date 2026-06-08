@@ -57,6 +57,8 @@ interface CreatedEvent {
   walletAddress?: string;
   adminUserId?: number | null;
   groupNft?: string | null;
+  semaphoreNft?: string | null;
+  votingNft?: string | null;
   groupMerkleRootHash?: string | null;
 }
 
@@ -132,17 +134,6 @@ export default function EventDashboard() {
 
   // Blockchain & Voting State
   const [isStarting, setIsStarting] = useState(false);
-  const [publishedData, setPublishedData] = useState<{
-    signature: string;
-    publicKey: string;
-    eventId: string;
-    eventName: string;
-    startingDate: number;
-    endingDate: number;
-    walletAddress: string;
-    timestamp: number;
-  } | null>(null);
-
   // Group NFT Update State
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
   const [groupUpdateStatus, setGroupUpdateStatus] = useState<string | null>(null);
@@ -377,6 +368,8 @@ export default function EventDashboard() {
         adminUserId: backendEvent.adminUserId,
         adminLink: `${window.location.origin}/event/${eventId}/manage?token=${backendEvent.adminToken}`,
         groupNft: backendEvent.groupNft ?? null,
+        semaphoreNft: backendEvent.semaphoreNft ?? null,
+        votingNft: backendEvent.votingNft ?? null,
         groupMerkleRootHash: backendEvent.groupMerkleRootHash ?? null,
       });
 
@@ -389,15 +382,6 @@ export default function EventDashboard() {
         setInvitationsSent(true);
       }
 
-      // Restore blockchain published data
-      if (backendEvent.blockchainData) {
-        try {
-          const parsedBlockchainData = JSON.parse(backendEvent.blockchainData);
-          setPublishedData(parsedBlockchainData);
-        } catch (err) {
-          console.error('Failed to parse blockchain data:', err);
-        }
-      }
     } catch (error) {
       console.error('Failed to load event from backend:', error);
       throw error;
@@ -1086,9 +1070,9 @@ export default function EventDashboard() {
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
                     activeTab === 'start'
                       ? 'bg-gray-900 ring-2 ring-gray-900 ring-offset-2'
-                      : (blockchainResult || publishedData) ? 'bg-gray-900' : 'bg-gray-300 text-gray-600'
+                      : (blockchainResult || !!createdEvent?.votingNft) ? 'bg-gray-900' : 'bg-gray-300 text-gray-600'
                   }`}>
-                    {(blockchainResult || publishedData) ? (
+                    {(blockchainResult || !!createdEvent?.votingNft) ? (
                       <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
@@ -1102,7 +1086,7 @@ export default function EventDashboard() {
                 </button>
 
                 {/* Connector Line */}
-                <div className={`w-12 h-px ${(blockchainResult || publishedData) ? 'bg-gray-300' : 'bg-gray-200'}`}></div>
+                <div className={`w-12 h-px ${(blockchainResult || !!createdEvent?.votingNft) ? 'bg-gray-300' : 'bg-gray-200'}`}></div>
 
                 {/* Step 4 - Results */}
                 <button
@@ -1589,94 +1573,31 @@ export default function EventDashboard() {
                       </button>
                     </div>
                   </div>
-                ) : publishedData ? (
+                ) : createdEvent?.votingNft ? (
                   <div className="bg-green-50 border-2 border-green-200 rounded-xl p-6">
                     <div className="flex items-center gap-2 mb-4">
                       <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <h3 className="font-bold text-green-900 text-lg">Event Published to Blockchain</h3>
+                      <h3 className="font-bold text-green-900 text-lg">Event Already Published to Blockchain</h3>
                     </div>
                     <p className="text-sm text-green-800 mb-4">
-                      Your voting event has been successfully signed and published to the Cardano blockchain. Participants can now vote using their unique voting links.
+                      This voting event has been minted on the Cardano blockchain. All NFTs are live on-chain.
                     </p>
-
-                    <div className="bg-white rounded-lg p-4 border border-green-200">
-                      <h4 className="font-semibold text-gray-900 mb-3">Event Summary & Blockchain Transaction Data</h4>
-                      <div className="space-y-3 text-xs">
-                        {/* Event Details */}
-                        <div>
-                          <label className="block text-gray-600 font-semibold mb-1">Event ID</label>
-                          <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all">
-                            {publishedData.eventId}
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-gray-600 font-semibold mb-1">Event Name</label>
-                          <div className="bg-gray-50 rounded p-2 font-mono text-gray-900">
-                            {publishedData.eventName}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-gray-600 font-semibold mb-1">Starting Date</label>
-                            <div className="bg-gray-50 rounded p-2 text-gray-900">
-                              <div className="font-medium">{new Date(publishedData.startingDate * 1000).toUTCString().replace('GMT', 'UTC')}</div>
-                              <div className="text-[10px] font-mono text-gray-600 mt-1">POSIX: {publishedData.startingDate}</div>
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-gray-600 font-semibold mb-1">Ending Date</label>
-                            <div className="bg-gray-50 rounded p-2 text-gray-900">
-                              <div className="font-medium">{new Date(publishedData.endingDate * 1000).toUTCString().replace('GMT', 'UTC')}</div>
-                              <div className="text-[10px] font-mono text-gray-600 mt-1">POSIX: {publishedData.endingDate}</div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Wallet Signature */}
-                        <div>
-                          <label className="block text-gray-600 font-semibold mb-1">Wallet Signature</label>
-                          <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all text-[10px]">
-                            {publishedData.signature}
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-gray-600 font-semibold mb-1">Public Key</label>
-                          <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all text-[10px]">
-                            {publishedData.publicKey}
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-gray-600 font-semibold mb-1">Wallet Address</label>
-                          <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all text-[10px]">
-                            {publishedData.walletAddress}
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-gray-600 font-semibold mb-1">Transaction Timestamp</label>
-                          <div className="bg-gray-50 rounded p-2 font-mono text-gray-900">
-                            {new Date(publishedData.timestamp).toLocaleString()}
-                          </div>
-                        </div>
+                    <div className="bg-white rounded-lg p-4 border border-green-200 space-y-3 text-xs">
+                      <div>
+                        <label className="block text-gray-600 font-semibold mb-1">Group NFT Policy ID</label>
+                        <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all">{createdEvent.groupNft}</div>
+                      </div>
+                      <div>
+                        <label className="block text-gray-600 font-semibold mb-1">Semaphore NFT Policy ID</label>
+                        <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all">{createdEvent.semaphoreNft}</div>
+                      </div>
+                      <div>
+                        <label className="block text-gray-600 font-semibold mb-1">Voting NFT Policy ID</label>
+                        <div className="bg-gray-50 rounded p-2 font-mono text-gray-900 break-all">{createdEvent.votingNft}</div>
                       </div>
                     </div>
-
-                    <div className="mt-4 flex items-start gap-2 text-xs text-green-800">
-                      <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <p>
-                        This data is now immutably recorded on the Cardano blockchain and can be verified by anyone.
-                      </p>
-                    </div>
-
-                    {/* Navigation to Results */}
                     <div className="mt-6 pt-6 border-t border-green-200">
                       <button
                         onClick={() => setActiveTab('results')}
