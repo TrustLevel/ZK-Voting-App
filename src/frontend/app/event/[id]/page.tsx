@@ -26,10 +26,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Identity } from 'modp-semaphore-bls12381/packages/typescript/src/identity';
 import { useWallet } from '@meshsdk/react';
-import { BlockfrostProvider, deserializeAddress } from '@meshsdk/core';
-import { encodeVoteSignal, generateVoteProof, buildVoteTransaction, applyOrefParamToScript } from '@/lib/vote-helpers';
-import { VALIDATORS } from '@src/tx/browser';
-import { createOutputReference } from '@/lib/blockchain-helpers';
+import { encodeVoteSignal, generateVoteProof } from '@/lib/vote-helpers';
 
 // ============================================================================
 // CONSTANTS
@@ -455,10 +452,6 @@ export default function EventPage() {
       if (!event.semaphoreAddress) {
         throw new Error('Voting not yet available — the event organizer has not completed the blockchain setup.');
       }
-      if (!connected || !wallet) {
-        throw new Error('Wallet not connected. Please connect your wallet before voting.');
-      }
-
       // Load stored identity
       const storedIdentityStr = localStorage.getItem(`identity_${eventId}_${validatedToken}`);
       if (!storedIdentityStr) {
@@ -540,109 +533,24 @@ export default function EventPage() {
       console.log('  mpfNewRoot         :', mpfNewRoot);
       console.log('  mpfProofSteps      :', JSON.stringify(mpfProofSteps));
 
-      // Step 6: Build vote transaction
-      setVoteStep('Building transaction...');
-
-      const walletAddress = await wallet.getChangeAddress();
-      const walletUtxos = await wallet.getUtxos();
-      const { pubKeyHash: paymentKeyHash } = deserializeAddress(walletAddress);
-
-      // ── COLLATERAL DIAGNOSTICS ───────────────────────────────────────────────
-      console.log('💰 Wallet UTxOs (' + walletUtxos.length + ' total):');
-      walletUtxos.forEach((u, i) => {
-        const units = u.output.amount.map(a => a.unit === 'lovelace' ? (parseInt(a.quantity)/1_000_000).toFixed(2) + ' ADA' : a.unit.slice(0,16) + '…');
-        const isPureAda = u.output.amount.length === 1 && u.output.amount[0].unit === 'lovelace';
-        const lovelace = u.output.amount.find(a => a.unit === 'lovelace')?.quantity ?? '0';
-        console.log(`  [${i}] ${u.input.txHash.slice(0,12)}…#${u.input.outputIndex} pureADA=${isPureAda} lovelace=${lovelace} assets=[${units.join(', ')}]`);
-      });
-      const pureAdaUtxos = walletUtxos.filter(u => u.output.amount.length === 1 && u.output.amount[0].unit === 'lovelace');
-      console.log('  Pure-ADA UTxOs (collateral candidates):', pureAdaUtxos.length);
-      // ────────────────────────────────────────────────────────────────────────
-
-      const mintingOref = createOutputReference(
-        event.mintingOrefTxHash!,
-        event.mintingOrefIndex!
-      );
-      const semaphoreValidatorCbor = await applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
-      const votingValidatorCbor = await applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
-
-      const provider = new BlockfrostProvider(
-        process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY!
-      );
-
-      const collateralUtxo = walletUtxos.find(u =>
-        u.output.amount.length === 1 &&
-        u.output.amount[0].unit === 'lovelace' &&
-        parseInt(u.output.amount[0].quantity) >= 5000000
-      );
-      if (!collateralUtxo) throw new Error('No suitable collateral UTxO found. Please ensure you have a UTxO with at least 5 ADA containing only ADA (no other tokens).');
-
-      const unsignedTx = await buildVoteTransaction({
-        provider,
-        semaphoreScriptAddress: event.semaphoreAddress,
-        votingScriptAddress: event.votingValidatorAddress!,
-        semaphoreNftPolicyId: event.semaphoreNft!,
-        votingNftPolicyId: event.votingNft!,
-        groupNftPolicyId: event.groupNft!,
-        groupMerkleRoot: BigInt(event.groupMerkleRootHash),
-        semaphoreValidatorCbor,
-        votingValidatorCbor,
-        walletUtxos,
-        walletAddress,
-        paymentKeyHash,
-        zkProof,
-        nullifierHash,
-        signalHash,
-        signalMessage,
-        mpfProofSteps,
-        mpfNewRoot,
-        voteSignal,
-        collateralUtxo,
-        // weight in UrnaDatum is 0 for simple voting (votingPower===1), votingPower for weighted.
-        weight: event.votingPower > 1 ? event.votingPower : 0,
-        eventStart: event.startingDate! * 1000,
-        eventEnd: event.endingDate! * 1000,
-      });
-
-      // Helper: roll back nullifier if anything after insertion fails, so the voter can retry.
-      const rollbackNullifier = async () => {
-        try {
-          await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/nullifier`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nullifier: nullifierHash.toString() }),
-          });
-          console.log('↩️ Nullifier rolled back — voter can retry.');
-        } catch {
-          console.warn('⚠️ Nullifier rollback failed — voter may need organizer help to retry.');
-        }
-      };
-
-      // Step 7: Sign transaction
-      setVoteStep('Waiting for wallet signature...');
-      let signedTx: string;
-      try {
-        signedTx = await wallet.signTx(unsignedTx, true);
-      } catch (signErr: any) {
-        await rollbackNullifier();
-        const msg = signErr?.message ?? String(signErr);
-        if (msg.toLowerCase().includes('user declined') || msg.toLowerCase().includes('declined sign')) {
-          throw new Error('Wallet signature declined. Your vote was not submitted.');
-        }
-        throw new Error('Signing failed: ' + msg);
-      }
-
-      // Step 8: Submit to blockchain via backend
-      setVoteStep('Submitting to blockchain...');
+      // Step 6: Send proof to backend — relay wallet builds, signs, and submits
+      setVoteStep('Submitting vote to blockchain...');
       const submitResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signedTx }),
+        body: JSON.stringify({
+          zkProof,
+          nullifierHash: nullifierHash.toString(),
+          signalHash: signalHash.toString(),
+          signalMessage,
+          mpfProofSteps,
+          mpfNewRoot,
+          voteSignal,
+        }),
       });
       if (!submitResponse.ok) {
-        await rollbackNullifier();
         const errData = await submitResponse.json().catch(() => ({}));
-        throw new Error(errData.message || 'Failed to submit transaction');
+        throw new Error(errData.message || 'Failed to submit vote');
       }
       const submitResult = await submitResponse.json();
       const txHash: string = submitResult.txHash;
