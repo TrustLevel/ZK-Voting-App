@@ -9,6 +9,7 @@ import { Group } from 'modp-semaphore-bls12381/packages/typescript/lib/group';
 import { UsersService } from '../users/users.service';
 import { EmailService } from './email.service';
 import { v4 as uuidv4 } from 'uuid';
+import { deserializeDatum } from '@meshsdk/core';
 
 interface CreateVotingEventDto {
   eventName: string;
@@ -760,8 +761,10 @@ export class VotingEventService {
     );
     if (!votingUtxo) throw new Error('Voting UTxO not found on chain');
 
-    // inline_datum is the JSON representation of the Plutus datum
-    const datum = votingUtxo.inline_datum;
+    // inline_datum from Blockfrost is raw CBOR hex — decode to Plutus data JSON
+    const datumCbor: string | null = votingUtxo.inline_datum;
+    if (!datumCbor) throw new Error('Could not read UrnaDatum from Voting UTxO');
+    const datum = deserializeDatum(datumCbor);
     if (!datum || !datum.fields || !datum.fields[1]) {
       throw new Error('Could not read UrnaDatum from Voting UTxO');
     }
