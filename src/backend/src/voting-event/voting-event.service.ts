@@ -907,6 +907,305 @@ export class VotingEventService {
     return { success: true };
   }
 
+  // Simple Blockfrost submit (no Ogmios evaluation — mint TXs use static execution units).
+  private async _submitTx(signedTx: string): Promise<{ txHash: string }> {
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const txBytes = Buffer.from(signedTx, 'hex');
+    const response = await fetch('https://cardano-preprod.blockfrost.io/api/v0/tx/submit', {
+      method: 'POST',
+      headers: { 'project_id': apiKey, 'Content-Type': 'application/cbor' },
+      body: txBytes,
+    });
+    const body = await response.text();
+    if (!response.ok) {
+      throw new HttpException(
+        `Blockfrost submission failed (${response.status}): ${body}`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+    return { txHash: body.replace(/"/g, '') };
+  }
+
+  // B1 — Build unsigned Group NFT mint TX server-side.
+  // Frontend passes wallet UTxOs and the selected UTxO used as the one-shot oref param.
+  async buildGroupMintTx(
+    eventId: number,
+    params: {
+      walletUtxos: any[];
+      walletAddress: string;
+      paymentKeyHash: string;
+      collateralUtxo: any;
+      selectedUtxo: any;
+      merkleRoot: string;
+    },
+  ): Promise<{ unsignedTx: string; policyId: string; assetName: string; scriptAddress: string; validatorCbor: string }> {
+    await this.votingEventRepository.findOne({ where: { eventId } })
+      .then(e => { if (!e) throw new HttpException('Event not found', HttpStatus.NOT_FOUND); });
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BlockfrostProvider, resolveScriptHash, resolvePlutusScriptAddress, conStr } = require('@meshsdk/core');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { buildGroupMintTransaction, applyOrefParamToScript, VALIDATORS, textToHex, createOutputReference, createGroupDatum } = require('@src/tx');
+
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    const outputReference = createOutputReference(
+      params.selectedUtxo.input.txHash,
+      params.selectedUtxo.input.outputIndex,
+    );
+    const clothedCbor = applyOrefParamToScript(VALIDATORS.group.mint, outputReference);
+    const policyId = resolveScriptHash(clothedCbor, 'V3');
+    const scriptAddress = resolvePlutusScriptAddress({ code: clothedCbor, version: 'V3' }, 0);
+    const assetName = textToHex('zkvapp-group');
+    const mintValue = [
+      { unit: 'lovelace', quantity: '5000000' },
+      { unit: policyId + assetName, quantity: '1' },
+    ];
+    const groupDatum = createGroupDatum(BigInt(params.merkleRoot), params.paymentKeyHash);
+
+    const unsignedTx = await buildGroupMintTransaction({
+      provider,
+      policyId,
+      assetName,
+      clothedCbor,
+      createRedeemer: conStr(0, []),
+      selectedUtxo: params.selectedUtxo,
+      walletUtxos: params.walletUtxos,
+      walletAddress: params.walletAddress,
+      scriptAddr: scriptAddress,
+      mintValue,
+      groupDatum,
+      paymentKeyHash: params.paymentKeyHash,
+      collateralUtxo: params.collateralUtxo,
+    });
+
+    return { unsignedTx, policyId, assetName, scriptAddress, validatorCbor: clothedCbor };
+  }
+
+  // B3 — Submit signed Group NFT mint TX and wait until the UTxO is visible on-chain.
+  // Blocks until the Group NFT UTxO appears at scriptAddress (up to 90s) so Phase 2 can start.
+  async submitGroupMintTx(params: {
+    signedTx: string;
+    policyId: string;
+    scriptAddress: string;
+  }): Promise<{ txHash: string }> {
+    const { txHash } = await this._submitTx(params.signedTx);
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BlockfrostProvider } = require('@meshsdk/core');
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    for (let i = 0; i < 30; i++) {
+      try {
+        const utxos = await provider.fetchAddressUTxOs(params.scriptAddress);
+        if (utxos.some((u: any) => u.input.txHash === txHash)) {
+          console.log(`[submitGroupMintTx] UTxO visible after ${(i + 1) * 3}s`);
+          return { txHash };
+        }
+      } catch { /* ignore transient fetch errors */ }
+      await new Promise(r => setTimeout(r, 3000));
+    }
+
+    console.warn('[submitGroupMintTx] UTxO not visible after 90s — proceeding anyway');
+    return { txHash };
+  }
+
+  // B5 — Build unsigned Semaphore + Voting NFT mint TX server-side.
+  async buildSvMintTx(
+    eventId: number,
+    params: {
+      walletUtxos: any[];
+      walletAddress: string;
+      paymentKeyHash: string;
+      collateralUtxo: any;
+      selectedUtxo: any;
+      groupNftTxHash: string;
+      groupNftOutputIndex: number;
+      groupPolicyId: string;
+      startingDate: number;
+      endingDate: number;
+      votingPower: number;
+      optionTexts: string[];
+      merkleRoot: string;
+    },
+  ): Promise<{
+    unsignedTx: string;
+    semaphorePolicyId: string;
+    semaphoreAssetName: string;
+    semaphoreScriptAddr: string;
+    semaphoreValidatorCbor: string;
+    votingPolicyId: string;
+    votingAssetName: string;
+    votingScriptAddr: string;
+    votingValidatorCbor: string;
+    mintingOrefTxHash: string;
+    mintingOrefIndex: number;
+  }> {
+    await this.votingEventRepository.findOne({ where: { eventId } })
+      .then(e => { if (!e) throw new HttpException('Event not found', HttpStatus.NOT_FOUND); });
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BlockfrostProvider, resolveScriptHash, resolvePlutusScriptAddress, conStr, integer, byteString } = require('@meshsdk/core');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { buildSemaphoreVotingMintTransaction, applyOrefParamToScript, VALIDATORS, textToHex, createOutputReference, createUrnaDatum, generateInitialOptions, VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } = require('@src/tx');
+
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    const latestBlock = await provider.fetchLatestBlock();
+    const currentSlot = parseInt(latestBlock.slot);
+    const currentTimeSec: number = latestBlock.time;
+    const secondsToStart = params.startingDate - currentTimeSec;
+
+    if (secondsToStart < 90) {
+      throw new HttpException(
+        `Event start is too soon (only ${Math.round(secondsToStart)}s away). Please set the event to start at least 90 seconds from now.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const validityWindowSecs = Math.min(120, secondsToStart - 60);
+    const txValidityEndSlot = currentSlot + validityWindowSecs;
+
+    const mintingOrefTxHash: string = params.selectedUtxo.input.txHash;
+    const mintingOrefIndex: number = params.selectedUtxo.input.outputIndex;
+    const outputReference = createOutputReference(mintingOrefTxHash, mintingOrefIndex);
+
+    const semaphoreValidatorCbor = applyOrefParamToScript(VALIDATORS.semaphore.mint, outputReference);
+    const semaphoreScriptAddr = resolvePlutusScriptAddress({ code: semaphoreValidatorCbor, version: 'V3' }, 0);
+    const semaphorePolicyId = resolveScriptHash(semaphoreValidatorCbor, 'V3');
+
+    const votingValidatorCbor = applyOrefParamToScript(VALIDATORS.voting.mint, outputReference);
+    const votingScriptAddr = resolvePlutusScriptAddress({ code: votingValidatorCbor, version: 'V3' }, 0);
+    const votingPolicyId = resolveScriptHash(votingValidatorCbor, 'V3');
+
+    const nullHash = '0000000000000000000000000000000000000000000000000000000000000000';
+    const semaphoreDatum = conStr(0, [
+      byteString(params.groupPolicyId),
+      integer(BigInt(params.merkleRoot)),
+      byteString(nullHash),
+      createOutputReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX),
+    ]);
+
+    const weight = params.votingPower > 1 ? params.votingPower : 0;
+    const urnaDatum = createUrnaDatum({
+      weight,
+      options: generateInitialOptions(params.optionTexts.length),
+      eventStart: params.startingDate * 1000,
+      eventEnd: params.endingDate * 1000,
+      semaphoreNftPolicyId: semaphorePolicyId,
+    });
+
+    const semaphoreAssetName = textToHex('Semaphore1');
+    const semaphoreMintValue = [
+      { unit: 'lovelace', quantity: '5000000' },
+      { unit: semaphorePolicyId + semaphoreAssetName, quantity: '1' },
+    ];
+    const votingAssetName = textToHex('VotingEvent1');
+    const votingMintValue = [
+      { unit: 'lovelace', quantity: '5000000' },
+      { unit: votingPolicyId + votingAssetName, quantity: '1' },
+    ];
+
+    const unsignedTx = await buildSemaphoreVotingMintTransaction({
+      provider,
+      txValidityEndSlot,
+      groupNftTxHash: params.groupNftTxHash,
+      groupNftOutputIndex: params.groupNftOutputIndex,
+      semaphorePolicyId,
+      semaphoreAssetName,
+      semaphoreValidatorCbor,
+      votingPolicyId,
+      votingAssetName,
+      votingValidatorCbor,
+      selectedUtxo: params.selectedUtxo,
+      walletUtxos: params.walletUtxos,
+      walletAddress: params.walletAddress,
+      semaphoreScriptAddr,
+      semaphoreMintValue,
+      semaphoreDatum,
+      votingScriptAddr,
+      votingMintValue,
+      urnaDatum,
+      paymentKeyHash: params.paymentKeyHash,
+      collateralUtxo: params.collateralUtxo,
+    });
+
+    return {
+      unsignedTx,
+      semaphorePolicyId,
+      semaphoreAssetName,
+      semaphoreScriptAddr,
+      semaphoreValidatorCbor,
+      votingPolicyId,
+      votingAssetName,
+      votingScriptAddr,
+      votingValidatorCbor,
+      mintingOrefTxHash,
+      mintingOrefIndex,
+    };
+  }
+
+  // B7 — Submit signed SV mint TX, wait for confirmation, save all blockchain data to DB atomically.
+  async submitSvMintTx(
+    eventId: number,
+    params: {
+      signedTx: string;
+      semaphorePolicyId: string;
+      semaphoreScriptAddr: string;
+      votingPolicyId: string;
+      votingScriptAddr: string;
+      groupNft: string;
+      groupValidatorAddress: string;
+      groupValidatorCbor: string;
+      mintingOrefTxHash: string;
+      mintingOrefIndex: number;
+    },
+  ): Promise<{ txHash: string }> {
+    const { txHash } = await this._submitTx(params.signedTx);
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BlockfrostProvider } = require('@meshsdk/core');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } = require('@src/tx');
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    let confirmed = false;
+    for (let i = 0; i < 20; i++) {
+      try {
+        await provider.fetchTxInfo(txHash);
+        confirmed = true;
+        break;
+      } catch { /* not yet confirmed */ }
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    if (!confirmed) {
+      console.warn(`[submitSvMintTx] TX ${txHash} not confirmed after 60s — saving data anyway`);
+    }
+
+    const result = await this.saveBlockchainData(eventId, {
+      semaphoreAddress: params.semaphoreScriptAddr,
+      semaphoreNft: params.semaphorePolicyId,
+      votingValidatorAddress: params.votingScriptAddr,
+      votingNft: params.votingPolicyId,
+      groupNft: params.groupNft,
+      groupValidatorAddress: params.groupValidatorAddress,
+      groupValidatorCbor: params.groupValidatorCbor,
+      mintingOrefTxHash: params.mintingOrefTxHash,
+      mintingOrefIndex: params.mintingOrefIndex,
+      vkeyRefTxHash: VKEY_REF_TX_HASH,
+      vkeyRefIndex: VKEY_REF_OUTPUT_INDEX,
+    });
+    if (!result.success) {
+      throw new HttpException('Failed to save blockchain data: ' + result.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    return { txHash };
+  }
+
   async isTxConfirmed(txHash: string): Promise<{ confirmed: boolean }> {
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
     const { BlockfrostProvider } = require('@meshsdk/core');
