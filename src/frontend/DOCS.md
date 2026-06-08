@@ -29,7 +29,6 @@ Copy `.env.example` to `.env.local`:
 
 ```env
 NEXT_PUBLIC_BACKEND_API_URL=http://localhost:3000   # Backend API base URL
-NEXT_PUBLIC_BLOCKFROST_API_KEY=                     # Blockfrost project ID (Preprod)
 ```
 
 ---
@@ -81,8 +80,6 @@ Wallet connectivity is provided by **MeshSDK** (`@meshsdk/core`, `@meshsdk/react
 CIP-30 is used for:
 - Signing the auth challenge nonce.
 - Signing vote and mint transactions before submission.
-
-The Blockfrost API key is passed to `BlockfrostProvider` on the client side. This is a known limitation — see the root `README.md` for the planned fix.
 
 ---
 
