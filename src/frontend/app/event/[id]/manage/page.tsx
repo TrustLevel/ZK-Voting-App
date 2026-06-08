@@ -336,6 +336,14 @@ export default function EventDashboard() {
     }
   }, [activeTab, createdEvent?.eventId]);
 
+  // Poll every 10s while on the participants tab so pending → registered
+  // transitions appear without the admin having to switch tabs.
+  useEffect(() => {
+    if (activeTab !== 'participants' || !createdEvent) return;
+    const id = setInterval(loadParticipants, 10000);
+    return () => clearInterval(id);
+  }, [activeTab, createdEvent?.eventId]);
+
   // --------------------------------------------------------------------------
   // BACKEND API CALLS
   // --------------------------------------------------------------------------
