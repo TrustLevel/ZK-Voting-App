@@ -674,10 +674,6 @@ export default function EventDashboard() {
       const newMerkleRoot: string = eventData.groupMerkleRootHash;
 
       setGroupUpdateStatus('Preparing wallet...');
-      const blockfrostApiKey = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
-      if (!blockfrostApiKey) throw new Error('Blockfrost API key not configured');
-
-      const provider = new BlockfrostProvider(blockfrostApiKey);
       const walletUtxos = await getWalletUtxos(wallet);
       const { pubKeyHash: paymentKeyHash } = deserializeAddress(walletAddress);
       const collateralUtxo = selectUtxoForCollateral(walletUtxos, 5000000);
@@ -702,7 +698,15 @@ export default function EventDashboard() {
       const txHash = await wallet.submitTx(signedTx);
 
       setGroupUpdateStatus(`Waiting for confirmation… TX: ${txHash.slice(0, 16)}…`);
-      const confirmed = await waitForTxConfirmation(provider, txHash, 60, 3000);
+      let confirmed = false;
+      for (let i = 0; i < 60; i++) {
+        const res = await fetch(`${BACKEND_API_URL}/voting-event/tx-confirmed/${txHash}`);
+        if (res.ok) {
+          const { confirmed: c } = await res.json();
+          if (c) { confirmed = true; break; }
+        }
+        await new Promise(r => setTimeout(r, 3000));
+      }
       if (!confirmed) throw new Error('Transaction not confirmed after 3 minutes. Check the explorer.');
 
       await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/confirm-group-update`, {
