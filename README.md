@@ -22,6 +22,47 @@ The system supports two voting modes:
 
 ---
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│  User's Browser                                     │
+│                                                     │
+│  Next.js Frontend (port 3002)                       │
+│  ├─ @src/tx  — transaction builder                  │
+│  └─ @src/zk  — Groth16 prover · signal encoding    │
+│                                                     │
+└──────────────┬──────────────────────┬───────────────┘
+             ▲ │ REST API             │ TX submission
+             │ ▼                      ▼ (CIP-30 wallet)
+┌──────────────────────┐   ┌──────────────────────────┐
+│   NestJS Backend     │   │  Cardano Preprod Testnet  │
+│   port 3000          │   │                          │
+│                      │   │  Voting validator        │
+│   SQLite             │   │  Semaphore validator     │
+│   LevelDB (MPF)      │   │  Group validator         │
+└──────────┬───────────┘   └──────────────────────────┘
+           │                          ▲
+           └──── Blockfrost API ──────┘
+                 chain queries · TX relay
+```
+
+---
+
+## Module Overview
+
+| Module | Path | Docs |
+|---|---|---|
+| Smart contracts | `src/on-chain/` | [DOCS.md](src/on-chain/DOCS.md) |
+| Backend API | `src/backend/` | [DOCS.md](src/backend/DOCS.md) |
+| Frontend | `src/frontend/` | [DOCS.md](src/frontend/DOCS.md) |
+| Transaction builder | `src/tx/` | [DOCS.md](src/tx/DOCS.md) |
+| ZK proof module | `src/zk/` | [DOCS.md](src/zk/DOCS.md) |
+
+`@src/tx` and `@src/zk` are TypeScript packages compiled directly into the frontend bundle — they are not standalone services.
+
+---
+
 ## The Semaphore Protocol
 
 [Semaphore](https://semaphore.appliedzkp.org/) is a zero-knowledge protocol designed for anonymous signalling within a defined group. This application uses a BLS12-381 variant of Semaphore, verified on Cardano via a Groth16 proof.
@@ -113,39 +154,6 @@ Vote tallies are stored directly in the `UrnaDatum` on the Voting UTxO. Any obse
 
 ---
 
-## Architecture
-
-```
-Browser (Voter / Organiser)
-  │
-  ├── Next.js Frontend (port 3002)
-  │     Wallet connection · ZK proof generation · TX signing
-  │     │
-  │     ├──► NestJS Backend (port 3000)
-  │     │     Event metadata · Merkle tree · Nullifier trie (LevelDB)
-  │     │     SQLite database
-  │     │
-  │     └──► Cardano Network (Preprod Testnet)
-  │           via Blockfrost API
-  │
-  └── @src/tx  ·  @src/zk   (compiled into the frontend bundle)
-        Transaction builders · Groth16 prover · Signal encoding
-```
-
----
-
-## Module Overview
-
-| Module | Path | Docs |
-|---|---|---|
-| Smart contracts | `src/on-chain/` | [DOCS.md](src/on-chain/DOCS.md) |
-| Backend API | `src/backend/` | [DOCS.md](src/backend/DOCS.md) |
-| Frontend | `src/frontend/` | [DOCS.md](src/frontend/DOCS.md) |
-| Transaction builder | `src/tx/` | [DOCS.md](src/tx/DOCS.md) |
-| ZK proof module | `src/zk/` | [DOCS.md](src/zk/DOCS.md) |
-
----
-
 ## Prerequisites
 
 | Tool | Version | Purpose |
@@ -200,6 +208,9 @@ aiken build             # outputs plutus.json
 
 cd src/tx
 npm run build:force     # re-extracts validator CBORs from plutus.json
+                        # and overwrites src/tx/src/validators.ts
 ```
+
+> `src/tx/src/validators.ts` is auto-generated — do not edit it manually.
 
 See each module's `DOCS.md` for full configuration and deployment details.
