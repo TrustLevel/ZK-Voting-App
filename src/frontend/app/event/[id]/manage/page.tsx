@@ -158,6 +158,10 @@ export default function EventDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('parameters');
   const [copiedAdmin, setCopiedAdmin] = useState(false);
 
+  // Results State
+  const [results, setResults] = useState<Array<{ index: number; text: string; votes: number }> | null>(null);
+  const [loadingResults, setLoadingResults] = useState(false);
+
   // --------------------------------------------------------------------------
   // EFFECTS / LIFECYCLE
   // --------------------------------------------------------------------------
@@ -330,6 +334,10 @@ export default function EventDashboard() {
     }
   }, [activeTab, createdEvent?.eventId]);
 
+  useEffect(() => {
+    if (activeTab === 'results') loadResults();
+  }, [activeTab]);
+
   // --------------------------------------------------------------------------
   // BACKEND API CALLS
   // --------------------------------------------------------------------------
@@ -440,6 +448,21 @@ export default function EventDashboard() {
 
     } catch (error) {
       console.error('Failed to load participants:', error);
+    }
+  };
+
+  const loadResults = async () => {
+    setLoadingResults(true);
+    try {
+      const response = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/results`);
+      if (!response.ok) throw new Error('Failed to load results');
+      const data = await response.json();
+      setResults(data.options);
+    } catch (err) {
+      console.error('Failed to load results:', err);
+      setResults(null);
+    } finally {
+      setLoadingResults(false);
     }
   };
 
@@ -1750,14 +1773,6 @@ export default function EventDashboard() {
                     <div className="bg-white rounded-lg p-4 border border-gray-200">
                       <div className="space-y-2 text-sm font-mono">
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Event ID:</span>
-                          <span className="text-gray-900">{createdEvent.eventId}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Event Name:</span>
-                          <span className="text-gray-900">{createdEvent.eventName}</span>
-                        </div>
-                        <div className="flex justify-between">
                           <span className="text-gray-600">Starting Date (POSIX):</span>
                           <span className="text-gray-900">{Math.floor(new Date(startDate + ':00.000Z').getTime() / 1000)}</span>
                         </div>
@@ -1895,10 +1910,7 @@ export default function EventDashboard() {
                         <div className="flex items-center gap-2">
                           <span className="text-gray-600">Total Votes:</span>
                           <span className="font-semibold text-gray-900">
-                            {(() => {
-                              const parsedOptions = JSON.parse(createdEvent.options || '[]');
-                              return parsedOptions.reduce((sum: number, opt: any) => sum + (opt.votes || 0), 0);
-                            })()}
+                            {results ? results.reduce((sum, opt) => sum + (opt.votes || 0), 0) : '—'}
                           </span>
                         </div>
                         <div className="h-4 w-px bg-gray-300"></div>
@@ -1926,46 +1938,47 @@ export default function EventDashboard() {
                       Vote distribution across all options, sorted by popularity.
                     </p>
 
-                    {(() => {
-                      // Parse actual results from backend
-                      const parsedOptions = JSON.parse(createdEvent.options || '[]');
-                      const totalVotes = parsedOptions.reduce((sum: number, opt: any) => sum + (opt.votes || 0), 0);
+                    <button
+                      onClick={loadResults}
+                      disabled={loadingResults}
+                      className="mb-4 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm font-medium disabled:opacity-50"
+                    >
+                      {loadingResults ? 'Loading...' : 'Refresh Results'}
+                    </button>
 
-                      // Sort by votes (descending)
-                      const sortedResults = [...parsedOptions].sort((a: any, b: any) => (b.votes || 0) - (a.votes || 0));
+                    {loadingResults ? (
+                      <div className="flex items-center justify-center py-8">
+                        <svg className="animate-spin h-8 w-8 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      </div>
+                    ) : results === null ? (
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
+                        <p className="text-sm text-gray-600">Results could not be loaded from the blockchain.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {[...results].sort((a, b) => (b.votes || 0) - (a.votes || 0)).map((result, index) => {
+                          const totalVotes = results.reduce((sum, opt) => sum + (opt.votes || 0), 0);
+                          const votes = result.votes || 0;
+                          const percentage = totalVotes > 0 ? ((votes / totalVotes) * 100).toFixed(1) : '0.0';
 
-                      return (
-                        <div className="space-y-2">
-                          {sortedResults.map((result: any, index: number) => {
-                            const votes = result.votes || 0;
-                            const percentage = totalVotes > 0 ? ((votes / totalVotes) * 100).toFixed(1) : '0.0';
-
-                            return (
-                              <div
-                                key={index}
-                                className="border-2 rounded-lg p-3 border-gray-200 bg-white"
-                              >
-                                {/* Option Header */}
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <h4 className="text-sm text-gray-900">
-                                      {result.text}
-                                    </h4>
+                          return (
+                            <div key={result.index} className="border-2 rounded-lg p-3 border-gray-200 bg-white">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="shrink-0 w-6 h-6 rounded-full bg-gray-900 text-white flex items-center justify-center text-xs font-semibold">
+                                    {index + 1}
+                                  </span>
+                                  <h4 className="text-sm text-gray-900">{result.text}</h4>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-sm font-bold text-gray-900">
+                                    {votingPower > 1 ? `${percentage}%` : `${votes} votes`}
                                   </div>
-                                  <div className="text-right">
-                                    {votingPower > 1 ? (
-                                      <div className="text-sm font-bold text-gray-900">
-                                        {percentage}%
-                                      </div>
-                                    ) : (
-                                      <div className="text-sm font-bold text-gray-900">
-                                        {votes}
-                                    </div>
-                                  )}
                                 </div>
                               </div>
-
-                              {/* Progress bar */}
                               <div className="mt-3">
                                 <div className="w-full bg-gray-200 rounded-full h-2">
                                   <div
@@ -1978,8 +1991,7 @@ export default function EventDashboard() {
                           );
                         })}
                       </div>
-                    );
-                  })()}
+                    )}
                 </div>
                 )}
 
@@ -1996,20 +2008,6 @@ export default function EventDashboard() {
                           All votes have been cryptographically verified and recorded on the Cardano blockchain.
                           Results are immutable and publicly auditable.
                         </p>
-                        <div className="bg-white rounded-lg p-3 border border-blue-200">
-                          <div className="text-xs space-y-2">
-                            <div>
-                              <span className="text-blue-700 font-semibold">Event ID:</span>
-                              <span className="ml-2 font-mono text-gray-900">{publishedData.eventId}</span>
-                            </div>
-                            <div>
-                              <span className="text-blue-700 font-semibold">Signature:</span>
-                              <div className="font-mono text-gray-900 break-all mt-1 text-[10px]">
-                                {publishedData.signature}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
                       </div>
                     </div>
                   </div>

@@ -376,6 +376,10 @@ export default function EventPage() {
     checkRegistrationStatus();
   }, [eventId, validatedUserId, validatedToken]);
 
+  useEffect(() => {
+    if (activeTab === 'results') loadResults();
+  }, [activeTab]);
+
   // --------------------------------------------------------------------------
   // BACKEND API CALLS
   // --------------------------------------------------------------------------
@@ -1138,7 +1142,7 @@ export default function EventPage() {
 
                 {/* Results Tab */}
                 <button
-                  onClick={() => { setActiveTab('results'); loadResults(); }}
+                  onClick={() => setActiveTab('results')}
                   className="flex flex-col items-center cursor-pointer hover:opacity-80 transition"
                 >
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
