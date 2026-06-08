@@ -205,6 +205,11 @@ export class VotingEventController {
     return await this.votingEventService.confirmGroupUpdate(eventId, newMerkleRoot, txHash);
   }
 
+  @Get('tx-confirmed/:txHash')
+  async isTxConfirmed(@Param('txHash') txHash: string) {
+    return await this.votingEventService.isTxConfirmed(txHash);
+  }
+
   // Returns an unsigned TX hex for the admin to sign via CIP-30.
   // Body: { newMerkleRoot, walletUtxos, walletAddress, paymentKeyHash, collateralUtxo }
   @Post(':eventId/build-update-group-tx')

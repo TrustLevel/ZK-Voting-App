@@ -907,6 +907,18 @@ export class VotingEventService {
     return { success: true };
   }
 
+  async isTxConfirmed(txHash: string): Promise<{ confirmed: boolean }> {
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const { BlockfrostProvider } = require('@meshsdk/core');
+    const provider = new BlockfrostProvider(apiKey);
+    try {
+      await provider.fetchTxInfo(txHash);
+      return { confirmed: true };
+    } catch {
+      return { confirmed: false };
+    }
+  }
+
   // Build an unsigned group-update transaction for the admin to sign via CIP-30.
   // The frontend passes wallet-specific data (UTxOs, address, collateral) because
   // the admin's key never leaves the browser. The backend only contributes the
