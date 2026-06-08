@@ -172,6 +172,29 @@ export async function buildVoteTransaction(params: BuildVoteTransactionParams): 
   );
   if (!votingUtxo) throw new Error('Voting UTxO not found at ' + votingScriptAddress);
 
+  // Read group_merke_root directly from the on-chain Semaphore UTxO datum.
+  // The DB snapshot may differ from what was actually minted (node vs browser encoding
+  // divergence). Reading from the UTxO guarantees the output datum matches the input,
+  // satisfying is_datum_preserved regardless of how the datum was originally encoded.
+  let onChainGroupMerkleRoot: bigint = groupMerkleRoot;
+  if (semaphoreUtxo.output.plutusData) {
+    try {
+      const { csl } = await getCsl();
+      const semaphorePd = csl.PlutusData.from_hex(semaphoreUtxo.output.plutusData);
+      const semaphoreConstr = semaphorePd.as_constr_plutus_data();
+      if (semaphoreConstr) {
+        const fields = semaphoreConstr.data();
+        // SemaphoreDatum = Constr(0, [group_token_policy, group_merke_root, nullifier_mpf_root, vkey_ref_input])
+        if (fields.len() >= 2) {
+          const rootInt = fields.get(1).as_integer();
+          if (rootInt) onChainGroupMerkleRoot = BigInt(rootInt.to_str());
+        }
+      }
+    } catch (_) {
+      // fallback to the parameter value
+    }
+  }
+
   // Read actual vote tallies from the on-chain UTxO datum (not from the backend).
   // The backend always stores votes=0; only the chain has the accumulated tallies.
   const currentOptions = votingUtxo.output.plutusData
@@ -201,7 +224,7 @@ export async function buildVoteTransaction(params: BuildVoteTransactionParams): 
 
   const updatedSemaphoreDatum = conStr(0, [
     byteString(groupNftPolicyId),
-    integer(groupMerkleRoot),
+    integer(onChainGroupMerkleRoot),
     byteString(mpfNewRoot),
     createOutputReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX),
   ]);
