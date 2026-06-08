@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { VotingEvent } from './voting-event.entity';
 import { InvitationToken } from './invitation-token.entity';
-import { Group } from 'modp-semaphore-bls12381/packages/typescript/src/group';
+// @ts-ignore - types not exported from deep path, runtime resolves correctly
+import { Group } from 'modp-semaphore-bls12381/packages/typescript/lib/group';
 import { UsersService } from '../users/users.service';
 import { EmailService } from './email.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -132,7 +133,9 @@ export class VotingEventService {
       throw new Error('Invalid invitation token');
     }
 
-    if (invitationToken.eventId !== eventId) {
+    // Ensure type-safe comparison (eventId from URL param may be string)
+    // NOTE: dev/dom intentionally keeps Number() cast here; main removed it — revert if NestJS typing guarantees number
+    if (invitationToken.eventId !== Number(eventId)) {
       throw new Error('Invitation token is not valid for this event');
     }
 
@@ -403,6 +406,7 @@ export class VotingEventService {
   // Validate invitation token when user clicks email link
   async validateToken(token: string): Promise<{
     valid: boolean;
+    used?: boolean;
     userId?: number;
     eventId?: number;
     email?: string;
@@ -422,14 +426,6 @@ export class VotingEventService {
         };
       }
 
-      // Check if token has already been used
-      if (invitationToken.used) {
-        return {
-          valid: false,
-          error: 'Token has already been used',
-        };
-      }
-
       // Check if token has expired
       const currentTime = Math.floor(Date.now() / 1000);
       if (invitationToken.expiresAt < currentTime) {
@@ -439,9 +435,12 @@ export class VotingEventService {
         };
       }
 
-      // Token is valid
+      // Token is authentic - return user info
+      // "used" flag is informational only, not an error — registration status is checked separately via participants endpoint
+      // NOTE: dev/dom intentionally deviates from main here; main treats used tokens as valid: false (error). Revert if stricter behaviour is needed.
       return {
         valid: true,
+        used: invitationToken.used,
         userId: invitationToken.userId,
         eventId: invitationToken.eventId,
         email: invitationToken.email,
@@ -466,22 +465,174 @@ export class VotingEventService {
     }
   }
 
-  // Submit a signed vote transaction to the Blockfrost node.
-  // The frontend builds and signs the tx (via CIP-30), then sends the hex here.
-  // Double-vote prevention is handled upstream by POST /nullifier (MPF trie).
+  // Receive ZK proof data from the voter, build and sign the vote transaction
+  // using the backend relay wallet, then submit to Blockfrost.
+  // The voter's wallet is never involved — the relay wallet's address appears
+  // on-chain, unlinking the voter's identity from the transaction.
   async submitVote(
-    signedTx: string,
+    eventId: number,
+    proofData: {
+      zkProof: { pi_a: string; pi_b: string; pi_c: string };
+      nullifierHash: string;
+      signalHash: string;
+      signalMessage: string;
+      mpfProofSteps: Array<object>;
+      mpfNewRoot: string;
+      voteSignal: Array<[number, number]>;
+    },
   ): Promise<{ txHash: string }> {
+    const { zkProof, nullifierHash, signalHash, signalMessage, mpfProofSteps, mpfNewRoot, voteSignal } = proofData;
+
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
+    if (!event.semaphoreAddress || !event.votingValidatorAddress || !event.mintingOrefTxHash) {
+      throw new HttpException('Event blockchain setup not complete', HttpStatus.BAD_REQUEST);
+    }
+
+    const mnemonic = this.configService.get<string>('RELAY_WALLET_MNEMONIC');
+    if (!mnemonic) {
+      throw new HttpException('Relay wallet not configured (RELAY_WALLET_MNEMONIC)', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    const { BlockfrostProvider, MeshWallet, deserializeAddress } = require('@meshsdk/core');
+    const { buildVoteTransaction, applyOrefParamToScript, VALIDATORS, selectUtxoForCollateral, createOutputReference, parseMnemonic } = await import('@src/tx');
+
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    const wallet = new MeshWallet({
+      networkId: 0,
+      fetcher: provider,
+      submitter: provider,
+      key: { type: 'mnemonic', words: parseMnemonic(mnemonic) },
+    });
+
+    const walletUtxos = await wallet.getUtxos();
+    const walletAddress = wallet.getAddresses().baseAddressBech32;
+    const { pubKeyHash: paymentKeyHash } = deserializeAddress(walletAddress);
+
+    const collateralUtxo = selectUtxoForCollateral(walletUtxos);
+    if (!collateralUtxo) {
+      throw new HttpException(
+        'Relay wallet has no suitable collateral UTxO (needs a pure-ADA UTxO ≥ 5 ADA)',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    if (event.mintingOrefTxHash == null || event.mintingOrefIndex == null) {
+      throw new HttpException('Event minting UTxO not recorded — run the bootstrap flow first', HttpStatus.BAD_REQUEST);
+    }
+    const mintingOref = createOutputReference(event.mintingOrefTxHash, event.mintingOrefIndex);
+    const semaphoreValidatorCbor = applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
+    const votingValidatorCbor = applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
+
+    const unsignedTx = await buildVoteTransaction({
+      provider,
+      semaphoreScriptAddress: event.semaphoreAddress,
+      votingScriptAddress: event.votingValidatorAddress,
+      semaphoreNftPolicyId: event.semaphoreNft!,
+      votingNftPolicyId: event.votingNft!,
+      groupNftPolicyId: event.groupNft!,
+      groupMerkleRoot: BigInt(event.semaphoreMerkleRoot ?? event.groupMerkleRootHash),
+      semaphoreValidatorCbor,
+      votingValidatorCbor,
+      walletUtxos,
+      walletAddress,
+      paymentKeyHash,
+      zkProof,
+      nullifierHash: BigInt(nullifierHash),
+      signalHash: BigInt(signalHash),
+      signalMessage,
+      mpfProofSteps,
+      mpfNewRoot,
+      voteSignal,
+      collateralUtxo,
+      weight: (event.votingPower ?? 1) > 1 ? event.votingPower! : 0,
+      eventStart: event.startingDate! * 1000,
+      eventEnd: event.endingDate! * 1000,
+    });
+
+    let signedTx: string;
+    try {
+      signedTx = await wallet.signTx(unsignedTx, false);
+    } catch (signErr: any) {
+      await this.rollbackNullifier(eventId, nullifierHash).catch(() => {});
+      throw new HttpException(
+        `Transaction signing failed: ${signErr?.message ?? signErr}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    try {
+      return await this._evaluateAndSubmit(signedTx);
+    } catch (submitErr: any) {
+      // Roll back nullifier on evaluation/submission failure so the voter can retry.
+      // Skip rollback for confirmed chain rejections (Blockfrost 5xx) to avoid
+      // double-spend risk on the rare case the tx was actually accepted.
+      const status = submitErr instanceof HttpException ? submitErr.getStatus() : 0;
+      if (status !== HttpStatus.BAD_GATEWAY) {
+        await this.rollbackNullifier(eventId, nullifierHash).catch(() => {});
+      }
+      throw submitErr;
+    }
+  }
+
+  // Evaluate scripts via Ogmios then submit to Blockfrost.
+  // A confirmed script failure aborts before submission so collateral is safe.
+  // Other evaluation errors are logged and ignored — submission proceeds anyway.
+  private async _evaluateAndSubmit(signedTx: string): Promise<{ txHash: string }> {
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const txBytes = Buffer.from(signedTx, 'hex');
+
+    try {
+      const evalResponse = await fetch('https://cardano-preprod.blockfrost.io/api/v0/utils/txs/evaluate', {
+        method: 'POST',
+        headers: { 'project_id': apiKey, 'Content-Type': 'application/cbor' },
+        body: txBytes,
+      });
+      const evalBody = await evalResponse.text();
+      console.log(`[submitVote] Ogmios evaluate (HTTP ${evalResponse.status}):`, evalBody);
+
+      if (evalResponse.ok) {
+        let ogmios: any;
+        try { ogmios = JSON.parse(evalBody); } catch { ogmios = null; }
+
+        const result = ogmios?.result;
+        const scriptFailures = result?.EvaluationFailure?.ScriptFailures;
+
+        if (scriptFailures && Object.keys(scriptFailures).length > 0) {
+          const failures = JSON.stringify(scriptFailures, null, 2);
+          throw new HttpException(
+            `Script evaluation failed — collateral NOT taken.\nScriptFailures:\n${failures}`,
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+
+        if (result?.EvaluationFailure) {
+          console.warn('[submitVote] Ogmios EvaluationFailure (non-script):', evalBody);
+        } else if (result?.EvaluationResult) {
+          console.log('[submitVote] Evaluation passed:', JSON.stringify(result.EvaluationResult));
+        }
+      } else {
+        console.warn('[submitVote] Evaluate endpoint error (will still attempt submit):', evalBody);
+      }
+    } catch (evalErr: any) {
+      if (evalErr instanceof HttpException) throw evalErr;
+      console.warn('[submitVote] Evaluate call threw (will still attempt submit):', evalErr?.message ?? evalErr);
+    }
+
     const response = await fetch('https://cardano-preprod.blockfrost.io/api/v0/tx/submit', {
       method: 'POST',
       headers: { 'project_id': apiKey, 'Content-Type': 'application/cbor' },
-      body: Buffer.from(signedTx, 'hex'),
+      body: txBytes,
     });
 
     const body = await response.text();
     if (!response.ok) {
-      throw new Error(`Blockfrost submission failed (${response.status}): ${body}`);
+      throw new HttpException(
+        `Blockfrost submission failed (${response.status}): ${body}`,
+        HttpStatus.BAD_GATEWAY,
+      );
     }
 
     return { txHash: body.replace(/"/g, '') };
@@ -543,10 +694,17 @@ export class VotingEventService {
       throw new Error('Voting event not found');
     }
 
-    const participants = JSON.parse(event.groupLeafCommitments) as Array<{userId: number, commitment: string}>;
-    const index = participants.findIndex(p => p.userId === userId);
+    // Use the semaphore snapshot if available — ZK proof must verify against the
+    // Semaphore datum's immutable group_merke_root, not the live group NFT root.
+    const leafSource = event.semaphoreLeafCommitments ?? event.groupLeafCommitments;
+    const participants = JSON.parse(leafSource) as Array<{userId: number, commitment: string}>;
+    const index = participants.findIndex(p => p.userId === Number(userId));
     if (index === -1) {
-      throw new Error('User is not a participant in this event');
+      throw new Error(
+        event.semaphoreLeafCommitments
+          ? 'User was not registered at the time the voting system was set up and cannot vote'
+          : 'User is not a participant in this event',
+      );
     }
 
     const commitments = participants.map(p => BigInt(p.commitment));
@@ -570,27 +728,34 @@ export class VotingEventService {
     proof: string;
     proofSteps: Array<object>;
   }> {
+    try {
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
     if (!event) {
-      throw new Error('Voting event not found');
+      throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { Trie, Store } = require('@aiken-lang/merkle-patricia-forestry');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { blake2b } = require('@noble/hashes/blake2b');
 
     const nullifierBigInt = BigInt(nullifier);
 
-    // Convert nullifier to key/value — mirrors nullifierToKeyValue() in src/zk/src/mpf.ts.
-    // value = little-endian 32-byte representation  (scalar.to_bytearray_little_endian)
-    // key   = blake2b_256(value)                    (crypto.blake2b_256 on-chain)
-    const hex = nullifierBigInt.toString(16).padStart(64, '0');
-    const bigEndian = Buffer.from(hex, 'hex');
-    const value = Buffer.from(bigEndian).reverse();
+    // Convert nullifier to key/value — mirrors on-chain semaphore.ak:
+    //   scalar.new(nullifier) → scalar.to_bytearray_little_endian(n, 0) → blake2b_256(value)
+    //
+    // IMPORTANT: on-chain uses size=0 (minimal encoding), which strips trailing zeros
+    // from the little-endian representation (= leading zeros from big-endian).
+    // This means values < 2^248 produce fewer than 32 bytes.  Using padStart(64,'0')
+    // would give a different blake2b key for those values, breaking the MPF root check.
+    const rawHex = nullifierBigInt.toString(16);
+    const paddedHex = rawHex.length % 2 ? '0' + rawHex : rawHex; // ensure even length
+    const bigEndian = Buffer.from(paddedHex, 'hex'); // minimal BE (no leading zeros)
+    const value = Buffer.from(Buffer.from(bigEndian).reverse()); // minimal LE
     const key = Buffer.from(blake2b(value, { dkLen: 32 }));
 
     const store = new Store(`nullifiers-db/${eventId}`);
+    await store.ready();
     const trie = await Trie.load(store).catch(() => new Trie(store));
 
     // Throws if nullifier already exists — prevents double voting at the backend level.
@@ -609,6 +774,133 @@ export class VotingEventService {
       proof: Buffer.from(mpfProof.toCBOR()).toString('hex'),
       proofSteps: mpfProof.toJSON(),
     };
+    } catch (err: any) {
+      // Re-throw HttpExceptions as-is (they already have the right status/message)
+      if (err instanceof HttpException) throw err;
+      // MPF trie throws when inserting a key that already exists
+      const msg: string = err?.message ?? String(err);
+      if (msg.includes('already in the trie') || msg.includes('already exists')) {
+        throw new HttpException(
+          'Nullifier already used. Your vote may have already been submitted, or a previous attempt ' +
+          'partially failed. If the vote TX was never confirmed on-chain, please contact the event organizer ' +
+          'to reset the nullifier.',
+          HttpStatus.CONFLICT,
+        );
+      }
+      // Wrap unexpected errors so the real message reaches the frontend
+      throw new HttpException(
+        `Nullifier insertion failed: ${msg}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // Roll back a nullifier insertion — called when the vote TX fails after nullifier was inserted.
+  // Deletes the key from the trie and reverts nullifierMerkleTree in the DB to the previous root.
+  async rollbackNullifier(eventId: number, nullifier: string): Promise<{ success: boolean }> {
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
+
+
+    const { Trie, Store } = require('@aiken-lang/merkle-patricia-forestry');
+
+    const { blake2b } = require('@noble/hashes/blake2b');
+
+    const nullifierBigInt = BigInt(nullifier);
+    // Same minimal encoding as insertNullifier — must match on-chain scalar.to_bytearray_little_endian(n, 0)
+    const rawHex = nullifierBigInt.toString(16);
+    const paddedHex = rawHex.length % 2 ? '0' + rawHex : rawHex;
+    const bigEndian = Buffer.from(paddedHex, 'hex');
+    const value = Buffer.from(Buffer.from(bigEndian).reverse());
+    const key = Buffer.from(blake2b(value, { dkLen: 32 }));
+
+    const store = new Store(`nullifiers-db/${eventId}`);
+    await store.ready();
+    const trie = await Trie.load(store).catch(() => new Trie(store));
+
+    try {
+      await trie.delete(key);
+    } catch {
+      // Already removed or never inserted — not an error
+    }
+
+    // After delete(), trie.hash reflects the new root (trie.save() is private).
+    event.nullifierMerkleTree = trie.hash ? Buffer.from(trie.hash).toString('hex') : null;
+    await this.votingEventRepository.save(event);
+
+    return { success: true };
+  }
+
+  // Fetch live vote tallies from the on-chain UrnaDatum via Blockfrost.
+  // Returns { options: [{ index, text, votes }] } — text comes from DB, votes from chain.
+  async getResults(eventId: number): Promise<{
+    status: 'not_deployed' | 'live' | 'ended';
+    eventName: string;
+    startingDate: number | null;
+    endingDate: number | null;
+    options: Array<{ index: number; text: string; votes: number }>;
+  }> {
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
+
+    const dbOptions: Array<{ index: number; text: string }> = JSON.parse(event.options ?? '[]');
+    const emptyOptions = dbOptions.map(o => ({ ...o, votes: 0 }));
+    const now = Math.floor(Date.now() / 1000);
+    const status = !event.votingValidatorAddress || !event.votingNft
+      ? 'not_deployed'
+      : event.endingDate && now >= event.endingDate
+        ? 'ended'
+        : 'live';
+
+    if (status === 'not_deployed') {
+      return { status, eventName: event.eventName, startingDate: event.startingDate ?? null, endingDate: event.endingDate ?? null, options: emptyOptions };
+    }
+
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const network = this.configService.get<string>('BLOCKFROST_NETWORK') ?? 'preprod';
+    const baseUrl = `https://cardano-${network}.blockfrost.io/api/v0`;
+
+    try {
+      const response = await fetch(
+        `${baseUrl}/addresses/${event.votingValidatorAddress}/utxos`,
+        { headers: { project_id: apiKey } },
+      );
+
+      if (!response.ok) {
+        throw new Error(`Blockfrost error: ${response.status}`);
+      }
+
+      const utxos: any[] = await response.json();
+      const votingUtxo = utxos.find(u =>
+        Array.isArray(u.amount) && u.amount.some((a: any) => a.unit.startsWith(event.votingNft)),
+      );
+
+      if (!votingUtxo) {
+        // UTxO not yet visible — return zeros rather than crashing
+        return { status, eventName: event.eventName, startingDate: event.startingDate ?? null, endingDate: event.endingDate ?? null, options: emptyOptions };
+      }
+
+      const datum = votingUtxo.inline_datum;
+      if (!datum?.fields?.[1]) {
+        return { status, eventName: event.eventName, startingDate: event.startingDate ?? null, endingDate: event.endingDate ?? null, options: emptyOptions };
+      }
+
+      // UrnaDatum fields[1] = List<(Int, Int)> — [option_index, vote_count]
+      const onChainOptions: Array<[number, number]> = datum.fields[1].list.map((item: any) => [
+        Number(item.list[0].int),
+        Number(item.list[1].int),
+      ]);
+
+      const merged = dbOptions.map(opt => {
+        const onChain = onChainOptions.find(([idx]) => idx === opt.index);
+        return { index: opt.index, text: opt.text, votes: onChain ? onChain[1] : 0 };
+      });
+
+      return { status, eventName: event.eventName, startingDate: event.startingDate ?? null, endingDate: event.endingDate ?? null, options: merged };
+    } catch (err) {
+      // Blockfrost unreachable — return zeros so the page still renders
+      return { status, eventName: event.eventName, startingDate: event.startingDate ?? null, endingDate: event.endingDate ?? null, options: emptyOptions };
+    }
   }
 
   // Save blockchain data related to the event (Temporary implementation)
@@ -619,13 +911,430 @@ export class VotingEventService {
         return { success: false, message: 'Event not found' };
       }
 
-      // Save blockchain signature data as JSON string
+      // Save blockchain data as JSON blob
       event.blockchainData = JSON.stringify(blockchainData);
+
+      // Also set individual entity fields so the vote page can use them directly
+      if (blockchainData.semaphoreAddress) event.semaphoreAddress = blockchainData.semaphoreAddress;
+      if (blockchainData.semaphoreNft) event.semaphoreNft = blockchainData.semaphoreNft;
+      if (blockchainData.votingValidatorAddress) event.votingValidatorAddress = blockchainData.votingValidatorAddress;
+      if (blockchainData.votingNft) event.votingNft = blockchainData.votingNft;
+      if (blockchainData.groupNft) event.groupNft = blockchainData.groupNft;
+      if (blockchainData.groupValidatorAddress) event.groupValidatorAddress = blockchainData.groupValidatorAddress;
+      if (blockchainData.groupValidatorCbor) event.groupValidatorCbor = blockchainData.groupValidatorCbor;
+      if (blockchainData.mintingOrefTxHash) event.mintingOrefTxHash = blockchainData.mintingOrefTxHash;
+      if (blockchainData.mintingOrefIndex !== undefined && blockchainData.mintingOrefIndex !== null) {
+        event.mintingOrefIndex = blockchainData.mintingOrefIndex;
+      }
+
       await this.votingEventRepository.save(event);
 
       return { success: true, message: 'Blockchain data saved' };
     } catch (error) {
       return { success: false, message: 'Failed to save blockchain data' };
     }
+  }
+
+  // Update groupMerkleRootHash in the DB after a group-update TX is confirmed on-chain.
+  // Called by the frontend after wallet.submitTx resolves successfully.
+  async confirmGroupUpdate(
+    eventId: number,
+    newMerkleRoot: string,
+    txHash: string,
+  ): Promise<{ success: boolean }> {
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
+
+    event.groupMerkleRootHash = newMerkleRoot;
+    await this.votingEventRepository.save(event);
+
+    console.log(`[confirmGroupUpdate] event ${eventId}: root updated to ${newMerkleRoot} (tx ${txHash})`);
+    return { success: true };
+  }
+
+  // Simple Blockfrost submit (no Ogmios evaluation — mint TXs use static execution units).
+  private async _submitTx(signedTx: string): Promise<{ txHash: string }> {
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const txBytes = Buffer.from(signedTx, 'hex');
+    const response = await fetch('https://cardano-preprod.blockfrost.io/api/v0/tx/submit', {
+      method: 'POST',
+      headers: { 'project_id': apiKey, 'Content-Type': 'application/cbor' },
+      body: txBytes,
+    });
+    const body = await response.text();
+    if (!response.ok) {
+      throw new HttpException(
+        `Blockfrost submission failed (${response.status}): ${body}`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+    return { txHash: body.replace(/"/g, '') };
+  }
+
+  // B1 — Build unsigned Group NFT mint TX server-side.
+  // Frontend passes wallet UTxOs and the selected UTxO used as the one-shot oref param.
+  async buildGroupMintTx(
+    eventId: number,
+    params: {
+      walletUtxos: any[];
+      walletAddress: string;
+      paymentKeyHash: string;
+      collateralUtxo: any;
+      selectedUtxo: any;
+      merkleRoot: string;
+    },
+  ): Promise<{ unsignedTx: string; policyId: string; assetName: string; scriptAddress: string; validatorCbor: string }> {
+    const groupDbEvent = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!groupDbEvent) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
+
+
+    const { BlockfrostProvider, resolveScriptHash, resolvePlutusScriptAddress, conStr } = require('@meshsdk/core');
+    const { buildGroupMintTransaction, applyOrefParamToScript, VALIDATORS, textToHex, createOutputReference, createGroupDatum } = await import('@src/tx');
+
+    if (!params.collateralUtxo) {
+      throw new HttpException(
+        'No collateral UTxO provided — wallet needs a pure-ADA UTxO ≥ 5 ADA',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    const outputReference = createOutputReference(
+      params.selectedUtxo.input.txHash,
+      params.selectedUtxo.input.outputIndex,
+    );
+    const clothedCbor = applyOrefParamToScript(VALIDATORS.group.mint, outputReference);
+    const policyId = resolveScriptHash(clothedCbor, 'V3');
+    const scriptAddress = resolvePlutusScriptAddress({ code: clothedCbor, version: 'V3' }, 0);
+    const assetName = textToHex('zkvapp-group');
+    const mintValue = [
+      { unit: 'lovelace', quantity: '5000000' },
+      { unit: policyId + assetName, quantity: '1' },
+    ];
+    const groupDatum = createGroupDatum(BigInt(groupDbEvent.groupMerkleRootHash), params.paymentKeyHash);
+
+    const unsignedTx = await buildGroupMintTransaction({
+      provider,
+      policyId,
+      assetName,
+      clothedCbor,
+      createRedeemer: conStr(0, []),
+      selectedUtxo: params.selectedUtxo,
+      walletUtxos: params.walletUtxos,
+      walletAddress: params.walletAddress,
+      scriptAddr: scriptAddress,
+      mintValue,
+      groupDatum,
+      paymentKeyHash: params.paymentKeyHash,
+      collateralUtxo: params.collateralUtxo,
+    });
+
+    return { unsignedTx, policyId, assetName, scriptAddress, validatorCbor: clothedCbor };
+  }
+
+  // B3 — Submit signed Group NFT mint TX and wait until the UTxO is visible on-chain.
+  // Blocks until the Group NFT UTxO appears at scriptAddress (up to 90s) so Phase 2 can start.
+  async submitGroupMintTx(params: {
+    signedTx: string;
+    policyId: string;
+    scriptAddress: string;
+  }): Promise<{ txHash: string }> {
+    const { txHash } = await this._submitTx(params.signedTx);
+
+
+    const { BlockfrostProvider } = require('@meshsdk/core');
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    for (let i = 0; i < 30; i++) {
+      try {
+        const utxos = await provider.fetchAddressUTxOs(params.scriptAddress);
+        if (utxos.some((u: any) => u.input.txHash === txHash)) {
+          console.log(`[submitGroupMintTx] UTxO visible after ${(i + 1) * 3}s`);
+          return { txHash };
+        }
+      } catch { /* ignore transient fetch errors */ }
+      await new Promise(r => setTimeout(r, 3000));
+    }
+
+    console.warn('[submitGroupMintTx] UTxO not visible after 90s — proceeding anyway');
+    return { txHash };
+  }
+
+  // B5 — Build unsigned Semaphore + Voting NFT mint TX server-side.
+  async buildSvMintTx(
+    eventId: number,
+    params: {
+      walletUtxos: any[];
+      walletAddress: string;
+      changeAddress: string;
+      paymentKeyHash: string;
+      collateralUtxo: any;
+      selectedUtxo: any;
+      groupNftTxHash: string;
+      groupNftOutputIndex: number;
+      groupPolicyId: string;
+      startingDate: number;
+      endingDate: number;
+      votingPower: number;
+      optionTexts: string[];
+      merkleRoot: string;
+    },
+  ): Promise<{
+    unsignedTx: string;
+    semaphorePolicyId: string;
+    semaphoreAssetName: string;
+    semaphoreScriptAddr: string;
+    semaphoreValidatorCbor: string;
+    votingPolicyId: string;
+    votingAssetName: string;
+    votingScriptAddr: string;
+    votingValidatorCbor: string;
+    mintingOrefTxHash: string;
+    mintingOrefIndex: number;
+  }> {
+    const dbEvent = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!dbEvent) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
+
+    const { BlockfrostProvider, resolveScriptHash, resolvePlutusScriptAddress, conStr, integer, byteString } = require('@meshsdk/core');
+
+    const { buildSemaphoreVotingMintTransaction, applyOrefParamToScript, VALIDATORS, textToHex, createOutputReference, createUrnaDatum, generateInitialOptions, VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } = await import('@src/tx');
+
+    if (!params.collateralUtxo) {
+      throw new HttpException(
+        'No collateral UTxO provided — wallet needs a pure-ADA UTxO ≥ 5 ADA',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    const latestBlock = await provider.fetchLatestBlock();
+    const currentSlot = parseInt(latestBlock.slot);
+    const currentTimeSec: number = latestBlock.time;
+    const secondsToStart = params.startingDate - currentTimeSec;
+
+    if (secondsToStart < 90) {
+      throw new HttpException(
+        `Event start is too soon (only ${Math.round(secondsToStart)}s away). Please set the event to start at least 90 seconds from now.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const validityWindowSecs = Math.min(120, secondsToStart - 60);
+    const txValidityEndSlot = currentSlot + validityWindowSecs;
+
+    const mintingOrefTxHash: string = params.selectedUtxo.input.txHash;
+    const mintingOrefIndex: number = params.selectedUtxo.input.outputIndex;
+    const outputReference = createOutputReference(mintingOrefTxHash, mintingOrefIndex);
+
+    const semaphoreValidatorCbor = applyOrefParamToScript(VALIDATORS.semaphore.mint, outputReference);
+    const semaphoreScriptAddr = resolvePlutusScriptAddress({ code: semaphoreValidatorCbor, version: 'V3' }, 0);
+    const semaphorePolicyId = resolveScriptHash(semaphoreValidatorCbor, 'V3');
+
+    const votingValidatorCbor = applyOrefParamToScript(VALIDATORS.voting.mint, outputReference);
+    const votingScriptAddr = resolvePlutusScriptAddress({ code: votingValidatorCbor, version: 'V3' }, 0);
+    const votingPolicyId = resolveScriptHash(votingValidatorCbor, 'V3');
+
+    const nullHash = '0000000000000000000000000000000000000000000000000000000000000000';
+    // Read merkle root from DB directly — params.merkleRoot from the frontend may
+    // have gone through float64 (JSON number) losing precision on 76-digit values.
+    const semaphoreDatum = conStr(0, [
+      byteString(params.groupPolicyId),
+      integer(BigInt(dbEvent.groupMerkleRootHash)),
+      byteString(nullHash),
+      createOutputReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX),
+    ]);
+
+    const weight = params.votingPower > 1 ? params.votingPower : 0;
+    const urnaDatum = createUrnaDatum({
+      weight,
+      options: generateInitialOptions(params.optionTexts.length),
+      eventStart: params.startingDate * 1000,
+      eventEnd: params.endingDate * 1000,
+      semaphoreNftPolicyId: semaphorePolicyId,
+    });
+
+    const semaphoreAssetName = textToHex('Semaphore1');
+    const semaphoreMintValue = [
+      { unit: 'lovelace', quantity: '5000000' },
+      { unit: semaphorePolicyId + semaphoreAssetName, quantity: '1' },
+    ];
+    const votingAssetName = textToHex('VotingEvent1');
+    const votingMintValue = [
+      { unit: 'lovelace', quantity: '5000000' },
+      { unit: votingPolicyId + votingAssetName, quantity: '1' },
+    ];
+
+    const unsignedTx = await buildSemaphoreVotingMintTransaction({
+      provider,
+      txValidityEndSlot,
+      groupNftTxHash: params.groupNftTxHash,
+      groupNftOutputIndex: params.groupNftOutputIndex,
+      semaphorePolicyId,
+      semaphoreAssetName,
+      semaphoreValidatorCbor,
+      votingPolicyId,
+      votingAssetName,
+      votingValidatorCbor,
+      selectedUtxo: params.selectedUtxo,
+      walletUtxos: params.walletUtxos,
+      changeAddress: params.changeAddress,
+      semaphoreScriptAddr,
+      semaphoreMintValue,
+      semaphoreDatum,
+      votingScriptAddr,
+      votingMintValue,
+      urnaDatum,
+      paymentKeyHash: params.paymentKeyHash,
+      collateralUtxo: params.collateralUtxo,
+    });
+
+    return {
+      unsignedTx,
+      semaphorePolicyId,
+      semaphoreAssetName,
+      semaphoreScriptAddr,
+      semaphoreValidatorCbor,
+      votingPolicyId,
+      votingAssetName,
+      votingScriptAddr,
+      votingValidatorCbor,
+      mintingOrefTxHash,
+      mintingOrefIndex,
+    };
+  }
+
+  // B7 — Submit signed SV mint TX, wait for confirmation, save all blockchain data to DB atomically.
+  async submitSvMintTx(
+    eventId: number,
+    params: {
+      signedTx: string;
+      semaphorePolicyId: string;
+      semaphoreScriptAddr: string;
+      votingPolicyId: string;
+      votingScriptAddr: string;
+      groupNft: string;
+      groupValidatorAddress: string;
+      groupValidatorCbor: string;
+      mintingOrefTxHash: string;
+      mintingOrefIndex: number;
+    },
+  ): Promise<{ txHash: string }> {
+    const { txHash } = await this._submitTx(params.signedTx);
+
+    const { VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } = await import('@src/tx');
+
+    // Save blockchain data immediately after successful submission — all values are
+    // already known from the build step params and do not require on-chain confirmation.
+    // Saving before the polling loop prevents data loss if the HTTP request times out
+    // or Blockfrost is slow to index the transaction.
+    const result = await this.saveBlockchainData(eventId, {
+      semaphoreAddress: params.semaphoreScriptAddr,
+      semaphoreNft: params.semaphorePolicyId,
+      votingValidatorAddress: params.votingScriptAddr,
+      votingNft: params.votingPolicyId,
+      groupNft: params.groupNft,
+      groupValidatorAddress: params.groupValidatorAddress,
+      groupValidatorCbor: params.groupValidatorCbor,
+      mintingOrefTxHash: params.mintingOrefTxHash,
+      mintingOrefIndex: params.mintingOrefIndex,
+      vkeyRefTxHash: VKEY_REF_TX_HASH,
+      vkeyRefIndex: VKEY_REF_OUTPUT_INDEX,
+    });
+    if (!result.success) {
+      throw new HttpException('Failed to save blockchain data: ' + result.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    // Snapshot the group tree immediately so that the vote flow has the correct root
+    // even if the polling loop below never confirms.
+    const eventSnapEarly = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (eventSnapEarly) {
+      eventSnapEarly.semaphoreMerkleRoot = eventSnapEarly.groupMerkleRootHash;
+      eventSnapEarly.semaphoreLeafCommitments = eventSnapEarly.groupLeafCommitments;
+      await this.votingEventRepository.save(eventSnapEarly);
+      console.log(`[submitSvMintTx] Snapshotted semaphoreMerkleRoot=${eventSnapEarly.semaphoreMerkleRoot} for event ${eventId}`);
+    }
+
+    const { BlockfrostProvider } = require('@meshsdk/core');
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    let confirmed = false;
+    for (let i = 0; i < 20; i++) {
+      try {
+        await provider.fetchTxInfo(txHash);
+        confirmed = true;
+        break;
+      } catch { /* not yet confirmed */ }
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    if (!confirmed) {
+      console.warn(`[submitSvMintTx] TX ${txHash} not confirmed after 60s`);
+    }
+
+    return { txHash };
+  }
+
+  async isTxConfirmed(txHash: string): Promise<{ confirmed: boolean }> {
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const { BlockfrostProvider } = require('@meshsdk/core');
+    const provider = new BlockfrostProvider(apiKey);
+    try {
+      await provider.fetchTxInfo(txHash);
+      return { confirmed: true };
+    } catch {
+      return { confirmed: false };
+    }
+  }
+
+  // Build an unsigned group-update transaction for the admin to sign via CIP-30.
+  // The frontend passes wallet-specific data (UTxOs, address, collateral) because
+  // the admin's key never leaves the browser. The backend only contributes the
+  // group validator CBOR and script address stored at bootstrap time.
+  async buildUpdateGroupTx(
+    eventId: number,
+    params: {
+      newMerkleRoot: string;
+      walletUtxos: any[];
+      walletAddress: string;
+      paymentKeyHash: string;
+      collateralUtxo: any;
+    },
+  ): Promise<{ unsignedTx: string }> {
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
+
+    if (!event.groupValidatorCbor)
+      throw new HttpException('groupValidatorCbor not set — re-bootstrap the event', HttpStatus.BAD_REQUEST);
+    if (!event.groupValidatorAddress)
+      throw new HttpException('groupValidatorAddress not set — re-bootstrap the event', HttpStatus.BAD_REQUEST);
+    if (!event.groupNft)
+      throw new HttpException('groupNft not set — re-bootstrap the event', HttpStatus.BAD_REQUEST);
+
+
+    const { BlockfrostProvider } = require('@meshsdk/core');
+
+    const { buildUpdateGroupTransaction } = await import('@src/tx');
+
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    const unsignedTx = await buildUpdateGroupTransaction({
+      provider,
+      groupScriptAddress: event.groupValidatorAddress,
+      groupNftPolicyId: event.groupNft,
+      groupValidatorCbor: event.groupValidatorCbor,
+      walletUtxos: params.walletUtxos,
+      walletAddress: params.walletAddress,
+      paymentKeyHash: params.paymentKeyHash,
+      collateralUtxo: params.collateralUtxo,
+      newMerkleRoot: BigInt(params.newMerkleRoot),
+    });
+
+    return { unsignedTx };
   }
 }

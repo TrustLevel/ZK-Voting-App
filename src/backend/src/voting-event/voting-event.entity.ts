@@ -45,6 +45,9 @@ export class VotingEvent {
   @Column({ name: 'group_validator_address', type: 'text', nullable: true })
   groupValidatorAddress: string | null;
 
+  @Column({ name: 'group_validator_cbor', type: 'text', nullable: true })
+  groupValidatorCbor: string | null;
+
   @Column({ name: 'group_merkle_root_hash', type: 'text' })
   groupMerkleRootHash: string;
 
@@ -96,6 +99,16 @@ export class VotingEvent {
 
   @Column({ name: 'vkey_ref_index', type: 'integer', nullable: true })
   vkeyRefIndex: number | null;
+
+  // Snapshot of the group tree at SV mint time.
+  // SemaphoreDatum.group_merke_root is set once at mint and never changes on-chain.
+  // groupMerkleRootHash can drift (new participants added after minting), so vote TXs
+  // and ZK proof generation must use this snapshot, not groupMerkleRootHash.
+  @Column({ name: 'semaphore_merkle_root', type: 'text', nullable: true })
+  semaphoreMerkleRoot: string | null;
+
+  @Column({ name: 'semaphore_leaf_commitments', type: 'text', nullable: true })
+  semaphoreLeafCommitments: string | null;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'admin_user_id' })

@@ -1,8 +1,8 @@
 // Script to mint a Cardano Semaphore Group NFT using the group validator
 import { fileURLToPath } from 'url';
-import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference, createGroupDatum } from './utils.js';
+import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference, createGroupDatum } from '../utils.js';
 import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript, UTxO } from '@meshsdk/core';
-import { VALIDATORS } from './validators.js';
+import { VALIDATORS } from '../validators.js';
 import 'dotenv/config';
 
 /**
@@ -64,7 +64,7 @@ export async function buildGroupMintTransaction(params: {
         selectedUtxo.input.txHash,
         selectedUtxo.input.outputIndex,
         selectedUtxo.output.amount,
-        walletAddress
+        selectedUtxo.output.address
       )
       .selectUtxosFrom(walletUtxos)
       .txInCollateral(

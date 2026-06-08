@@ -13,7 +13,8 @@
     "test": "npm run test --workspaces",
     "dev": "npm run dev --workspaces",
     "install:tx": "cd src/tx && npm install",
-    "build:tx": "cd src/tx && npm run build"
+    "build:tx": "cd src/tx && npm run build",
+    "postinstall": "cd node_modules/modp-semaphore-bls12381/packages/typescript && npm install && npx tsc"
   },
   "dependencies": {
     "@nestjs/config": "^4.0.2",

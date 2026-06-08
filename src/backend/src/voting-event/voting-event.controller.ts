@@ -122,10 +122,18 @@ export class VotingEventController {
    */
   @Post(':eventId/vote')
   async submitVote(
-    @Param('eventId') _eventId: number,
-    @Body('signedTx') signedTx: string,
+    @Param('eventId') eventId: number,
+    @Body() body: {
+      zkProof: { pi_a: string; pi_b: string; pi_c: string };
+      nullifierHash: string;
+      signalHash: string;
+      signalMessage: string;
+      mpfProofSteps: Array<object>;
+      mpfNewRoot: string;
+      voteSignal: Array<[number, number]>;
+    },
   ) {
-    return await this.votingEventService.submitVote(signedTx);
+    return await this.votingEventService.submitVote(eventId, body);
   }
 
   @Post(':eventId/validate-admin-token')
@@ -164,11 +172,125 @@ export class VotingEventController {
     return await this.votingEventService.insertNullifier(eventId, nullifier);
   }
 
+  // Rolls back a nullifier insertion if the vote TX failed after nullifier was inserted.
+  // This restores the trie to the pre-insertion state so the voter can retry.
+  @Delete(':eventId/nullifier')
+  async rollbackNullifier(
+    @Param('eventId') eventId: number,
+    @Body('nullifier') nullifier: string,
+  ) {
+    return await this.votingEventService.rollbackNullifier(eventId, nullifier);
+  }
+
+  @Get(':eventId/results')
+  async getResults(@Param('eventId') eventId: number) {
+    return await this.votingEventService.getResults(eventId);
+  }
+
   @Post(':eventId/save-blockchain-data')
   async saveBlockchainData(
     @Param('eventId') eventId: number,
     @Body('blockchainData') blockchainData: any,
   ) {
     return await this.votingEventService.saveBlockchainData(eventId, blockchainData);
+  }
+
+  // Updates groupMerkleRootHash in DB after the group-update TX is confirmed on-chain.
+  @Post(':eventId/confirm-group-update')
+  async confirmGroupUpdate(
+    @Param('eventId') eventId: number,
+    @Body('newMerkleRoot') newMerkleRoot: string,
+    @Body('txHash') txHash: string,
+  ) {
+    return await this.votingEventService.confirmGroupUpdate(eventId, newMerkleRoot, txHash);
+  }
+
+  @Get('tx-confirmed/:txHash')
+  async isTxConfirmed(@Param('txHash') txHash: string) {
+    return await this.votingEventService.isTxConfirmed(txHash);
+  }
+
+  // B2 — Build unsigned Group NFT mint TX (Phase 1).
+  @Post(':eventId/build-group-mint-tx')
+  async buildGroupMintTx(
+    @Param('eventId') eventId: number,
+    @Body() body: {
+      walletUtxos: any[];
+      walletAddress: string;
+      paymentKeyHash: string;
+      collateralUtxo: any;
+      selectedUtxo: any;
+      merkleRoot: string;
+    },
+  ) {
+    return await this.votingEventService.buildGroupMintTx(eventId, body);
+  }
+
+  // B4 — Submit signed Group NFT mint TX; blocks until UTxO visible on-chain.
+  @Post(':eventId/submit-group-mint-tx')
+  async submitGroupMintTx(
+    @Body() body: { signedTx: string; policyId: string; scriptAddress: string },
+  ) {
+    return await this.votingEventService.submitGroupMintTx(body);
+  }
+
+  // B6 — Build unsigned Semaphore + Voting NFT mint TX (Phase 2).
+  @Post(':eventId/build-sv-mint-tx')
+  async buildSvMintTx(
+    @Param('eventId') eventId: number,
+    @Body() body: {
+      walletUtxos: any[];
+      walletAddress: string;
+      changeAddress: string;
+      paymentKeyHash: string;
+      collateralUtxo: any;
+      selectedUtxo: any;
+      groupNftTxHash: string;
+      groupNftOutputIndex: number;
+      groupPolicyId: string;
+      startingDate: number;
+      endingDate: number;
+      votingPower: number;
+      optionTexts: string[];
+      merkleRoot: string;
+    },
+  ) {
+    return await this.votingEventService.buildSvMintTx(eventId, body);
+  }
+
+  // B8 — Submit signed SV mint TX; waits for confirmation and saves blockchain data to DB.
+  @Post(':eventId/submit-sv-mint-tx')
+  async submitSvMintTx(
+    @Param('eventId') eventId: number,
+    @Body() body: {
+      signedTx: string;
+      semaphorePolicyId: string;
+      semaphoreScriptAddr: string;
+      votingPolicyId: string;
+      votingScriptAddr: string;
+      groupNft: string;
+      groupValidatorAddress: string;
+      groupValidatorCbor: string;
+      mintingOrefTxHash: string;
+      mintingOrefIndex: number;
+    },
+  ) {
+    return await this.votingEventService.submitSvMintTx(eventId, body);
+  }
+
+  // Returns an unsigned TX hex for the admin to sign via CIP-30.
+  // Body: { newMerkleRoot, walletUtxos, walletAddress, paymentKeyHash, collateralUtxo }
+  @Post(':eventId/build-update-group-tx')
+  async buildUpdateGroupTx(
+    @Param('eventId') eventId: number,
+    @Body() body: {
+      newMerkleRoot: string;
+      walletUtxos: any[];
+      walletAddress: string;
+      paymentKeyHash: string;
+      collateralUtxo: any;
+    },
+  ) {
+    return await this.votingEventService.buildUpdateGroupTx(eventId, body);
   }
 }

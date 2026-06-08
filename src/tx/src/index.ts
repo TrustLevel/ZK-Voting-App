@@ -1,10 +1,12 @@
 // Main exports for @src/tx package
 
 // Transaction builder functions
-export { buildGroupMintTransaction } from './mint-group.js';
-export { buildSemaphoreVotingMintTransaction } from './mint-sv.js';
-export { buildVoteTransaction, VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } from './vote.js';
-export type { BuildVoteTransactionParams } from './vote.js';
+export { buildGroupMintTransaction } from './node/mint-group.js';
+export { buildUpdateGroupTransaction } from './node/update-group.js';
+export { buildSemaphoreVotingMintTransaction } from './node/mint-sv.js';
+export { buildVoteTransaction, VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } from './browser/vote-browser.js';
+export type { BuildVoteTransactionParams } from './browser/vote-browser.js';
+export { selectUtxoForCollateral } from './browser/utils-browser.js';
 
 // Utility functions
 export * from './utils.js';
@@ -14,9 +16,6 @@ export * from './types.js';
 
 // Validators
 export * from './validators.js';
-
-// Legacy builders (if any)
-export * from './builders.js';
 
 /**
  * @src/tx - Transaction Building Module

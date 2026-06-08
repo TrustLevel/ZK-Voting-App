@@ -24,13 +24,15 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Identity } from 'modp-semaphore-bls12381/packages/typescript/src/identity';
+import { encodeVoteSignal, generateVoteProof } from '@/lib/vote-helpers';
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
-const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001';
 
 // ============================================================================
 // TYPES / INTERFACES
@@ -44,6 +46,15 @@ interface VotingEvent {
   endingDate: number | null;
   votingPower: number;
   groupSize: number;
+  // Blockchain fields (set after admin completes Phase 2 minting)
+  semaphoreAddress: string | null;
+  votingValidatorAddress: string | null;
+  semaphoreNft: string | null;   // Policy ID
+  votingNft: string | null;      // Policy ID
+  groupNft: string | null;       // Policy ID
+  groupMerkleRootHash: string;
+  mintingOrefTxHash: string | null;
+  mintingOrefIndex: number | null;
 }
 
 interface VotingOption {
@@ -85,6 +96,7 @@ export default function EventPage() {
 
   // Token Validation State
   const [validatedUserId, setValidatedUserId] = useState<number | null>(null);
+  const [validatedToken, setValidatedToken] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [validatingToken, setValidatingToken] = useState(false);
 
@@ -94,24 +106,39 @@ export default function EventPage() {
   const [generating, setGenerating] = useState(false);
   const [hasIdentity, setHasIdentity] = useState(false);
   const [isRegistered, setIsRegistered] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [identityDownloaded, setIdentityDownloaded] = useState(false);
+  const [commitmentCopied, setCommitmentCopied] = useState(false);
+  const [eventLinkCopied, setEventLinkCopied] = useState(false);
 
   // Voting State
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [pointsDistribution, setPointsDistribution] = useState<{ [key: number]: number }>({});
   const [submitting, setSubmitting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
+  const [votedOptionIndex, setVotedOptionIndex] = useState<number | null>(null);
+  const [voteStep, setVoteStep] = useState<string | null>(null);
+  const [voteTxHash, setVoteTxHash] = useState<string | null>(null);
+
+  // File Upload State
+  const [uploadingIdentity, setUploadingIdentity] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // --------------------------------------------------------------------------
   // EFFECTS / LIFECYCLE
   // --------------------------------------------------------------------------
 
   /**
-   * Validate invitation token on page load
-   * Backend: GET /voting-event/validate-token/:token
-   * Stores userId in localStorage for this event+token combination
+   * Initialize session: Check localStorage first, then validate token if needed
+   * This allows returning users to vote without re-validating their token
+   *
+   * Flow:
+   * 1. Check localStorage for existing identity → load it and skip token validation
+   * 2. No identity found → validate token from URL (first visit)
    */
+
   useEffect(() => {
-    const validateInvitationToken = async () => {
+    const initializeSession = async () => {
       const urlParams = new URLSearchParams(window.location.search);
       const token = urlParams.get('token');
 
@@ -119,14 +146,41 @@ export default function EventPage() {
         return;
       }
 
-      // Check if we already validated this specific token for this event
-      const storedUserId = localStorage.getItem(`userId_${eventId}_${token}`);
-      if (storedUserId) {
-        setValidatedUserId(parseInt(storedUserId));
-        return;
+      // STEP 1: Check if user has already generated identity for this event
+      // This allows them to return and vote without re-validating token
+      const storedIdentityStr = localStorage.getItem(`identity_${eventId}_${token}`);
+
+      if (storedIdentityStr) {
+        // User has identity stored → restore it and skip token validation
+        try {
+          const storedIdentity: StoredIdentity = JSON.parse(storedIdentityStr);
+          setCommitment(storedIdentity.commitment);
+          setHasIdentity(true);
+          setValidatedToken(token);
+
+          // We need userId for registration check - validate token silently
+          // Token validation returns userId even for "used" tokens (authentication, not registration check)
+          try {
+            const response = await fetch(`${BACKEND_API_URL}/voting-event/validate-token/${token}`);
+            if (response.ok) {
+              const result = await response.json();
+              if (result.valid && result.userId) {
+                setValidatedUserId(result.userId);
+              }
+            }
+          } catch (err) {
+            // Silent fail - user can still proceed with stored identity
+            console.log('Could not fetch userId, but identity exists locally');
+          }
+
+          return; // Skip token validation flow
+        } catch (err) {
+          console.error('Failed to parse stored identity:', err);
+          // Fall through to token validation
+        }
       }
 
-      // Token not yet validated, validate it now
+      // STEP 2: No stored identity → validate token (first visit)
       setValidatingToken(true);
 
       try {
@@ -139,10 +193,14 @@ export default function EventPage() {
         const result = await response.json();
 
         if (result.valid) {
+          // Token is authentic - set user info
+          // Note: result.used flag is informational only
+          // Registration status will be checked separately
           setValidatedUserId(result.userId);
-          // Store userId with token as part of key to support multiple users per event
-          localStorage.setItem(`userId_${eventId}_${token}`, result.userId.toString());
+          setValidatedToken(token);
+          localStorage.setItem(`token_${eventId}`, token);
         } else {
+          // Only show error for truly invalid tokens (not "used" tokens)
           console.error('Token validation failed:', result.error);
           setTokenError(result.error || 'Invalid invitation token');
         }
@@ -155,7 +213,7 @@ export default function EventPage() {
       }
     };
 
-    validateInvitationToken();
+    initializeSession();
   }, [eventId]);
 
   /**
@@ -245,13 +303,13 @@ export default function EventPage() {
   }, [eventId]);
 
   /**
-   * Check registration status when validatedUserId changes
+   * Check registration status when token is validated
    * Backend: GET /voting-event/:eventId/participants
    * Auto-switches to vote tab if registered, results tab if already voted
    */
   useEffect(() => {
     const checkRegistrationStatus = async () => {
-      if (!validatedUserId || !eventId) return;
+      if (!validatedUserId || !validatedToken || !eventId) return;
 
       try {
         // Get list of registered participants from backend
@@ -265,7 +323,7 @@ export default function EventPage() {
 
           if (isUserRegistered) {
             // User is registered in backend - load their identity from localStorage
-            const storedIdentityStr = localStorage.getItem(`identity_${eventId}_${validatedUserId}`);
+            const storedIdentityStr = localStorage.getItem(`identity_${eventId}_${validatedToken}`);
             if (storedIdentityStr) {
               const storedIdentity: StoredIdentity = JSON.parse(storedIdentityStr);
               setCommitment(storedIdentity.commitment);
@@ -274,9 +332,14 @@ export default function EventPage() {
             setIsRegistered(true);
 
             // Check if user has voted
-            const hasVotedStr = localStorage.getItem(`has_voted_${eventId}_${validatedUserId}`);
+            const hasVotedStr = localStorage.getItem(`has_voted_${eventId}_${validatedToken}`);
             if (hasVotedStr === 'true') {
               setHasVoted(true);
+              // Load voted option from localStorage
+              const votedOptionStr = localStorage.getItem(`voted_option_${eventId}_${validatedToken}`);
+              if (votedOptionStr) {
+                setVotedOptionIndex(parseInt(votedOptionStr));
+              }
               setActiveTab('results');
             } else {
               setActiveTab('vote');
@@ -290,7 +353,7 @@ export default function EventPage() {
     };
 
     checkRegistrationStatus();
-  }, [eventId, validatedUserId]);
+  }, [eventId, validatedUserId, validatedToken]);
 
   // --------------------------------------------------------------------------
   // BACKEND API CALLS
@@ -304,8 +367,8 @@ export default function EventPage() {
    */
   const registerCommitmentToBackend = async (commitmentValue: string) => {
     try {
-      // Get userId from validated token
-      if (!validatedUserId) {
+      // Get token from validated state
+      if (!validatedToken) {
         setError('You need a valid invitation link to register for this event.');
         return;
       }
@@ -316,7 +379,7 @@ export default function EventPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userId: validatedUserId,
+            token: validatedToken,
             commitment: commitmentValue
           })
         }
@@ -327,13 +390,10 @@ export default function EventPage() {
       }
 
       // Mark the invitation token as used
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get('token');
-
-      if (token) {
+      if (validatedToken) {
         try {
           await fetch(
-            `${BACKEND_API_URL}/voting-event/mark-token-used/${token}`,
+            `${BACKEND_API_URL}/voting-event/mark-token-used/${validatedToken}`,
             { method: 'POST' }
           );
         } catch (err) {
@@ -357,81 +417,140 @@ export default function EventPage() {
   };
 
   /**
-   * Submit vote to backend
-   * Backend: POST /voting-event/:eventId/vote
-   * Submits the selected option and marks user as voted
+   * Submit vote — 8-step ZK vote flow.
+   * voteSignal: [[optionIndex, voteCount], ...]
    */
-  const submitVote = async (optionIndex: number) => {
+  const submitVote = async (voteSignal: Array<[number, number]>) => {
     try {
       setSubmitting(true);
+      setVoteStep(null);
 
-      // Validate userId
       if (!validatedUserId) {
         throw new Error('User ID not found. Please use a valid invitation link.');
       }
+      if (!event) {
+        throw new Error('Event data not loaded.');
+      }
+      if (!event.semaphoreAddress) {
+        throw new Error('Voting not yet available — the event organizer has not completed the blockchain setup.');
+      }
+      // Load stored identity
+      const storedIdentityStr = localStorage.getItem(`identity_${eventId}_${validatedToken}`);
+      if (!storedIdentityStr) {
+        throw new Error('No identity found. Please upload your identity file.');
+      }
+      const storedIdentity: StoredIdentity = JSON.parse(storedIdentityStr);
 
-      // ============================================================================
-      // ⚠️ TODO FOR ZK-PROOF IMPLEMENTATION
-      // ============================================================================
-      //
-      // CURRENT (FAKE - NOT ANONYMOUS):
-      // - Sends userId (reveals identity!)
-      // - No ZK-proof verification
-      //
-      // REQUIRED CHANGES:
-      //
-      // 1. FRONTEND: Generate ZK-proof using stored identity
-      //    const storedIdentityStr = localStorage.getItem(`identity_${eventId}_${validatedUserId}`);
-      //    const storedIdentity: StoredIdentity = JSON.parse(storedIdentityStr);
-      //    const identity = new Identity(
-      //      BigInt(storedIdentity.trapdoor),
-      //      BigInt(storedIdentity.nullifier)
-      //    );
-      //    const { proof, nullifier } = await generateProofForVote(
-      //      identity,
-      //      event.groupMerkleRootHash, // Current Merkle root
-      //      optionIndex
-      //    );
-      //
-      // 2. FRONTEND: Send proof + nullifier (NO userId!)
-      //    const votePayload = {
-      //      proof: proof,           // ZK-proof object
-      //      nullifier: nullifier,   // Computed nullifier (prevents double-voting)
-      //      signal: optionIndex     // The vote itself
-      //    };
-      //
-      // 3. BACKEND: Verify proof in submitVote()
-      //    - Verify proof against groupMerkleRootHash
-      //    - Check nullifier not already used
-      //    - Store nullifier (NOT userId!)
-      //
-      // ============================================================================
+      // Step 2: Fetch Merkle proof
+      setVoteStep('Fetching Merkle proof...');
+      const merkleResponse = await fetch(
+        `${BACKEND_API_URL}/voting-event/${eventId}/merkle-proof/${validatedUserId}`
+      );
+      if (!merkleResponse.ok) throw new Error('Failed to fetch Merkle proof');
+      const merkleData = await merkleResponse.json();
 
-      const votePayload = {
-        selectedOption: optionIndex,
-        userId: validatedUserId, // ⚠️ TEMPORARY - REVEALS IDENTITY! Should be replaced with proof + nullifier
+      const merkleProof = {
+        root: BigInt(merkleData.root),
+        siblings: (merkleData.siblings as string[]).map(BigInt),
+        pathIndices: merkleData.pathIndices as number[],
       };
 
-      // Submit vote to backend
-      const response = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/vote`, {
+      // Step 3: Encode vote signal
+      setVoteStep('Encoding vote signal...');
+      const signalMessage = await encodeVoteSignal(voteSignal);
+
+      // Step 4: Generate ZK proof
+      setVoteStep('Generating ZK proof... (this may take ~30s)');
+      const externalNullifier = BigInt('0x' + event.semaphoreNft!);
+      const { zkProof, nullifierHash, publicSignals } = await generateVoteProof({
+        identityNullifier: BigInt(storedIdentity.nullifier),
+        identityTrapdoor: BigInt(storedIdentity.trapdoor),
+        merkleProof,
+        externalNullifier,
+        signal: signalMessage,
+      });
+      const signalHash = BigInt(publicSignals[2]);
+
+      // ── VOTE DIAGNOSTICS ────────────────────────────────────────────────────────
+      const BLS12_381_R = 52435875175126190479447740508185965837690552500527637822603658699938581184513n;
+      console.log('🗳️ VOTE DIAGNOSTICS:');
+      console.log('  externalNullifier  :', externalNullifier.toString());
+      console.log('  nullifierHash      :', nullifierHash.toString());
+      console.log('  signalHash         :', signalHash.toString());
+      console.log('  merkleRoot(backend):', merkleData.root);
+      console.log('  merkleRoot(circuit):', publicSignals[0]);
+      console.log('  groupMerkleRootHash:', event.groupMerkleRootHash);
+      console.log('  publicSignals      :', publicSignals);
+      console.log('  nullifierHash < 2^248?', nullifierHash < (1n << 248n), '(if true → MPF encoding edge-case)');
+      console.log('  merkle root match? backend==merkleProof:', merkleData.root === event.groupMerkleRootHash);
+      console.log('  merkle root match? circuit==backend:', publicSignals[0] === event.groupMerkleRootHash);
+      if (nullifierHash >= BLS12_381_R) {
+        console.error('❌ nullifierHash >= BLS12_381_R — invalid scalar!');
+      }
+      // ────────────────────────────────────────────────────────────────────────────
+
+      // Step 5: Insert nullifier
+      setVoteStep('Inserting nullifier...');
+      const nullifierResponse = await fetch(
+        `${BACKEND_API_URL}/voting-event/${eventId}/nullifier`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nullifier: nullifierHash.toString() }),
+        }
+      );
+      if (!nullifierResponse.ok) {
+        const errData = await nullifierResponse.json().catch(() => ({}));
+        if (nullifierResponse.status === 409) {
+          throw new Error(
+            'Your vote identity has already been used in a previous attempt. ' +
+            'If that transaction was never confirmed on-chain, please contact the event organizer.'
+          );
+        }
+        throw new Error(errData.message || 'Nullifier insertion failed.');
+      }
+      const nullifierResult = await nullifierResponse.json();
+      const mpfNewRoot: string = nullifierResult.newRoot;
+      const mpfProofSteps: Array<object> = nullifierResult.proofSteps;
+      console.log('  mpfNewRoot         :', mpfNewRoot);
+      console.log('  mpfProofSteps      :', JSON.stringify(mpfProofSteps));
+
+      // Step 6: Send proof to backend — relay wallet builds, signs, and submits
+      setVoteStep('Submitting your vote… the relay is building and signing the transaction. This may take up to 30 seconds.');
+      const submitResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(votePayload)
+        body: JSON.stringify({
+          zkProof,
+          nullifierHash: nullifierHash.toString(),
+          signalHash: signalHash.toString(),
+          signalMessage,
+          mpfProofSteps,
+          mpfNewRoot,
+          voteSignal,
+        }),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to submit vote');
+      if (!submitResponse.ok) {
+        const errData = await submitResponse.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to submit vote');
       }
+      const submitResult = await submitResponse.json();
+      const txHash: string = submitResult.txHash;
 
-      // Mark as voted in localStorage (with userId to keep separate user sessions)
-      if (validatedUserId) {
-        localStorage.setItem(`has_voted_${eventId}_${validatedUserId}`, 'true');
+      // Mark as voted locally
+      if (validatedToken) {
+        localStorage.setItem(`has_voted_${eventId}_${validatedToken}`, 'true');
+        const voteOptionIndex = voteSignal[0]?.[0] ?? null;
+        if (voteOptionIndex !== null) {
+          localStorage.setItem(`voted_option_${eventId}_${validatedToken}`, voteOptionIndex.toString());
+        }
       }
       setHasVoted(true);
+      setVotedOptionIndex(voteSignal[0]?.[0] ?? null);
+      setVoteTxHash(txHash);
+      setVoteStep(null);
       setSubmitting(false);
 
-      // Switch to results tab
       setTimeout(() => {
         setActiveTab('results');
       }, 1500);
@@ -440,6 +559,7 @@ export default function EventPage() {
       console.error('Error submitting vote:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to submit vote. Please try again.';
       setError(errorMessage);
+      setVoteStep(null);
       setSubmitting(false);
     }
   };
@@ -449,14 +569,42 @@ export default function EventPage() {
   // --------------------------------------------------------------------------
 
   /**
-   * Generate Semaphore identity and register commitment
-   * Creates new identity, stores it locally, and registers to backend
+   * Download identity file to user's device
+   * Creates a JSON file with identity secrets for backup
+   */
+  const downloadIdentityFile = (identityData: { trapdoor: string; nullifier: string; commitment: string }) => {
+    const identityFile = {
+      eventId: Number(eventId),
+      trapdoor: identityData.trapdoor,
+      nullifier: identityData.nullifier,
+      commitment: identityData.commitment,
+      downloadedAt: new Date().toISOString()
+    };
+
+    // Create blob and download
+    const blob = new Blob([JSON.stringify(identityFile, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `semaphore-identity-event-${eventId}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setIdentityDownloaded(true);
+  };
+
+  /**
+   * Generate Semaphore identity
+   * Creates new identity, stores it locally, and triggers download
+   * NOTE: Does NOT register to backend - user must do that manually
    */
   const generateIdentity = async () => {
     try {
       setGenerating(true);
 
-      if (!validatedUserId) {
+      if (!validatedToken) {
         setError('You need a valid invitation link to register for this event.');
         setGenerating(false);
         return;
@@ -466,20 +614,25 @@ export default function EventPage() {
       const newIdentity = new Identity();
       const newCommitment = newIdentity.commitment.toString();
 
-      setIdentity(newIdentity);
-      setCommitment(newCommitment);
-
-      // Store identity in localStorage with eventId AND userId
-      localStorage.setItem(`identity_${eventId}_${validatedUserId}`, JSON.stringify({
+      const identityData = {
         trapdoor: newIdentity.trapdoor.toString(),
         nullifier: newIdentity.nullifier.toString(),
         commitment: newCommitment
-      }));
+      };
+
+      setIdentity(newIdentity);
+      setCommitment(newCommitment);
+
+      // Store identity in localStorage with eventId AND token
+      localStorage.setItem(`identity_${eventId}_${validatedToken}`, JSON.stringify(identityData));
 
       setHasIdentity(true);
 
-      // Send commitment to backend
-      await registerCommitmentToBackend(newCommitment);
+      // Download identity file automatically
+      downloadIdentityFile(identityData);
+
+      // NOTE: Registration is now a separate step - user must click "Register Commitment"
+      // This allows them to save the file first before registering
 
       setGenerating(false);
     } catch (err) {
@@ -490,20 +643,135 @@ export default function EventPage() {
   };
 
   /**
+   * Register commitment to backend (separate from identity generation)
+   * This is called manually after user has saved their identity file
+   */
+  const handleRegisterCommitment = async () => {
+    if (!commitment) {
+      setError('No commitment found. Please generate an identity first.');
+      return;
+    }
+
+    try {
+      setRegistering(true);
+      await registerCommitmentToBackend(commitment);
+      setRegistering(false);
+    } catch (err) {
+      console.error('Error registering commitment:', err);
+      setError('Failed to register commitment. Please try again.');
+      setRegistering(false);
+    }
+  };
+
+  /**
+   * Upload and restore identity from file
+   * Allows users to restore their identity on different devices/browsers
+   */
+  const handleIdentityFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingIdentity(true);
+    setUploadError(null);
+
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const fileContent = e.target?.result as string;
+        const data = JSON.parse(fileContent);
+
+        // Validate file structure
+        if (!data.eventId || !data.trapdoor || !data.nullifier || !data.commitment) {
+          throw new Error('Invalid identity file format. Missing required fields.');
+        }
+
+        // Validate eventId matches current event
+        if (Number(data.eventId) !== Number(eventId)) {
+          throw new Error(`This identity file is for event ${data.eventId}, but you're viewing event ${eventId}.`);
+        }
+
+        // Restore identity from trapdoor and nullifier
+        // Identity constructor expects a JSON string: '["trapdoor", "nullifier"]'
+        const restoredIdentity = new Identity(JSON.stringify([data.trapdoor, data.nullifier]));
+        const restoredCommitment = restoredIdentity.commitment.toString();
+
+        // Verify commitment matches
+        if (restoredCommitment !== data.commitment) {
+          throw new Error('Identity verification failed. The file may be corrupted.');
+        }
+
+        // Set state
+        setIdentity(restoredIdentity);
+        setCommitment(restoredCommitment);
+        setHasIdentity(true);
+
+        // Store in localStorage
+        if (validatedToken) {
+          localStorage.setItem(`identity_${eventId}_${validatedToken}`, JSON.stringify({
+            trapdoor: data.trapdoor,
+            nullifier: data.nullifier,
+            commitment: data.commitment
+          }));
+        }
+
+        setUploadingIdentity(false);
+      } catch (err) {
+        console.error('Error uploading identity file:', err);
+        setUploadError(err instanceof Error ? err.message : 'Failed to read identity file. Please try again.');
+        setUploadingIdentity(false);
+      }
+    };
+
+    reader.onerror = () => {
+      setUploadError('Failed to read file. Please try again.');
+      setUploadingIdentity(false);
+    };
+
+    reader.readAsText(file);
+  };
+
+  /**
+   * Copy commitment to clipboard
+   */
+  const copyCommitmentToClipboard = async () => {
+    if (!commitment) return;
+
+    try {
+      await navigator.clipboard.writeText(commitment);
+      setCommitmentCopied(true);
+      setTimeout(() => setCommitmentCopied(false), 2000); // Reset after 2 seconds
+    } catch (err) {
+      console.error('Failed to copy commitment:', err);
+    }
+  };
+
+  /**
+   * Copy event link with token to clipboard
+   */
+  const copyEventLinkToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setEventLinkCopied(true);
+      setTimeout(() => setEventLinkCopied(false), 2000); // Reset after 2 seconds
+    } catch (err) {
+      console.error('Failed to copy event link:', err);
+    }
+  };
+
+  /**
    * Handle simple voting (one vote per person)
-   * Validates selection and submits vote
    */
   const handleSimpleVote = async () => {
     if (selectedOption === null) {
       alert('Please select an option');
       return;
     }
-    await submitVote(selectedOption);
+    await submitVote([[selectedOption, 1]]);
   };
 
   /**
    * Handle weighted voting (distribute points across options)
-   * Validates total points and submits option with most points
    */
   const handleWeightedVote = async () => {
     if (!event) return;
@@ -515,17 +783,16 @@ export default function EventPage() {
       return;
     }
 
-    // Find the option with the most points
-    const maxPoints = Math.max(...Object.values(pointsDistribution));
-    const selectedOptionIndex = Object.entries(pointsDistribution)
-      .find(([_, points]) => points === maxPoints)?.[0];
+    const voteSignal: Array<[number, number]> = Object.entries(pointsDistribution)
+      .filter(([_, pts]) => pts > 0)
+      .map(([idx, pts]) => [parseInt(idx), pts]);
 
-    if (selectedOptionIndex === undefined) {
+    if (voteSignal.length === 0) {
       alert('Please distribute your points');
       return;
     }
 
-    await submitVote(parseInt(selectedOptionIndex));
+    await submitVote(voteSignal);
   };
 
   /**
@@ -551,6 +818,7 @@ export default function EventPage() {
     return Object.values(pointsDistribution).reduce((sum, points) => sum + points, 0);
   };
 
+  /**
   /**
    * Format POSIX timestamp to UTC string
    */
@@ -664,19 +932,23 @@ export default function EventPage() {
                   </div>
                 </div>
 
-                {/* Important Notice */}
-                <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4 mt-4">
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <div className="flex-1">
-                      <p className="text-sm text-yellow-900 font-semibold mb-1">Important</p>
-                      <p className="text-xs text-yellow-800">
-                        Don't close or refresh this page - you'd lose access to this voting event. Voting & Result page update automatically once voting starts or ends.
-                      </p>
-                    </div>
-                  </div>
+              </div>
+
+              {/* Event Access Link */}
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 mt-6">
+                <p className="text-xs text-gray-600 mb-2">
+                  Use this link + your identity file to access this event later. Keep it secure!
+                </p>
+                <div className="flex items-center gap-2">
+                  <p className="flex-1 text-xs font-mono text-gray-700 break-all">
+                    {typeof window !== 'undefined' ? window.location.href : ''}
+                  </p>
+                  <button
+                    onClick={copyEventLinkToClipboard}
+                    className="px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition text-xs font-medium whitespace-nowrap"
+                  >
+                    {eventLinkCopied ? 'Copied!' : 'Copy'}
+                  </button>
                 </div>
               </div>
 
@@ -764,28 +1036,44 @@ export default function EventPage() {
               <div>
                 {isRegistered ? (
                   // Already Registered Success State
-                  <div className="bg-green-50 border-2 border-green-200 rounded-xl p-8 text-center">
-                    <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                      <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
+                  <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-8 h-8 bg-gray-900 rounded-full flex items-center justify-center">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <h2 className="text-xl font-bold text-gray-900">Registration Complete</h2>
                     </div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-3">Already Registered!</h2>
-                    <p className="text-gray-600 mb-6">You have successfully registered for this event.</p>
-                    <button
-                      onClick={() => setActiveTab('vote')}
-                      className="px-6 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-all font-semibold"
-                    >
-                      Go to Voting
-                    </button>
+                    <p className="text-sm text-gray-600 mb-4">
+                      You have successfully registered for this event.
+                    </p>
+                    {commitment && (
+                      <div className="bg-white rounded-lg p-3 border border-gray-200 mt-4">
+                        <p className="text-xs text-gray-600 mb-2">
+                          Your Commitment ID:
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="flex-1 text-xs font-mono text-gray-700 break-all">
+                            {commitment}
+                          </p>
+                          <button
+                            onClick={copyCommitmentToClipboard}
+                            className="px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition text-xs font-medium whitespace-nowrap"
+                          >
+                            {commitmentCopied ? 'Copied!' : 'Copy'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>
                     {/* Token Validation Status */}
                     {validatingToken && (
-                      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 mb-6">
+                      <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 mb-6">
                         <div className="flex items-center gap-3">
-                          <svg className="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <svg className="animate-spin h-6 w-6 text-gray-900" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
@@ -810,7 +1098,8 @@ export default function EventPage() {
                           Create your anonymous voting credentials to participate in this event.
                         </p>
 
-                        {!commitment ? (
+                        {/* Step 1: Generate Identity */}
+                        {!hasIdentity ? (
                           <button
                             onClick={generateIdentity}
                             disabled={generating || validatingToken || !!tokenError}
@@ -822,33 +1111,95 @@ export default function EventPage() {
                                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                Completing Registration...
+                                Generating Identity...
                               </>
                             ) : (
                               <>
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                                 </svg>
-                                Complete Registration
+                                Generate Identity
                               </>
                             )}
                           </button>
-                        ) : (
-                          <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4">
-                            <div className="flex items-center gap-2 mb-3">
-                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
+                        ) : !isRegistered ? (
+                          <>
+                            {/* Identity Generated - Show Download Confirmation and Warnings */}
+                            <div className="space-y-4">
+                              {/* Combined: Download Success + Warnings */}
+                              <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4">
+                                {/* Download Confirmation */}
+                                <div className="flex items-center gap-2 mb-3 pb-3 border-b border-yellow-200">
+                                  <div className="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
+                                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </div>
+                                  <span className="text-yellow-900 font-semibold">Identity File Downloaded</span>
+                                </div>
+
+                                {/* Warning Messages */}
+                                <div className="flex items-start gap-2">
+                                  <svg className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                  </svg>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-semibold text-yellow-900 mb-1">Keep this file safe!</p>
+                                    <ul className="text-xs text-yellow-800 space-y-1 list-disc list-inside">
+                                      <li>You'll need it to vote later</li>
+                                      <li>Never share your identity file with anyone</li>
+                                      <li>If you lose this file, you cannot vote</li>
+                                    </ul>
+                                  </div>
+                                </div>
                               </div>
-                              <span className="text-green-800 font-semibold">Registration Complete</span>
+
+                              {/* Commitment Display */}
+                              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                                <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                  <p className="text-xs text-gray-600 mb-2">
+                                    Your Commitment ID:
+                                  </p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="flex-1 text-xs font-mono text-gray-700 break-all">
+                                      {commitment}
+                                    </p>
+                                    <button
+                                      onClick={copyCommitmentToClipboard}
+                                      className="px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition text-xs font-medium whitespace-nowrap"
+                                    >
+                                      {commitmentCopied ? 'Copied!' : 'Copy'}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Step 2: Register Commitment Button */}
+                              <button
+                                onClick={handleRegisterCommitment}
+                                disabled={registering}
+                                className="w-full px-6 py-4 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                              >
+                                {registering ? (
+                                  <>
+                                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Registering...
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Register Commitment
+                                  </>
+                                )}
+                              </button>
                             </div>
-                            <div className="text-sm text-gray-700 mb-2">Your Anonymous Credentials:</div>
-                            <div className="font-mono text-xs bg-white p-3 rounded border border-green-200 break-all text-gray-900">
-                              {commitment}
-                            </div>
-                          </div>
-                        )}
+                          </>
+                        ) : null}
                       </div>
                     </div>
 
@@ -860,8 +1211,26 @@ export default function EventPage() {
             {/* Vote Tab */}
             {activeTab === 'vote' && (
               <div>
+                {/* Blockchain not ready */}
+                {!event.semaphoreAddress && (
+                  <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 mb-8">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center shrink-0">
+                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-gray-900 mb-1">Voting Not Yet Available</h3>
+                        <p className="text-sm text-gray-700">The event organizer has not completed the blockchain setup.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Status Info Box */}
                 {!isRegistered ? (
+                  // Not Registered - Show Registration Required
                   <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6 mb-8">
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center shrink-0">
@@ -881,6 +1250,64 @@ export default function EventPage() {
                       </div>
                     </div>
                   </div>
+                ) : !hasIdentity ? (
+                  // Registered but no Identity - Show Upload
+                  <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 mb-8">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center shrink-0">
+                        <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-gray-900 mb-1">Identity File Required</h3>
+                        <p className="text-sm text-gray-700 mb-3">
+                          You're registered, but we need your identity file to cast your vote.
+                        </p>
+
+                        {uploadError && (
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
+                            <p className="text-xs text-yellow-900">{uploadError}</p>
+                          </div>
+                        )}
+
+                        <label className="block">
+                          <input
+                            type="file"
+                            accept=".json"
+                            onChange={handleIdentityFileUpload}
+                            disabled={uploadingIdentity}
+                            className="hidden"
+                            id="identity-file-upload"
+                          />
+                          <label
+                            htmlFor="identity-file-upload"
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all font-semibold text-sm cursor-pointer disabled:opacity-50"
+                          >
+                            {uploadingIdentity ? (
+                              <>
+                                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Uploading...
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                                Upload Identity File
+                              </>
+                            )}
+                          </label>
+                        </label>
+                        <p className="text-xs text-gray-600 mt-2">
+                          Upload the JSON file you downloaded during registration.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 ) : !event.startingDate || Date.now() < event.startingDate * 1000 ? (
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 mb-8">
                     <div className="flex items-start gap-3">
@@ -892,12 +1319,57 @@ export default function EventPage() {
                       <div className="flex-1">
                         <h3 className="font-bold text-gray-900 mb-1">Voting Hasn't Started Yet</h3>
                         {event.startingDate ? (
-                          <p className="text-sm text-gray-700">The voting period will begin on {formatDate(event.startingDate)}.</p>
+                          <>
+                            <p className="text-sm text-gray-700 mb-2">The voting period will begin on {formatDate(event.startingDate)}.</p>
+                            <p className="text-xs text-gray-600">This page will automatically update when voting starts.</p>
+                          </>
                         ) : (
                           <p className="text-sm text-gray-700">The voting start date has not been set yet.</p>
                         )}
                       </div>
                     </div>
+                  </div>
+                ) : hasVoted ? (
+                  <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 mb-8">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-8 h-8 bg-gray-900 rounded-full flex items-center justify-center">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <h2 className="text-xl font-bold text-gray-900">Vote Submitted</h2>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Your vote has been recorded anonymously on-chain.
+                    </p>
+                    {votedOptionIndex !== null && (
+                      <div className="bg-white rounded-lg p-3 border border-gray-200 mt-4">
+                        <p className="text-xs text-gray-600 mb-2">Your choice:</p>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {options.find(opt => opt.index === votedOptionIndex)?.text || `Option ${votedOptionIndex}`}
+                        </p>
+                      </div>
+                    )}
+                    {voteTxHash && (
+                      <div className="bg-white rounded-lg p-3 border border-gray-200 mt-3">
+                        <p className="text-xs text-gray-600 mb-1">Transaction ID:</p>
+                        <p className="text-xs font-mono text-gray-800 break-all mb-2">{voteTxHash}</p>
+                        <a
+                          href={`https://preprod.cardanoscan.io/transaction/${voteTxHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          View on Cardanoscan ↗
+                        </a>
+                      </div>
+                    )}
+                    <Link
+                      href={`/event/${eventId}/results`}
+                      className="mt-4 inline-block px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all font-semibold text-sm"
+                    >
+                      View Results
+                    </Link>
                   </div>
                 ) : event.endingDate && Date.now() > event.endingDate * 1000 ? (
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 mb-8">
@@ -910,32 +1382,12 @@ export default function EventPage() {
                       <div className="flex-1">
                         <h3 className="font-bold text-gray-900 mb-1">Voting Has Ended</h3>
                         <p className="text-sm text-gray-700 mb-3">The voting period ended on {formatDate(event.endingDate)}.</p>
-                        <button
-                          onClick={() => setActiveTab('results')}
-                          className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all font-semibold text-sm"
+                        <Link
+                          href={`/event/${eventId}/results`}
+                          className="inline-block px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all font-semibold text-sm"
                         >
                           View Results
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : hasVoted ? (
-                  <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 mb-8">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 bg-gray-900 rounded-full flex items-center justify-center shrink-0">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-bold text-gray-900 mb-1">Vote Submitted!</h3>
-                        <p className="text-sm text-gray-700 mb-3">Your vote has been recorded anonymously.</p>
-                        <button
-                          onClick={() => setActiveTab('results')}
-                          className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all font-semibold text-sm"
-                        >
-                          View Results
-                        </button>
+                        </Link>
                       </div>
                     </div>
                   </div>
@@ -959,7 +1411,8 @@ export default function EventPage() {
                   </div>
                 )}
 
-                {/* Voting Options Section - Always Visible */}
+                {/* Voting Options Section - Only show if not voted */}
+                {!hasVoted && (
                 <div className="mb-8">
                   <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-200">
                     <div className="flex items-center gap-2 mb-6">
@@ -1036,7 +1489,7 @@ export default function EventPage() {
 
                     <button
                       onClick={isSimpleVote ? handleSimpleVote : handleWeightedVote}
-                      disabled={!isRegistered || !event.startingDate || Date.now() < event.startingDate * 1000 || (event.endingDate && Date.now() > event.endingDate * 1000) || hasVoted || submitting || (isSimpleVote ? selectedOption === null : getTotalDistributedPoints() !== event.votingPower)}
+                      disabled={!isRegistered || !event.startingDate || Date.now() < event.startingDate * 1000 || (event.endingDate && Date.now() > event.endingDate * 1000) || hasVoted || submitting || !event.semaphoreAddress || (isSimpleVote ? selectedOption === null : getTotalDistributedPoints() !== event.votingPower)}
                       className="w-full px-6 py-4 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {submitting ? (
@@ -1056,6 +1509,9 @@ export default function EventPage() {
                         </>
                       )}
                     </button>
+                    {voteStep && (
+                      <p className="mt-3 text-sm text-gray-600 text-center">{voteStep}</p>
+                    )}
 
                     {!isSimpleVote && getTotalDistributedPoints() !== event.votingPower && (
                       <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
@@ -1066,128 +1522,33 @@ export default function EventPage() {
                     )}
                   </div>
                 </div>
-
-                {/* Privacy Notice */}
-                <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 bg-gray-900 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-gray-900 mb-2">Privacy Protected</h4>
-                      <p className="text-sm text-gray-700">
-                        Your vote is anonymous and secured using zero-knowledge proofs.
-                        No one can link your identity to your vote, while ensuring each person votes only once.
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             )}
 
             {/* Results Tab */}
             {activeTab === 'results' && (
-              <div>
-                {/* Voting Status */}
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-200 mb-8">
-                  <div className="flex items-center gap-2 mb-4">
-                    <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <h3 className="font-bold text-gray-900">Event Status</h3>
-                  </div>
-
-                  <div className="space-y-3 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Voting Period:</span>
-                      <span className="text-gray-900 font-medium">{formatDate(event.startingDate)} - {formatDate(event.endingDate)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Voting Type:</span>
-                      <span className="text-gray-900 font-medium">
-                        {isSimpleVote ? 'Simple Vote' : `Weighted (${event.votingPower} points)`}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Results */}
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-200 mb-8">
-                  <div className="flex items-center gap-2 mb-6">
-                    <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    <h3 className="font-bold text-gray-900">Voting Results</h3>
-                  </div>
-
-                  {/* Show pending message if voting hasn't ended yet */}
-                  {event.endingDate && Date.now() < event.endingDate * 1000 ? (
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-6 text-center">
-                      <p className="text-sm text-gray-700">
-                        Results will be displayed here once voting ends. Check back after {formatDate(event.endingDate)}
-                      </p>
-                    </div>
-                  ) : (
-                    // Show actual results if voting has ended
-                    <div className="space-y-3">
-                      {fullOptions.sort((a, b) => (b.votes || 0) - (a.votes || 0)).map((option, index) => {
-                        const totalVotes = fullOptions.reduce((sum, opt) => sum + (opt.votes || 0), 0);
-                        const percentage = totalVotes > 0 ? ((option.votes || 0) / totalVotes * 100).toFixed(1) : '0.0';
-
-                        return (
-                          <div key={option.index} className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-3">
-                                <span className="shrink-0 w-8 h-8 rounded-full bg-gray-900 text-white flex items-center justify-center text-sm font-semibold">
-                                  {index + 1}
-                                </span>
-                                <span className="text-gray-900 font-medium">{option.text}</span>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-gray-900 font-bold">{option.votes || 0} votes</div>
-                                <div className="text-gray-500 text-sm">{percentage}%</div>
-                              </div>
-                            </div>
-                            {totalVotes > 0 && (
-                              <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div
-                                  className="bg-gray-900 h-2 rounded-full transition-all"
-                                  style={{ width: `${percentage}%` }}
-                                ></div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Privacy Info */}
-                <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 bg-gray-900 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-gray-900 mb-2">Verified & Anonymous</h4>
-                      <p className="text-sm text-gray-700">
-                        All votes are cryptographically verified using zero-knowledge proofs.
-                        Results are tamper-proof and will be publicly auditable once voting ends.
-                      </p>
-                    </div>
-                  </div>
-                </div>
+              <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
+                <h3 className="font-bold text-gray-900 mb-1">Voting Results</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Results are read directly from the Cardano blockchain and auto-refresh while voting is live.
+                </p>
+                <Link
+                  href={`/event/${eventId}/results`}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  View Live Results
+                </Link>
               </div>
             )}
           </div>
 
         </div>
       </div>
+
     </div>
   );
 }

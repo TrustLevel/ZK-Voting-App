@@ -1,7 +1,7 @@
 // Script to mint a voting event using the voting.ak validator
-import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference, generateInitialOptions, generateEventTiming, createUrnaDatum } from './utils.js';
+import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic, textToHex, extractPaymentKeyHash, selectUtxoAndCreateOutputReference, generateInitialOptions, generateEventTiming, createUrnaDatum } from '../utils.js';
 import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript } from '@meshsdk/core';
-import { VALIDATORS } from './validators.js';
+import { VALIDATORS } from '../validators.js';
 import 'dotenv/config';
 
 // Get mnemonic from environment

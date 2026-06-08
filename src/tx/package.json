@@ -15,8 +15,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@meshsdk/core": "^1.7.8",
-    "@meshsdk/core-csl": "^1.7.8",
+    "@meshsdk/core": "^1.9.0",
+    "@meshsdk/core-csl": "^1.9.0",
     "@src/zk": "*"
   },
   "devDependencies": {
@@ -44,6 +44,11 @@
       "types": "./dist/utils/index.d.ts",
       "import": "./dist/utils/index.js",
       "require": "./dist/utils/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.js",
+      "require": "./dist/browser/index.js"
     }
   }
 }

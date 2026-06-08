@@ -7,6 +7,7 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private resend: Resend;
   private frontendUrl: string;
+  private fromAddress: string;
 
   constructor(private configService: ConfigService) {
     const apiKey = this.configService.get<string>('RESEND_API_KEY');
@@ -14,7 +15,11 @@ export class EmailService {
       throw new Error('RESEND_API_KEY is not defined in environment variables');
     }
     this.resend = new Resend(apiKey);
-    this.frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    this.frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3002';
+    // RESEND_FROM_EMAIL must use a domain verified in your Resend account.
+    // For local dev without a verified domain, use Resend's sandbox: onboarding@resend.dev
+    // (sandbox can only deliver to the email address registered on your Resend account).
+    this.fromAddress = this.configService.get<string>('RESEND_FROM_EMAIL') || 'onboarding@resend.dev';
   }
 
   async sendInvitationEmail(
@@ -45,7 +50,7 @@ export class EmailService {
       const endDateStr = formatDate(endingDate);
 
       const { data, error } = await this.resend.emails.send({
-        from: 'TrustLevel Voting <voting@trust-level.com>',
+        from: this.fromAddress,
         to: email,
         subject: `You're invited to vote in ${eventName}`,
         html: `

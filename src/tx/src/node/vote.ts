@@ -7,7 +7,7 @@ import {
   byteString,
   MeshTxBuilder,
 } from '@meshsdk/core';
-import { createUrnaDatum, createOutputReference } from './utils.js';
+import { createUrnaDatum, createOutputReference } from '../utils.js';
 
 // Convert MPF proof steps (from proof.toJSON()) to on-chain List<ProofStep> Plutus data.
 // Matches the ProofStep type in aiken-lang/merkle-patricia-forestry:

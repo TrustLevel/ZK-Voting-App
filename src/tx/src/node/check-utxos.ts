@@ -1,4 +1,4 @@
-import { createWallet, walletBaseAddress, parseMnemonic } from './utils.js';
+import { createWallet, walletBaseAddress, parseMnemonic } from '../utils.js';
 import { BlockfrostProvider } from '@meshsdk/core';
 import 'dotenv/config';
 

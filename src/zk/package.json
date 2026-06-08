@@ -4,6 +4,10 @@
   "description": "ZK proof generation utilities for ZK Voting App",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./browser": "./dist/browser/index.js"
+  },
   "type": "module",
   "private": true,
   "scripts": {
@@ -14,6 +18,8 @@
   },
   "dependencies": {
     "@aiken-lang/merkle-patricia-forestry": "^1.1.0",
+    "@meshsdk/core-csl": "^1.7.8",
+    "@noble/hashes": "^1.7.2",
     "bigint-buffer": "^1.1.5",
     "blake2b": "^2.1.4",
     "cbor-x": "^1.6.4",
