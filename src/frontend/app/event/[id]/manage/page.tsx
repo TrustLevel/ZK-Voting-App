@@ -34,6 +34,7 @@ import {
   buildAndSubmitSemaphoreVotingMintTx,
   getWalletUtxos,
   selectUtxoAndCreateOutputReference,
+  selectUtxoForCollateral,
   waitForTxConfirmation,
 } from '@/lib/blockchain-helpers';
 
@@ -48,15 +49,17 @@ const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://local
 // ============================================================================
 
 interface CreatedEvent {
-  eventId: number; // Changed from string to number
+  eventId: number;
   adminLink?: string;
   eventName: string;
-  votingPower?: number | null; // 1 = simple, >1 = weighted
-  options?: string | null; // JSON string array
-  startingDate?: number | null; // POSIX timestamp
-  endingDate?: number | null; // POSIX timestamp
-  walletAddress?: string; // Wallet address of admin
-  adminUserId?: number | null; // Admin user ID
+  votingPower?: number | null;
+  options?: string | null;
+  startingDate?: number | null;
+  endingDate?: number | null;
+  walletAddress?: string;
+  adminUserId?: number | null;
+  groupNft?: string | null;
+  groupMerkleRootHash?: string | null;
 }
 
 interface Participant {
@@ -141,6 +144,11 @@ export default function EventDashboard() {
     walletAddress: string;
     timestamp: number;
   } | null>(null);
+
+  // Group NFT Update State
+  const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
+  const [groupUpdateStatus, setGroupUpdateStatus] = useState<string | null>(null);
+  const [groupUpdateTxHash, setGroupUpdateTxHash] = useState<string | null>(null);
 
   // NEW: Blockchain Minting State
   const [mintingStep, setMintingStep] = useState<'idle' | 'group' | 'voting' | 'complete'>('idle');
@@ -357,11 +365,13 @@ export default function EventDashboard() {
         eventId: backendEvent.eventId,
         eventName: backendEvent.eventName,
         votingPower: backendEvent.votingPower,
-        options: backendEvent.options, // Keep as JSON string with vote counts
+        options: backendEvent.options,
         startingDate: backendEvent.startingDate,
         endingDate: backendEvent.endingDate,
         adminUserId: backendEvent.adminUserId,
         adminLink: `${window.location.origin}/event/${eventId}/manage?token=${backendEvent.adminToken}`,
+        groupNft: backendEvent.groupNft ?? null,
+        groupMerkleRootHash: backendEvent.groupMerkleRootHash ?? null,
       });
 
       setOptions(optionTexts);
@@ -647,6 +657,70 @@ export default function EventDashboard() {
    * 
    * ============================================================================
    */
+  const handleUpdateGroupNft = async () => {
+    if (!connected || !wallet) {
+      alert('Please connect your wallet to update the Group NFT.');
+      return;
+    }
+
+    setIsUpdatingGroup(true);
+    setGroupUpdateStatus('Fetching current Merkle root...');
+    setGroupUpdateTxHash(null);
+
+    try {
+      const eventResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}`);
+      if (!eventResponse.ok) throw new Error('Failed to load event data');
+      const eventData = await eventResponse.json();
+      const newMerkleRoot: string = eventData.groupMerkleRootHash;
+
+      setGroupUpdateStatus('Preparing wallet...');
+      const blockfrostApiKey = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
+      if (!blockfrostApiKey) throw new Error('Blockfrost API key not configured');
+
+      const provider = new BlockfrostProvider(blockfrostApiKey);
+      const walletUtxos = await getWalletUtxos(wallet);
+      const { pubKeyHash: paymentKeyHash } = deserializeAddress(walletAddress);
+      const collateralUtxo = selectUtxoForCollateral(walletUtxos, 5000000);
+      if (!collateralUtxo) throw new Error('No suitable collateral UTxO found (needs a pure-ADA UTxO ≥ 5 ADA).');
+
+      setGroupUpdateStatus('Building update transaction...');
+      const buildResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/build-update-group-tx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newMerkleRoot, walletUtxos, walletAddress, paymentKeyHash, collateralUtxo }),
+      });
+      if (!buildResponse.ok) {
+        const err = await buildResponse.json().catch(() => ({}));
+        throw new Error((err as any).message || 'Failed to build update transaction');
+      }
+      const { unsignedTx } = await buildResponse.json();
+
+      setGroupUpdateStatus('Waiting for wallet signature...');
+      const signedTx = await wallet.signTx(unsignedTx, false);
+
+      setGroupUpdateStatus('Submitting to blockchain...');
+      const txHash = await wallet.submitTx(signedTx);
+
+      setGroupUpdateStatus(`Waiting for confirmation… TX: ${txHash.slice(0, 16)}…`);
+      const confirmed = await waitForTxConfirmation(provider, txHash, 60, 3000);
+      if (!confirmed) throw new Error('Transaction not confirmed after 3 minutes. Check the explorer.');
+
+      await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/confirm-group-update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newMerkleRoot, txHash }),
+      });
+
+      setGroupUpdateTxHash(txHash);
+      setGroupUpdateStatus('Group NFT updated successfully.');
+      await loadEventFromBackend();
+    } catch (err: any) {
+      setGroupUpdateStatus(`Error: ${err.message}`);
+    } finally {
+      setIsUpdatingGroup(false);
+    }
+  };
+
   const handleStartVoting = async () => {
     // ═══════════════════════════════════════════════════════════════════════
     // A. VALIDATION
@@ -1479,6 +1553,54 @@ export default function EventDashboard() {
                             )}
                           </div>
                         </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sync Group NFT — only shown after the Group NFT has been minted */}
+                {createdEvent?.groupNft && (
+                  <div className="mt-8 border-t border-gray-200 pt-6">
+                    <h3 className="font-bold text-gray-900 mb-1">Sync Group NFT</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      If participants registered after the Group NFT was minted, submit an on-chain update to sync the Merkle root with the current participant list ({participants.filter(p => p.status === 'registered').length} registered).
+                    </p>
+                    <button
+                      onClick={handleUpdateGroupNft}
+                      disabled={isUpdatingGroup || !connected}
+                      className="w-full bg-gray-900 text-white py-3 px-6 rounded-xl hover:bg-gray-800 transition-all font-semibold flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      {isUpdatingGroup ? (
+                        <>
+                          <LoadingSpinner />
+                          Updating…
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Sync Group NFT on-chain
+                        </>
+                      )}
+                    </button>
+                    {groupUpdateStatus && (
+                      <p className={`mt-3 text-sm text-center ${groupUpdateStatus.startsWith('Error') ? 'text-red-600' : 'text-gray-600'}`}>
+                        {groupUpdateStatus}
+                      </p>
+                    )}
+                    {groupUpdateTxHash && (
+                      <div className="mt-3 bg-white rounded-lg p-3 border border-gray-200">
+                        <p className="text-xs text-gray-600 mb-1">Transaction ID:</p>
+                        <p className="text-xs font-mono text-gray-800 break-all mb-2">{groupUpdateTxHash}</p>
+                        <a
+                          href={`https://preprod.cardanoscan.io/transaction/${groupUpdateTxHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          View on Cardanoscan ↗
+                        </a>
                       </div>
                     )}
                   </div>
