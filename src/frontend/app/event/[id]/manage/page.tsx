@@ -213,7 +213,11 @@ export default function EventDashboard() {
     const getWalletAddress = async () => {
       if (!connected || !wallet) return;
       try {
-        const address = await wallet.getChangeAddress();
+        // getChangeAddress() returns an unused internal-chain address that Eternl flags as
+        // "external" in the signing modal. Use the first used receive address instead —
+        // it is guaranteed to be recognised as internal by the wallet UI.
+        const usedAddresses = await wallet.getUsedAddresses();
+        const address = usedAddresses?.[0] ?? await wallet.getChangeAddress();
         setWalletAddress(address);
       } catch (error) {
         console.error('Failed to get wallet address:', error);
@@ -665,15 +669,16 @@ export default function EventDashboard() {
 
       setGroupUpdateStatus('Preparing wallet...');
       const walletUtxos = await getWalletUtxos(wallet);
-      const { pubKeyHash: paymentKeyHash } = deserializeAddress(walletAddress);
       const collateralUtxo = selectUtxoForCollateral(walletUtxos, 5000000);
       if (!collateralUtxo) throw new Error('No suitable collateral UTxO found (needs a pure-ADA UTxO ≥ 5 ADA).');
+      const groupUpdateAddress = walletUtxos[0].output.address;
+      const { pubKeyHash: paymentKeyHash } = deserializeAddress(groupUpdateAddress);
 
       setGroupUpdateStatus('Building update transaction...');
       const buildResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/build-update-group-tx`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newMerkleRoot, walletUtxos, walletAddress, paymentKeyHash, collateralUtxo }),
+        body: JSON.stringify({ newMerkleRoot, walletUtxos, walletAddress: groupUpdateAddress, paymentKeyHash, collateralUtxo }),
       });
       if (!buildResponse.ok) {
         const err = await buildResponse.json().catch(() => ({}));
@@ -755,8 +760,6 @@ export default function EventDashboard() {
       const optionsArray: Array<{ text: string }> = eventData.options ? JSON.parse(eventData.options) : options;
       const optionTexts = optionsArray.map(o => o.text);
 
-      const { pubKeyHash: paymentKeyHash } = deserializeAddress(walletAddress);
-
       // ─── PHASE 1: Group NFT ────────────────────────────────────────────────
       setMintingStep('group');
       setTxStatus('Step 1/2: Building Group NFT transaction...');
@@ -766,10 +769,17 @@ export default function EventDashboard() {
       if (!collateralUtxo1) throw new Error('No suitable collateral UTxO found (needs a pure-ADA UTxO ≥ 5 ADA).');
       const { selectedUtxo: groupUtxo } = selectUtxoAndCreateOutputReference(walletUtxos, 0);
 
+      // Derive change address and payment key hash from the UTxO's own address.
+      // CIP-30 getChangeAddress() can return an internal-chain address that the
+      // wallet signing UI labels as "external". Using the UTxO address guarantees
+      // the change goes to an address Eternl recognises as internal.
+      const utxoAddress = walletUtxos[0].output.address;
+      const { pubKeyHash: paymentKeyHash } = deserializeAddress(utxoAddress);
+
       const buildGroupRes = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/build-group-mint-tx`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ walletUtxos, walletAddress, paymentKeyHash, collateralUtxo: collateralUtxo1, selectedUtxo: groupUtxo, merkleRoot }),
+        body: JSON.stringify({ walletUtxos, walletAddress: utxoAddress, paymentKeyHash, collateralUtxo: collateralUtxo1, selectedUtxo: groupUtxo, merkleRoot }),
       });
       if (!buildGroupRes.ok) {
         const err = await buildGroupRes.json().catch(() => ({}));
@@ -795,9 +805,21 @@ export default function EventDashboard() {
 
       // ─── PHASE 2: Semaphore + Voting NFTs ─────────────────────────────────
       setMintingStep('voting');
-      setTxStatus('Step 2/2: Building Semaphore + Voting NFT transaction...');
+      setTxStatus('Step 2/2: Waiting for wallet UTxO cache to refresh...');
 
-      const walletUtxos2 = await getWalletUtxos(wallet);
+      // After Phase 1 confirms on-chain, Eternl's CIP-30 getUtxos() may still return the
+      // spent UTxO (stale cache). Poll until groupUtxo disappears from the wallet's set.
+      let walletUtxos2 = await getWalletUtxos(wallet);
+      for (let i = 0; i < 20; i++) {
+        const stale = walletUtxos2.some(u =>
+          u.input.txHash === groupUtxo.input.txHash &&
+          u.input.outputIndex === groupUtxo.input.outputIndex
+        );
+        if (!stale) break;
+        await new Promise(r => setTimeout(r, 3000));
+        walletUtxos2 = await getWalletUtxos(wallet);
+      }
+      setTxStatus('Step 2/2: Building Semaphore + Voting NFT transaction...');
       const collateralUtxo2 = selectUtxoForCollateral(walletUtxos2, 5000000);
       if (!collateralUtxo2) throw new Error('No suitable collateral UTxO found for Phase 2 (needs a pure-ADA UTxO ≥ 5 ADA).');
       const { selectedUtxo: svUtxo } = selectUtxoAndCreateOutputReference(walletUtxos2, 0);
@@ -807,7 +829,8 @@ export default function EventDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           walletUtxos: walletUtxos2,
-          walletAddress,
+          walletAddress: walletAddress,
+          changeAddress: walletAddress,
           paymentKeyHash,
           collateralUtxo: collateralUtxo2,
           selectedUtxo: svUtxo,
