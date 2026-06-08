@@ -113,12 +113,93 @@ Vote tallies are stored directly in the `UrnaDatum` on the Voting UTxO. Any obse
 
 ---
 
+## Architecture
+
+```
+Browser (Voter / Organiser)
+  │
+  ├── Next.js Frontend (port 3002)
+  │     Wallet connection · ZK proof generation · TX signing
+  │     │
+  │     ├──► NestJS Backend (port 3000)
+  │     │     Event metadata · Merkle tree · Nullifier trie (LevelDB)
+  │     │     SQLite database
+  │     │
+  │     └──► Cardano Network (Preprod Testnet)
+  │           via Blockfrost API
+  │
+  └── @src/tx  ·  @src/zk   (compiled into the frontend bundle)
+        Transaction builders · Groth16 prover · Signal encoding
+```
+
+---
+
 ## Module Overview
 
-| Module | Path | Purpose |
+| Module | Path | Docs |
 |---|---|---|
-| Smart contracts | `src/on-chain/` | Aiken validators (Voting, Semaphore, Group) |
-| Backend API | `src/backend/` | NestJS — event metadata, Merkle trees, nullifier trie |
-| Frontend | `src/frontend/` | Next.js — UI, wallet integration, proof generation |
-| Transaction builder | `src/tx/` | Unsigned transaction construction (MeshSDK) |
-| ZK proof module | `src/zk/` | snarkjs Groth16 prover, signal encoding, MPF insertion |
+| Smart contracts | `src/on-chain/` | [DOCS.md](src/on-chain/DOCS.md) |
+| Backend API | `src/backend/` | [DOCS.md](src/backend/DOCS.md) |
+| Frontend | `src/frontend/` | [DOCS.md](src/frontend/DOCS.md) |
+| Transaction builder | `src/tx/` | [DOCS.md](src/tx/DOCS.md) |
+| ZK proof module | `src/zk/` | [DOCS.md](src/zk/DOCS.md) |
+
+---
+
+## Prerequisites
+
+| Tool | Version | Purpose |
+|---|---|---|
+| Node.js | ≥ 20 | Backend, frontend, tx, zk |
+| npm | ≥ 10 | Package management |
+| Aiken | v1.1.19 | Smart contract compiler |
+| Cardano wallet | Eternl / Lace / Yoroi | CIP-30 wallet for browser |
+| Blockfrost account | — | Chain access (Preprod Testnet) |
+
+---
+
+## Quick Start
+
+### 1. Install all workspaces
+
+```sh
+npm install
+```
+
+### 2. Configure environment variables
+
+```sh
+# Backend
+cp src/backend/.env.example src/backend/.env
+# Fill in: BLOCKFROST_API_KEY, JWT_SECRET
+
+# Frontend
+cp src/frontend/.env.example src/frontend/.env.local
+# Fill in: NEXT_PUBLIC_BACKEND_API_URL, NEXT_PUBLIC_BLOCKFROST_API_KEY
+```
+
+### 3. Start the backend
+
+```sh
+cd src/backend
+npm run start:dev       # http://localhost:3000
+```
+
+### 4. Start the frontend
+
+```sh
+cd src/frontend
+npm run dev             # http://localhost:3002
+```
+
+### 5. (Optional) Rebuild smart contracts
+
+```sh
+cd src/on-chain
+aiken build             # outputs plutus.json
+
+cd src/tx
+npm run build:force     # re-extracts validator CBORs from plutus.json
+```
+
+See each module's `DOCS.md` for full configuration and deployment details.
