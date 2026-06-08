@@ -241,6 +241,7 @@ export class VotingEventController {
     @Body() body: {
       walletUtxos: any[];
       walletAddress: string;
+      changeAddress: string;
       paymentKeyHash: string;
       collateralUtxo: any;
       selectedUtxo: any;

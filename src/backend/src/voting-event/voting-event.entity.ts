@@ -100,6 +100,16 @@ export class VotingEvent {
   @Column({ name: 'vkey_ref_index', type: 'integer', nullable: true })
   vkeyRefIndex: number | null;
 
+  // Snapshot of the group tree at SV mint time.
+  // SemaphoreDatum.group_merke_root is set once at mint and never changes on-chain.
+  // groupMerkleRootHash can drift (new participants added after minting), so vote TXs
+  // and ZK proof generation must use this snapshot, not groupMerkleRootHash.
+  @Column({ name: 'semaphore_merkle_root', type: 'text', nullable: true })
+  semaphoreMerkleRoot: string | null;
+
+  @Column({ name: 'semaphore_leaf_commitments', type: 'text', nullable: true })
+  semaphoreLeafCommitments: string | null;
+
   @ManyToOne(() => User)
   @JoinColumn({ name: 'admin_user_id' })
   adminUser: User;

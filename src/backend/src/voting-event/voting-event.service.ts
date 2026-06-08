@@ -507,8 +507,8 @@ export class VotingEventService {
       key: { type: 'mnemonic', words: parseMnemonic(mnemonic) },
     });
 
-    const walletAddress = wallet.getAddresses().baseAddressBech32;
     const walletUtxos = await wallet.getUtxos();
+    const walletAddress = wallet.getAddresses().baseAddressBech32;
     const { pubKeyHash: paymentKeyHash } = deserializeAddress(walletAddress);
 
     const collateralUtxo = selectUtxoForCollateral(walletUtxos);
@@ -533,7 +533,7 @@ export class VotingEventService {
       semaphoreNftPolicyId: event.semaphoreNft!,
       votingNftPolicyId: event.votingNft!,
       groupNftPolicyId: event.groupNft!,
-      groupMerkleRoot: BigInt(event.groupMerkleRootHash),
+      groupMerkleRoot: BigInt(event.semaphoreMerkleRoot ?? event.groupMerkleRootHash),
       semaphoreValidatorCbor,
       votingValidatorCbor,
       walletUtxos,
@@ -684,10 +684,17 @@ export class VotingEventService {
       throw new Error('Voting event not found');
     }
 
-    const participants = JSON.parse(event.groupLeafCommitments) as Array<{userId: number, commitment: string}>;
+    // Use the semaphore snapshot if available — ZK proof must verify against the
+    // Semaphore datum's immutable group_merke_root, not the live group NFT root.
+    const leafSource = event.semaphoreLeafCommitments ?? event.groupLeafCommitments;
+    const participants = JSON.parse(leafSource) as Array<{userId: number, commitment: string}>;
     const index = participants.findIndex(p => p.userId === Number(userId));
     if (index === -1) {
-      throw new Error('User is not a participant in this event');
+      throw new Error(
+        event.semaphoreLeafCommitments
+          ? 'User was not registered at the time the voting system was set up and cannot vote'
+          : 'User is not a participant in this event',
+      );
     }
 
     const commitments = participants.map(p => BigInt(p.commitment));
@@ -967,8 +974,8 @@ export class VotingEventService {
       merkleRoot: string;
     },
   ): Promise<{ unsignedTx: string; policyId: string; assetName: string; scriptAddress: string; validatorCbor: string }> {
-    await this.votingEventRepository.findOne({ where: { eventId } })
-      .then(e => { if (!e) throw new HttpException('Event not found', HttpStatus.NOT_FOUND); });
+    const groupDbEvent = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!groupDbEvent) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
 
 
     const { BlockfrostProvider, resolveScriptHash, resolvePlutusScriptAddress, conStr } = require('@meshsdk/core');
@@ -996,7 +1003,7 @@ export class VotingEventService {
       { unit: 'lovelace', quantity: '5000000' },
       { unit: policyId + assetName, quantity: '1' },
     ];
-    const groupDatum = createGroupDatum(BigInt(params.merkleRoot), params.paymentKeyHash);
+    const groupDatum = createGroupDatum(BigInt(groupDbEvent.groupMerkleRootHash), params.paymentKeyHash);
 
     const unsignedTx = await buildGroupMintTransaction({
       provider,
@@ -1052,6 +1059,7 @@ export class VotingEventService {
     params: {
       walletUtxos: any[];
       walletAddress: string;
+      changeAddress: string;
       paymentKeyHash: string;
       collateralUtxo: any;
       selectedUtxo: any;
@@ -1077,9 +1085,8 @@ export class VotingEventService {
     mintingOrefTxHash: string;
     mintingOrefIndex: number;
   }> {
-    await this.votingEventRepository.findOne({ where: { eventId } })
-      .then(e => { if (!e) throw new HttpException('Event not found', HttpStatus.NOT_FOUND); });
-
+    const dbEvent = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!dbEvent) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
 
     const { BlockfrostProvider, resolveScriptHash, resolvePlutusScriptAddress, conStr, integer, byteString } = require('@meshsdk/core');
 
@@ -1123,9 +1130,11 @@ export class VotingEventService {
     const votingPolicyId = resolveScriptHash(votingValidatorCbor, 'V3');
 
     const nullHash = '0000000000000000000000000000000000000000000000000000000000000000';
+    // Read merkle root from DB directly — params.merkleRoot from the frontend may
+    // have gone through float64 (JSON number) losing precision on 76-digit values.
     const semaphoreDatum = conStr(0, [
       byteString(params.groupPolicyId),
-      integer(BigInt(params.merkleRoot)),
+      integer(BigInt(dbEvent.groupMerkleRootHash)),
       byteString(nullHash),
       createOutputReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX),
     ]);
@@ -1163,7 +1172,7 @@ export class VotingEventService {
       votingValidatorCbor,
       selectedUtxo: params.selectedUtxo,
       walletUtxos: params.walletUtxos,
-      walletAddress: params.walletAddress,
+      changeAddress: params.changeAddress,
       semaphoreScriptAddr,
       semaphoreMintValue,
       semaphoreDatum,
@@ -1242,6 +1251,17 @@ export class VotingEventService {
     });
     if (!result.success) {
       throw new HttpException('Failed to save blockchain data: ' + result.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    // Snapshot the group tree at SV mint time — SemaphoreDatum.group_merke_root is
+    // fixed at this value forever. Vote TXs and ZK proofs must use this root, not
+    // groupMerkleRootHash which can change as new participants register.
+    const eventSnap = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (eventSnap) {
+      eventSnap.semaphoreMerkleRoot = eventSnap.groupMerkleRootHash;
+      eventSnap.semaphoreLeafCommitments = eventSnap.groupLeafCommitments;
+      await this.votingEventRepository.save(eventSnap);
+      console.log(`[submitSvMintTx] Snapshotted semaphoreMerkleRoot=${eventSnap.semaphoreMerkleRoot} for event ${eventId}`);
     }
 
     return { txHash };
