@@ -556,7 +556,6 @@ export class VotingEventService {
     try {
       signedTx = await wallet.signTx(unsignedTx, false);
     } catch (signErr: any) {
-      // Roll back nullifier so the voter can retry
       await this.rollbackNullifier(eventId, nullifierHash).catch(() => {});
       throw new HttpException(
         `Transaction signing failed: ${signErr?.message ?? signErr}`,
@@ -564,7 +563,18 @@ export class VotingEventService {
       );
     }
 
-    return this._evaluateAndSubmit(signedTx);
+    try {
+      return await this._evaluateAndSubmit(signedTx);
+    } catch (submitErr: any) {
+      // Roll back nullifier on evaluation/submission failure so the voter can retry.
+      // Skip rollback for confirmed chain rejections (Blockfrost 5xx) to avoid
+      // double-spend risk on the rare case the tx was actually accepted.
+      const status = submitErr instanceof HttpException ? submitErr.getStatus() : 0;
+      if (status !== HttpStatus.BAD_GATEWAY) {
+        await this.rollbackNullifier(eventId, nullifierHash).catch(() => {});
+      }
+      throw submitErr;
+    }
   }
 
   // Evaluate scripts via Ogmios then submit to Blockfrost.
@@ -1216,26 +1226,12 @@ export class VotingEventService {
   ): Promise<{ txHash: string }> {
     const { txHash } = await this._submitTx(params.signedTx);
 
-
-    const { BlockfrostProvider } = require('@meshsdk/core');
-
     const { VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } = await import('@src/tx');
-    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
-    const provider = new BlockfrostProvider(apiKey);
 
-    let confirmed = false;
-    for (let i = 0; i < 20; i++) {
-      try {
-        await provider.fetchTxInfo(txHash);
-        confirmed = true;
-        break;
-      } catch { /* not yet confirmed */ }
-      await new Promise(r => setTimeout(r, 3000));
-    }
-    if (!confirmed) {
-      console.warn(`[submitSvMintTx] TX ${txHash} not confirmed after 60s — saving data anyway`);
-    }
-
+    // Save blockchain data immediately after successful submission — all values are
+    // already known from the build step params and do not require on-chain confirmation.
+    // Saving before the polling loop prevents data loss if the HTTP request times out
+    // or Blockfrost is slow to index the transaction.
     const result = await this.saveBlockchainData(eventId, {
       semaphoreAddress: params.semaphoreScriptAddr,
       semaphoreNft: params.semaphorePolicyId,
@@ -1253,15 +1249,31 @@ export class VotingEventService {
       throw new HttpException('Failed to save blockchain data: ' + result.message, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    // Snapshot the group tree at SV mint time — SemaphoreDatum.group_merke_root is
-    // fixed at this value forever. Vote TXs and ZK proofs must use this root, not
-    // groupMerkleRootHash which can change as new participants register.
-    const eventSnap = await this.votingEventRepository.findOne({ where: { eventId } });
-    if (eventSnap) {
-      eventSnap.semaphoreMerkleRoot = eventSnap.groupMerkleRootHash;
-      eventSnap.semaphoreLeafCommitments = eventSnap.groupLeafCommitments;
-      await this.votingEventRepository.save(eventSnap);
-      console.log(`[submitSvMintTx] Snapshotted semaphoreMerkleRoot=${eventSnap.semaphoreMerkleRoot} for event ${eventId}`);
+    // Snapshot the group tree immediately so that the vote flow has the correct root
+    // even if the polling loop below never confirms.
+    const eventSnapEarly = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (eventSnapEarly) {
+      eventSnapEarly.semaphoreMerkleRoot = eventSnapEarly.groupMerkleRootHash;
+      eventSnapEarly.semaphoreLeafCommitments = eventSnapEarly.groupLeafCommitments;
+      await this.votingEventRepository.save(eventSnapEarly);
+      console.log(`[submitSvMintTx] Snapshotted semaphoreMerkleRoot=${eventSnapEarly.semaphoreMerkleRoot} for event ${eventId}`);
+    }
+
+    const { BlockfrostProvider } = require('@meshsdk/core');
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    let confirmed = false;
+    for (let i = 0; i < 20; i++) {
+      try {
+        await provider.fetchTxInfo(txHash);
+        confirmed = true;
+        break;
+      } catch { /* not yet confirmed */ }
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    if (!confirmed) {
+      console.warn(`[submitSvMintTx] TX ${txHash} not confirmed after 60s`);
     }
 
     return { txHash };
