@@ -465,26 +465,112 @@ export class VotingEventService {
     }
   }
 
-  // Submit a signed vote transaction to the Blockfrost node.
-  // The frontend builds and signs the tx (via CIP-30), then sends the hex here.
-  // Double-vote prevention is handled upstream by POST /nullifier (MPF trie).
-  //
-  // Before submitting, we evaluate the tx via Blockfrost's Ogmios proxy
-  // (/utils/txs/evaluate). This gives detailed script failure info without
-  // risking collateral. If the evaluation reveals a script failure we abort
-  // early and return the Ogmios error. If evaluation fails for other reasons
-  // (e.g. UTxO not yet visible to Ogmios), we proceed to submit anyway.
+  // Receive ZK proof data from the voter, build and sign the vote transaction
+  // using the backend relay wallet, then submit to Blockfrost.
+  // The voter's wallet is never involved — the relay wallet's address appears
+  // on-chain, unlinking the voter's identity from the transaction.
   async submitVote(
-    signedTx: string,
+    eventId: number,
+    proofData: {
+      zkProof: { pi_a: string; pi_b: string; pi_c: string };
+      nullifierHash: string;
+      signalHash: string;
+      signalMessage: string;
+      mpfProofSteps: Array<object>;
+      mpfNewRoot: string;
+      voteSignal: Array<[number, number]>;
+    },
   ): Promise<{ txHash: string }> {
-    if (!signedTx) {
-      throw new HttpException('Missing signedTx in request body', HttpStatus.BAD_REQUEST);
+    const { zkProof, nullifierHash, signalHash, signalMessage, mpfProofSteps, mpfNewRoot, voteSignal } = proofData;
+
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
+    if (!event.semaphoreAddress || !event.votingValidatorAddress || !event.mintingOrefTxHash) {
+      throw new HttpException('Event blockchain setup not complete', HttpStatus.BAD_REQUEST);
     }
 
+    const mnemonic = this.configService.get<string>('RELAY_WALLET_MNEMONIC');
+    if (!mnemonic) {
+      throw new HttpException('Relay wallet not configured (RELAY_WALLET_MNEMONIC)', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    const { BlockfrostProvider, MeshWallet, deserializeAddress } = require('@meshsdk/core');
+    const { buildVoteTransaction, applyOrefParamToScript, VALIDATORS, selectUtxoForCollateral, createOutputReference, parseMnemonic } = require('@src/tx');
+
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const provider = new BlockfrostProvider(apiKey);
+
+    const wallet = new MeshWallet({
+      networkId: 0,
+      fetcher: provider,
+      submitter: provider,
+      key: { type: 'mnemonic', words: parseMnemonic(mnemonic) },
+    });
+
+    const walletAddress = wallet.getAddresses().baseAddressBech32;
+    const walletUtxos = await wallet.getUtxos();
+    const { pubKeyHash: paymentKeyHash } = deserializeAddress(walletAddress);
+
+    const collateralUtxo = selectUtxoForCollateral(walletUtxos);
+    if (!collateralUtxo) {
+      throw new HttpException(
+        'Relay wallet has no suitable collateral UTxO (needs a pure-ADA UTxO ≥ 5 ADA)',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    const mintingOref = createOutputReference(event.mintingOrefTxHash, event.mintingOrefIndex);
+    const semaphoreValidatorCbor = await applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
+    const votingValidatorCbor = await applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
+
+    const unsignedTx = await buildVoteTransaction({
+      provider,
+      semaphoreScriptAddress: event.semaphoreAddress,
+      votingScriptAddress: event.votingValidatorAddress,
+      semaphoreNftPolicyId: event.semaphoreNft!,
+      votingNftPolicyId: event.votingNft!,
+      groupNftPolicyId: event.groupNft!,
+      groupMerkleRoot: BigInt(event.groupMerkleRootHash),
+      semaphoreValidatorCbor,
+      votingValidatorCbor,
+      walletUtxos,
+      walletAddress,
+      paymentKeyHash,
+      zkProof,
+      nullifierHash: BigInt(nullifierHash),
+      signalHash: BigInt(signalHash),
+      signalMessage,
+      mpfProofSteps,
+      mpfNewRoot,
+      voteSignal,
+      collateralUtxo,
+      weight: (event.votingPower ?? 1) > 1 ? event.votingPower! : 0,
+      eventStart: event.startingDate! * 1000,
+      eventEnd: event.endingDate! * 1000,
+    });
+
+    let signedTx: string;
+    try {
+      signedTx = await wallet.signTx(unsignedTx, false);
+    } catch (signErr: any) {
+      // Roll back nullifier so the voter can retry
+      await this.rollbackNullifier(eventId, nullifierHash).catch(() => {});
+      throw new HttpException(
+        `Transaction signing failed: ${signErr?.message ?? signErr}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    return this._evaluateAndSubmit(signedTx);
+  }
+
+  // Evaluate scripts via Ogmios then submit to Blockfrost.
+  // A confirmed script failure aborts before submission so collateral is safe.
+  // Other evaluation errors are logged and ignored — submission proceeds anyway.
+  private async _evaluateAndSubmit(signedTx: string): Promise<{ txHash: string }> {
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
     const txBytes = Buffer.from(signedTx, 'hex');
 
-    // ── Step 1: Evaluate scripts before submitting ────────────────────────────
     try {
       const evalResponse = await fetch('https://cardano-preprod.blockfrost.io/api/v0/utils/txs/evaluate', {
         method: 'POST',
@@ -495,7 +581,6 @@ export class VotingEventService {
       console.log(`[submitVote] Ogmios evaluate (HTTP ${evalResponse.status}):`, evalBody);
 
       if (evalResponse.ok) {
-        // Parse Ogmios result envelope
         let ogmios: any;
         try { ogmios = JSON.parse(evalBody); } catch { ogmios = null; }
 
@@ -503,7 +588,6 @@ export class VotingEventService {
         const scriptFailures = result?.EvaluationFailure?.ScriptFailures;
 
         if (scriptFailures && Object.keys(scriptFailures).length > 0) {
-          // A script actually failed — abort before submitting (collateral safe)
           const failures = JSON.stringify(scriptFailures, null, 2);
           throw new HttpException(
             `Script evaluation failed — collateral NOT taken.\nScriptFailures:\n${failures}`,
@@ -512,25 +596,18 @@ export class VotingEventService {
         }
 
         if (result?.EvaluationFailure) {
-          // Some other Ogmios failure (UnknownInputs, IncompatibleEra, etc.)
-          // Don't abort — the UTxO might just not be visible to Ogmios yet.
           console.warn('[submitVote] Ogmios EvaluationFailure (non-script):', evalBody);
         } else if (result?.EvaluationResult) {
-          // Scripts passed evaluation
           console.log('[submitVote] Evaluation passed:', JSON.stringify(result.EvaluationResult));
         }
       } else {
-        // Blockfrost/Ogmios returned an HTTP error — log and continue to submit
         console.warn('[submitVote] Evaluate endpoint error (will still attempt submit):', evalBody);
       }
     } catch (evalErr: any) {
-      // Re-throw our own HttpException (script failure detected above)
       if (evalErr instanceof HttpException) throw evalErr;
-      // Network / unexpected error — log and fall through to submit
       console.warn('[submitVote] Evaluate call threw (will still attempt submit):', evalErr?.message ?? evalErr);
     }
 
-    // ── Step 2: Submit ────────────────────────────────────────────────────────
     const response = await fetch('https://cardano-preprod.blockfrost.io/api/v0/tx/submit', {
       method: 'POST',
       headers: { 'project_id': apiKey, 'Content-Type': 'application/cbor' },
@@ -539,7 +616,6 @@ export class VotingEventService {
 
     const body = await response.text();
     if (!response.ok) {
-      // Surface the real Blockfrost error to the frontend instead of a generic 500
       throw new HttpException(
         `Blockfrost submission failed (${response.status}): ${body}`,
         HttpStatus.BAD_GATEWAY,

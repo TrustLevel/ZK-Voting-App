@@ -122,10 +122,18 @@ export class VotingEventController {
    */
   @Post(':eventId/vote')
   async submitVote(
-    @Param('eventId') _eventId: number,
-    @Body('signedTx') signedTx: string,
+    @Param('eventId') eventId: number,
+    @Body() body: {
+      zkProof: { pi_a: string; pi_b: string; pi_c: string };
+      nullifierHash: string;
+      signalHash: string;
+      signalMessage: string;
+      mpfProofSteps: Array<object>;
+      mpfNewRoot: string;
+      voteSignal: Array<[number, number]>;
+    },
   ) {
-    return await this.votingEventService.submitVote(signedTx);
+    return await this.votingEventService.submitVote(eventId, body);
   }
 
   @Post(':eventId/validate-admin-token')
