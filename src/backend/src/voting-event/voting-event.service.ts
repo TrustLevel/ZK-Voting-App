@@ -813,49 +813,74 @@ export class VotingEventService {
 
   // Fetch live vote tallies from the on-chain UrnaDatum via Blockfrost.
   // Returns { options: [{ index, text, votes }] } — text comes from DB, votes from chain.
-  async getResults(eventId: number): Promise<{ options: Array<{ index: number; text: string; votes: number }> }> {
+  async getResults(eventId: number): Promise<{
+    status: 'not_deployed' | 'live' | 'ended';
+    eventName: string;
+    startingDate: number | null;
+    endingDate: number | null;
+    options: Array<{ index: number; text: string; votes: number }>;
+  }> {
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
-    if (!event) throw new Error('Voting event not found');
-    if (!event.votingValidatorAddress || !event.votingNft) {
-      throw new Error('Blockchain setup not complete for this event');
+    if (!event) throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
+
+    const dbOptions: Array<{ index: number; text: string }> = JSON.parse(event.options ?? '[]');
+    const emptyOptions = dbOptions.map(o => ({ ...o, votes: 0 }));
+    const now = Math.floor(Date.now() / 1000);
+    const status = !event.votingValidatorAddress || !event.votingNft
+      ? 'not_deployed'
+      : event.endingDate && now >= event.endingDate
+        ? 'ended'
+        : 'live';
+
+    if (status === 'not_deployed') {
+      return { status, eventName: event.eventName, startingDate: event.startingDate ?? null, endingDate: event.endingDate ?? null, options: emptyOptions };
     }
 
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
-    const response = await fetch(
-      `https://cardano-preprod.blockfrost.io/api/v0/addresses/${event.votingValidatorAddress}/utxos`,
-      { headers: { project_id: apiKey } },
-    );
+    const network = this.configService.get<string>('BLOCKFROST_NETWORK') ?? 'preprod';
+    const baseUrl = `https://cardano-${network}.blockfrost.io/api/v0`;
 
-    if (!response.ok) {
-      throw new Error(`Blockfrost error: ${response.status}`);
+    try {
+      const response = await fetch(
+        `${baseUrl}/addresses/${event.votingValidatorAddress}/utxos`,
+        { headers: { project_id: apiKey } },
+      );
+
+      if (!response.ok) {
+        throw new Error(`Blockfrost error: ${response.status}`);
+      }
+
+      const utxos: any[] = await response.json();
+      const votingUtxo = utxos.find(u =>
+        Array.isArray(u.amount) && u.amount.some((a: any) => a.unit.startsWith(event.votingNft)),
+      );
+
+      if (!votingUtxo) {
+        // UTxO not yet visible — return zeros rather than crashing
+        return { status, eventName: event.eventName, startingDate: event.startingDate ?? null, endingDate: event.endingDate ?? null, options: emptyOptions };
+      }
+
+      const datum = votingUtxo.inline_datum;
+      if (!datum?.fields?.[1]) {
+        return { status, eventName: event.eventName, startingDate: event.startingDate ?? null, endingDate: event.endingDate ?? null, options: emptyOptions };
+      }
+
+      // UrnaDatum fields[1] = List<(Int, Int)> — [option_index, vote_count]
+      const onChainOptions: Array<[number, number]> = datum.fields[1].list.map((item: any) => [
+        Number(item.list[0].int),
+        Number(item.list[1].int),
+      ]);
+
+      const merged = dbOptions.map(opt => {
+        const onChain = onChainOptions.find(([idx]) => idx === opt.index);
+        return { index: opt.index, text: opt.text, votes: onChain ? onChain[1] : 0 };
+      });
+
+      return { status, eventName: event.eventName, startingDate: event.startingDate ?? null, endingDate: event.endingDate ?? null, options: merged };
+    } catch (err) {
+      // Blockfrost unreachable — return zeros so the page still renders
+      return { status, eventName: event.eventName, startingDate: event.startingDate ?? null, endingDate: event.endingDate ?? null, options: emptyOptions };
     }
-
-    const utxos: any[] = await response.json();
-    const votingUtxo = utxos.find(u =>
-      Array.isArray(u.amount) && u.amount.some((a: any) => a.unit.startsWith(event.votingNft))
-    );
-    if (!votingUtxo) throw new Error('Voting UTxO not found on chain');
-
-    // inline_datum is the JSON representation of the Plutus datum
-    const datum = votingUtxo.inline_datum;
-    if (!datum || !datum.fields || !datum.fields[1]) {
-      throw new Error('Could not read UrnaDatum from Voting UTxO');
-    }
-
-    // UrnaDatum fields[1] = List<(Int, Int)> — each item is a 2-element list [index, votes]
-    const onChainOptions: Array<[number, number]> = datum.fields[1].list.map((item: any) => [
-      Number(item.list[0].int),
-      Number(item.list[1].int),
-    ]);
-
-    // Merge on-chain vote counts with option texts from DB
-    const dbOptions: Array<{ index: number; text: string; votes: number }> = JSON.parse(event.options ?? '[]');
-    const merged = dbOptions.map(opt => {
-      const onChain = onChainOptions.find(([idx]) => idx === opt.index);
-      return { index: opt.index, text: opt.text, votes: onChain ? onChain[1] : 0 };
-    });
-
-    return { options: merged };
   }
 
   // Save blockchain data related to the event (Temporary implementation)

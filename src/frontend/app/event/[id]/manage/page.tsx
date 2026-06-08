@@ -26,6 +26,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useWallet } from '@meshsdk/react';
 import { deserializeAddress } from '@meshsdk/core';
@@ -1800,168 +1801,21 @@ export default function EventDashboard() {
             {/* Results Tab */}
             {activeTab === 'results' && (
               <div>
-
-                {/* Check if voting has ended */}
-                {createdEvent.endingDate && Date.now() < createdEvent.endingDate * 1000 ? (
-                  <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6 mb-6">
-                    <div className="flex items-start gap-3">
-                      <svg className="w-6 h-6 text-yellow-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <div className="flex-1">
-                        <h3 className="font-bold text-yellow-900 mb-1">Voting in Progress</h3>
-                        <p className="text-sm text-yellow-800">
-                          Results will be displayed once the voting period ends on {new Date(createdEvent.endingDate * 1000).toLocaleString()}.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Voting Statistics */}
-                    <div className="bg-white border-2 border-gray-200 rounded-xl p-6 mb-6">
-                      <div className="flex items-center gap-2 mb-2">
-                        <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                        <h3 className="font-bold text-gray-900">Voting Statistics</h3>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-4">
-                        Summary of voting activity and participation.
-                      </p>
-
-                      <div className="flex items-center text-sm gap-6">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                          <span className="text-gray-600">Voting ended:</span>
-                          <span className="font-semibold text-gray-900">
-                            {createdEvent.endingDate ? new Date(createdEvent.endingDate * 1000).toLocaleString() : 'Not set'}
-                          </span>
-                        </div>
-                        <div className="h-4 w-px bg-gray-300"></div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-600">Total Votes:</span>
-                          <span className="font-semibold text-gray-900">
-                            {(() => {
-                              const parsedOptions = JSON.parse(createdEvent.options || '[]');
-                              return parsedOptions.reduce((sum: number, opt: any) => sum + (opt.votes || 0), 0);
-                            })()}
-                          </span>
-                        </div>
-                        <div className="h-4 w-px bg-gray-300"></div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-600">Registered Voters:</span>
-                          <span className="font-semibold text-gray-900">
-                            {participants.filter(p => p.status === 'registered').length}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* Voting Results - Only show if voting has ended */}
-                {(!createdEvent.endingDate || Date.now() >= createdEvent.endingDate * 1000) && (
-                  <div className="bg-white border-2 border-gray-200 rounded-xl p-6 mb-6">
-                    <div className="flex items-center gap-2 mb-2">
-                      <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                      </svg>
-                      <h3 className="font-bold text-gray-900">Results by Option</h3>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Vote distribution across all options, sorted by popularity.
-                    </p>
-
-                    {(() => {
-                      // Parse actual results from backend
-                      const parsedOptions = JSON.parse(createdEvent.options || '[]');
-                      const totalVotes = parsedOptions.reduce((sum: number, opt: any) => sum + (opt.votes || 0), 0);
-
-                      // Sort by votes (descending)
-                      const sortedResults = [...parsedOptions].sort((a: any, b: any) => (b.votes || 0) - (a.votes || 0));
-
-                      return (
-                        <div className="space-y-2">
-                          {sortedResults.map((result: any, index: number) => {
-                            const votes = result.votes || 0;
-                            const percentage = totalVotes > 0 ? ((votes / totalVotes) * 100).toFixed(1) : '0.0';
-
-                            return (
-                              <div
-                                key={index}
-                                className="border-2 rounded-lg p-3 border-gray-200 bg-white"
-                              >
-                                {/* Option Header */}
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <h4 className="text-sm text-gray-900">
-                                      {result.text}
-                                    </h4>
-                                  </div>
-                                  <div className="text-right">
-                                    {votingPower > 1 ? (
-                                      <div className="text-sm font-bold text-gray-900">
-                                        {percentage}%
-                                      </div>
-                                    ) : (
-                                      <div className="text-sm font-bold text-gray-900">
-                                        {votes}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Progress bar */}
-                              <div className="mt-3">
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                  <div
-                                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                    style={{ width: `${percentage}%` }}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
+                <div className="bg-white border-2 border-gray-200 rounded-xl p-6 mb-4">
+                  <h3 className="font-bold text-gray-900 mb-1">Voting Results</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Results are read directly from the Cardano blockchain. The page auto-refreshes while voting is live.
+                  </p>
+                  <Link
+                    href={`/event/${eventId}/results`}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    View Live Results
+                  </Link>
                 </div>
-                )}
-
-                {/* Blockchain Verification */}
-                {publishedData && (!createdEvent.endingDate || Date.now() >= createdEvent.endingDate * 1000) && (
-                  <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 mt-6">
-                    <div className="flex items-start gap-3">
-                      <svg className="w-6 h-6 text-blue-600 shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                      </svg>
-                      <div className="flex-1">
-                        <h4 className="font-bold text-blue-900 mb-2">Blockchain Verified</h4>
-                        <p className="text-sm text-blue-800 mb-3">
-                          All votes have been cryptographically verified and recorded on the Cardano blockchain.
-                          Results are immutable and publicly auditable.
-                        </p>
-                        <div className="bg-white rounded-lg p-3 border border-blue-200">
-                          <div className="text-xs space-y-2">
-                            <div>
-                              <span className="text-blue-700 font-semibold">Event ID:</span>
-                              <span className="ml-2 font-mono text-gray-900">{publishedData.eventId}</span>
-                            </div>
-                            <div>
-                              <span className="text-blue-700 font-semibold">Signature:</span>
-                              <div className="font-mono text-gray-900 break-all mt-1 text-[10px]">
-                                {publishedData.signature}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
               </div>
             )}
           </div>

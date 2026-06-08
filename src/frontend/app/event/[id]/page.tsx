@@ -24,6 +24,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Identity } from 'modp-semaphore-bls12381/packages/typescript/src/identity';
 import { encodeVoteSignal, generateVoteProof } from '@/lib/vote-helpers';
 
@@ -118,10 +119,6 @@ export default function EventPage() {
   const [votedOptionIndex, setVotedOptionIndex] = useState<number | null>(null);
   const [voteStep, setVoteStep] = useState<string | null>(null);
   const [voteTxHash, setVoteTxHash] = useState<string | null>(null);
-
-  // Results State
-  const [results, setResults] = useState<VotingOption[] | null>(null);
-  const [loadingResults, setLoadingResults] = useState(false);
 
   // File Upload State
   const [uploadingIdentity, setUploadingIdentity] = useState(false);
@@ -822,23 +819,6 @@ export default function EventPage() {
   };
 
   /**
-   * Load on-chain results from backend
-   */
-  const loadResults = async () => {
-    setLoadingResults(true);
-    try {
-      const response = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/results`);
-      if (!response.ok) throw new Error('Failed to load results');
-      const data = await response.json();
-      setResults(data.options);
-    } catch (err) {
-      console.error('Failed to load results:', err);
-      setResults(null);
-    } finally {
-      setLoadingResults(false);
-    }
-  };
-
   /**
    * Format POSIX timestamp to UTC string
    */
@@ -1031,7 +1011,7 @@ export default function EventPage() {
 
                 {/* Results Tab */}
                 <button
-                  onClick={() => { setActiveTab('results'); loadResults(); }}
+                  onClick={() => setActiveTab('results')}
                   className="flex flex-col items-center cursor-pointer hover:opacity-80 transition"
                 >
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
@@ -1384,12 +1364,12 @@ export default function EventPage() {
                         </a>
                       </div>
                     )}
-                    <button
-                      onClick={() => setActiveTab('results')}
-                      className="mt-4 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all font-semibold text-sm"
+                    <Link
+                      href={`/event/${eventId}/results`}
+                      className="mt-4 inline-block px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all font-semibold text-sm"
                     >
                       View Results
-                    </button>
+                    </Link>
                   </div>
                 ) : event.endingDate && Date.now() > event.endingDate * 1000 ? (
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 mb-8">
@@ -1402,12 +1382,12 @@ export default function EventPage() {
                       <div className="flex-1">
                         <h3 className="font-bold text-gray-900 mb-1">Voting Has Ended</h3>
                         <p className="text-sm text-gray-700 mb-3">The voting period ended on {formatDate(event.endingDate)}.</p>
-                        <button
-                          onClick={() => setActiveTab('results')}
-                          className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all font-semibold text-sm"
+                        <Link
+                          href={`/event/${eventId}/results`}
+                          className="inline-block px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all font-semibold text-sm"
                         >
                           View Results
-                        </button>
+                        </Link>
                       </div>
                     </div>
                   </div>
@@ -1548,103 +1528,20 @@ export default function EventPage() {
 
             {/* Results Tab */}
             {activeTab === 'results' && (
-              <div>
-                {/* Voting Status */}
-                <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 mb-8">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-gray-900 rounded-full flex items-center justify-center">
-                      {event.endingDate && Date.now() > event.endingDate * 1000 ? (
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : (
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      )}
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-900">
-                      {event.endingDate && Date.now() > event.endingDate * 1000 ? 'Voting Ended' : 'Event Status'}
-                    </h2>
-                  </div>
-
-                  <div className="space-y-3 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Voting Period:</span>
-                      <span className="text-gray-900 font-medium">{formatDate(event.startingDate)} - {formatDate(event.endingDate)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Voting Type:</span>
-                      <span className="text-gray-900 font-medium">
-                        {isSimpleVote ? 'Simple Vote' : `Weighted (${event.votingPower} points)`}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Results */}
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-200 mb-8">
-                  <div className="flex items-center gap-2 mb-6">
-                    <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    <h3 className="font-bold text-gray-900">Voting Results</h3>
-                  </div>
-
-                  {/* Load results button */}
-                  <button
-                    onClick={loadResults}
-                    disabled={loadingResults}
-                    className="mb-4 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm font-medium disabled:opacity-50"
-                  >
-                    {loadingResults ? 'Loading...' : 'Refresh Results'}
-                  </button>
-
-                  {loadingResults ? (
-                    <div className="flex items-center justify-center py-8">
-                      <svg className="animate-spin h-8 w-8 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    </div>
-                  ) : results === null ? (
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
-                      <p className="text-sm text-gray-600">Results could not be loaded from the blockchain.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {results.sort((a, b) => (b.votes || 0) - (a.votes || 0)).map((option, index) => {
-                        const totalVotes = results.reduce((sum, opt) => sum + (opt.votes || 0), 0);
-                        const percentage = totalVotes > 0 ? ((option.votes || 0) / totalVotes * 100).toFixed(1) : '0.0';
-
-                        return (
-                          <div key={option.index} className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-3">
-                                <span className="shrink-0 w-8 h-8 rounded-full bg-gray-900 text-white flex items-center justify-center text-sm font-semibold">
-                                  {index + 1}
-                                </span>
-                                <span className="text-gray-900 font-medium">{option.text}</span>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-gray-900 font-bold">{option.votes || 0} votes</div>
-                                <div className="text-gray-500 text-sm">{percentage}%</div>
-                              </div>
-                            </div>
-                            {totalVotes > 0 && (
-                              <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div
-                                  className="bg-gray-900 h-2 rounded-full transition-all"
-                                  style={{ width: `${percentage}%` }}
-                                ></div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+              <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
+                <h3 className="font-bold text-gray-900 mb-1">Voting Results</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Results are read directly from the Cardano blockchain and auto-refresh while voting is live.
+                </p>
+                <Link
+                  href={`/event/${eventId}/results`}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  View Live Results
+                </Link>
               </div>
             )}
           </div>
