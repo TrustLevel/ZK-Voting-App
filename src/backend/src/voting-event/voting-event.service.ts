@@ -495,7 +495,7 @@ export class VotingEventService {
     }
 
     const { BlockfrostProvider, MeshWallet, deserializeAddress } = require('@meshsdk/core');
-    const { buildVoteTransaction, applyOrefParamToScript, VALIDATORS, selectUtxoForCollateral, createOutputReference, parseMnemonic } = require('@src/tx');
+    const { buildVoteTransaction, applyOrefParamToScript, VALIDATORS, selectUtxoForCollateral, createOutputReference, parseMnemonic } = await import('@src/tx');
 
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
     const provider = new BlockfrostProvider(apiKey);
@@ -714,9 +714,9 @@ export class VotingEventService {
       throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { Trie, Store } = require('@aiken-lang/merkle-patricia-forestry');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { blake2b } = require('@noble/hashes/blake2b');
 
     const nullifierBigInt = BigInt(nullifier);
@@ -781,9 +781,9 @@ export class VotingEventService {
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
     if (!event) throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { Trie, Store } = require('@aiken-lang/merkle-patricia-forestry');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { blake2b } = require('@noble/hashes/blake2b');
 
     const nullifierBigInt = BigInt(nullifier);
@@ -967,10 +967,9 @@ export class VotingEventService {
     await this.votingEventRepository.findOne({ where: { eventId } })
       .then(e => { if (!e) throw new HttpException('Event not found', HttpStatus.NOT_FOUND); });
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { BlockfrostProvider, resolveScriptHash, resolvePlutusScriptAddress, conStr } = require('@meshsdk/core');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { buildGroupMintTransaction, applyOrefParamToScript, VALIDATORS, textToHex, createOutputReference, createGroupDatum } = require('@src/tx');
+    const { buildGroupMintTransaction, applyOrefParamToScript, VALIDATORS, textToHex, createOutputReference, createGroupDatum } = await import('@src/tx');
 
     if (!params.collateralUtxo) {
       throw new HttpException(
@@ -1024,7 +1023,7 @@ export class VotingEventService {
   }): Promise<{ txHash: string }> {
     const { txHash } = await this._submitTx(params.signedTx);
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { BlockfrostProvider } = require('@meshsdk/core');
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
     const provider = new BlockfrostProvider(apiKey);
@@ -1078,10 +1077,10 @@ export class VotingEventService {
     await this.votingEventRepository.findOne({ where: { eventId } })
       .then(e => { if (!e) throw new HttpException('Event not found', HttpStatus.NOT_FOUND); });
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { BlockfrostProvider, resolveScriptHash, resolvePlutusScriptAddress, conStr, integer, byteString } = require('@meshsdk/core');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { buildSemaphoreVotingMintTransaction, applyOrefParamToScript, VALIDATORS, textToHex, createOutputReference, createUrnaDatum, generateInitialOptions, VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } = require('@src/tx');
+
+    const { buildSemaphoreVotingMintTransaction, applyOrefParamToScript, VALIDATORS, textToHex, createOutputReference, createUrnaDatum, generateInitialOptions, VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } = await import('@src/tx');
 
     if (!params.collateralUtxo) {
       throw new HttpException(
@@ -1205,10 +1204,10 @@ export class VotingEventService {
   ): Promise<{ txHash: string }> {
     const { txHash } = await this._submitTx(params.signedTx);
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { BlockfrostProvider } = require('@meshsdk/core');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } = require('@src/tx');
+
+    const { VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } = await import('@src/tx');
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
     const provider = new BlockfrostProvider(apiKey);
 
@@ -1281,10 +1280,10 @@ export class VotingEventService {
     if (!event.groupNft)
       throw new HttpException('groupNft not set — re-bootstrap the event', HttpStatus.BAD_REQUEST);
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { BlockfrostProvider } = require('@meshsdk/core');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { buildUpdateGroupTransaction } = require('@src/tx');
+
+    const { buildUpdateGroupTransaction } = await import('@src/tx');
 
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
     const provider = new BlockfrostProvider(apiKey);
