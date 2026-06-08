@@ -25,7 +25,6 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Identity } from 'modp-semaphore-bls12381/packages/typescript/src/identity';
-import { useWallet } from '@meshsdk/react';
 import { encodeVoteSignal, generateVoteProof } from '@/lib/vote-helpers';
 
 // ============================================================================
@@ -84,11 +83,6 @@ export default function EventPage() {
   // STATE MANAGEMENT
   // --------------------------------------------------------------------------
 
-  // Wallet
-  const { connected, wallet, connect, name: walletName } = useWallet();
-  const [showWalletModal, setShowWalletModal] = useState(false);
-  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
-
   // UI State
   const [activeTab, setActiveTab] = useState<Tab>('register');
   const [loading, setLoading] = useState(true);
@@ -145,15 +139,6 @@ export default function EventPage() {
    * 1. Check localStorage for existing identity → load it and skip token validation
    * 2. No identity found → validate token from URL (first visit)
    */
-
-  // Fetch and display the connected wallet address whenever the wallet connects/disconnects
-  useEffect(() => {
-    if (connected && wallet) {
-      wallet.getChangeAddress().then(setConnectedAddress).catch(() => setConnectedAddress(null));
-    } else {
-      setConnectedAddress(null);
-    }
-  }, [connected, wallet]);
 
   useEffect(() => {
     const initializeSession = async () => {
@@ -1263,48 +1248,6 @@ export default function EventPage() {
                   </div>
                 )}
 
-                {/* Wallet connected */}
-                {event.semaphoreAddress && connected && (
-                  <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4 mb-8">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center shrink-0">
-                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-green-900 capitalize">{walletName} connected</p>
-                        {connectedAddress && (
-                          <p className="text-xs text-green-700 font-mono truncate">{connectedAddress}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Wallet not connected */}
-                {event.semaphoreAddress && !connected && (
-                  <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6 mb-8">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center shrink-0">
-                        <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-bold text-yellow-900 mb-1">Wallet Required</h3>
-                        <p className="text-sm text-yellow-800 mb-3">Please connect your Cardano wallet to cast your vote.</p>
-                        <button
-                          onClick={() => setShowWalletModal(true)}
-                          className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-all font-semibold text-sm"
-                        >
-                          Connect Wallet
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {/* Status Info Box */}
                 {!isRegistered ? (
                   // Not Registered - Show Registration Required
@@ -1566,7 +1509,7 @@ export default function EventPage() {
 
                     <button
                       onClick={isSimpleVote ? handleSimpleVote : handleWeightedVote}
-                      disabled={!isRegistered || !event.startingDate || Date.now() < event.startingDate * 1000 || (event.endingDate && Date.now() > event.endingDate * 1000) || hasVoted || submitting || !connected || !event.semaphoreAddress || (isSimpleVote ? selectedOption === null : getTotalDistributedPoints() !== event.votingPower)}
+                      disabled={!isRegistered || !event.startingDate || Date.now() < event.startingDate * 1000 || (event.endingDate && Date.now() > event.endingDate * 1000) || hasVoted || submitting || !event.semaphoreAddress || (isSimpleVote ? selectedOption === null : getTotalDistributedPoints() !== event.votingPower)}
                       className="w-full px-6 py-4 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {submitting ? (
@@ -1709,50 +1652,6 @@ export default function EventPage() {
         </div>
       </div>
 
-      {/* Wallet Connect Modal */}
-      {showWalletModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Connect Your Wallet</h2>
-            <p className="text-gray-600 mb-6">Choose a wallet to cast your vote</p>
-
-            <div className="space-y-3">
-              {['eternl', 'lace', 'yoroi'].map((walletName) => (
-                <button
-                  key={walletName}
-                  onClick={async () => {
-                    try {
-                      setShowWalletModal(false);
-                      await connect(walletName);
-                    } catch (err) {
-                      console.error('Failed to connect wallet:', err);
-                      alert(`Failed to connect ${walletName}. Make sure the extension is installed.`);
-                    }
-                  }}
-                  className="w-full p-4 border-2 border-gray-300 rounded-xl hover:border-gray-900 hover:bg-gray-50 transition-all text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-                      <span className="text-gray-700 font-semibold text-sm uppercase">{walletName[0]}</span>
-                    </div>
-                    <div>
-                      <div className="font-semibold text-gray-900 capitalize">{walletName}</div>
-                      <div className="text-sm text-gray-600">Connect with {walletName.charAt(0).toUpperCase() + walletName.slice(1)}</div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={() => setShowWalletModal(false)}
-              className="w-full mt-4 py-3 text-gray-600 hover:text-gray-900 font-medium"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
