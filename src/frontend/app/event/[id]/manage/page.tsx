@@ -769,12 +769,14 @@ export default function EventDashboard() {
       setTxStatus('Step 1/2: Building Group NFT transaction...');
 
       const walletUtxos = await getWalletUtxos(wallet);
+      const collateralUtxo1 = selectUtxoForCollateral(walletUtxos, 5000000);
+      if (!collateralUtxo1) throw new Error('No suitable collateral UTxO found (needs a pure-ADA UTxO ≥ 5 ADA).');
       const { selectedUtxo: groupUtxo } = selectUtxoAndCreateOutputReference(walletUtxos, 0);
 
       const buildGroupRes = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/build-group-mint-tx`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ walletUtxos, walletAddress, paymentKeyHash, collateralUtxo: selectUtxoForCollateral(walletUtxos, 5000000), selectedUtxo: groupUtxo, merkleRoot }),
+        body: JSON.stringify({ walletUtxos, walletAddress, paymentKeyHash, collateralUtxo: collateralUtxo1, selectedUtxo: groupUtxo, merkleRoot }),
       });
       if (!buildGroupRes.ok) {
         const err = await buildGroupRes.json().catch(() => ({}));
@@ -803,6 +805,8 @@ export default function EventDashboard() {
       setTxStatus('Step 2/2: Building Semaphore + Voting NFT transaction...');
 
       const walletUtxos2 = await getWalletUtxos(wallet);
+      const collateralUtxo2 = selectUtxoForCollateral(walletUtxos2, 5000000);
+      if (!collateralUtxo2) throw new Error('No suitable collateral UTxO found for Phase 2 (needs a pure-ADA UTxO ≥ 5 ADA).');
       const { selectedUtxo: svUtxo } = selectUtxoAndCreateOutputReference(walletUtxos2, 0);
 
       const buildSvRes = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/build-sv-mint-tx`, {
@@ -812,7 +816,7 @@ export default function EventDashboard() {
           walletUtxos: walletUtxos2,
           walletAddress,
           paymentKeyHash,
-          collateralUtxo: selectUtxoForCollateral(walletUtxos2, 5000000),
+          collateralUtxo: collateralUtxo2,
           selectedUtxo: svUtxo,
           groupNftTxHash: groupTxHash,
           groupNftOutputIndex: 0,

@@ -947,6 +947,13 @@ export class VotingEventService {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { buildGroupMintTransaction, applyOrefParamToScript, VALIDATORS, textToHex, createOutputReference, createGroupDatum } = require('@src/tx');
 
+    if (!params.collateralUtxo) {
+      throw new HttpException(
+        'No collateral UTxO provided — wallet needs a pure-ADA UTxO ≥ 5 ADA',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
     const provider = new BlockfrostProvider(apiKey);
 
@@ -1050,6 +1057,13 @@ export class VotingEventService {
     const { BlockfrostProvider, resolveScriptHash, resolvePlutusScriptAddress, conStr, integer, byteString } = require('@meshsdk/core');
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { buildSemaphoreVotingMintTransaction, applyOrefParamToScript, VALIDATORS, textToHex, createOutputReference, createUrnaDatum, generateInitialOptions, VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } = require('@src/tx');
+
+    if (!params.collateralUtxo) {
+      throw new HttpException(
+        'No collateral UTxO provided — wallet needs a pure-ADA UTxO ≥ 5 ADA',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
     const provider = new BlockfrostProvider(apiKey);
