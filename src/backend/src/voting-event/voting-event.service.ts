@@ -519,9 +519,12 @@ export class VotingEventService {
       );
     }
 
+    if (event.mintingOrefTxHash == null || event.mintingOrefIndex == null) {
+      throw new HttpException('Event minting UTxO not recorded — run the bootstrap flow first', HttpStatus.BAD_REQUEST);
+    }
     const mintingOref = createOutputReference(event.mintingOrefTxHash, event.mintingOrefIndex);
-    const semaphoreValidatorCbor = await applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
-    const votingValidatorCbor = await applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
+    const semaphoreValidatorCbor = applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
+    const votingValidatorCbor = applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
 
     const unsignedTx = await buildVoteTransaction({
       provider,
