@@ -1,6 +1,6 @@
 # Transaction Builder — `@src/tx`
 
-This module constructs all unsigned Cardano transactions required by the voting application. It is consumed by the frontend and, in some cases, by the backend. All functions return an unsigned transaction hex string that the caller signs via CIP-30 and submits.
+This module is the **on-chain interaction layer** of the voting application. It constructs all unsigned Cardano transactions — event bootstrap, group updates, and vote submission — and exposes utility functions for working with validator scripts, datums, and wallet addresses. All transaction builder functions return an unsigned transaction hex string that the caller signs via CIP-30 and submits.
 
 ---
 
@@ -54,13 +54,15 @@ Mints the **Semaphore NFT** and **Voting NFT** (Urna) in a single transaction. T
 
 ### `buildVoteTransaction(params: BuildVoteTransactionParams)`
 
-Assembles the vote transaction. Inputs:
-- Pre-computed ZK proof and MPF proof steps (from `@src/zk`).
-- Signal data: `signal_message` (CBOR-encoded vote), `signal_hash`, `nullifier`.
-- Wallet UTxOs, wallet address, collateral UTxO.
-- `mintingOrefTxHash` / `mintingOrefIndex` — used to re-derive the parameterised validator CBORs via `applyOrefParamToScript()`.
+The most complex transaction builder — assembles the complete vote transaction that the on-chain Semaphore and Voting validators will verify. The caller provides the pre-computed ZK proof, MPF proof, and signal data; the function handles everything else:
 
-The function fetches the current Semaphore and Voting UTxOs from the chain internally. The VKey UTxO is included as a hardcoded read-only reference input (constants `VKEY_REF_TX_HASH` / `VKEY_REF_OUTPUT_INDEX`).
+- Fetches the live **Semaphore UTxO** and **Voting UTxO** from the chain internally using the provided `BlockfrostProvider`.
+- Re-derives the parameterised validator CBORs from `mintingOrefTxHash` / `mintingOrefIndex` via `applyOrefParamToScript()`.
+- Constructs the `Signal` redeemer with the ZK proof, MPF proof steps, nullifier, signal hash, and signal message.
+- Attaches the **VKey UTxO** as a hardcoded read-only reference input (constants `VKEY_REF_TX_HASH` / `VKEY_REF_OUTPUT_INDEX`) — never fetched, never consumed.
+- Outputs the updated `SemaphoreDatum` (new MPF root) and `UrnaDatum` (incremented vote tally).
+
+Returns an unsigned transaction hex string ready for CIP-30 signing.
 
 ---
 

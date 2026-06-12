@@ -27,47 +27,109 @@ The browser entry point uses dynamic imports and `fetch()` instead of `fs` / `re
 
 ---
 
+## Protocol Background
+
+[Semaphore](https://semaphore.appliedzkp.org/) is a zero-knowledge protocol for anonymous signalling within a defined group. This application uses a BLS12-381 variant, verified on Cardano via a Groth16 proof.
+
+### Identity
+
+Each participant holds a **Semaphore identity**: a pair of secret values (`identityNullifier`, `identityTrapdoor`) that never leave the user's device. From these, a public **identity commitment** is derived — a Poseidon hash that is safe to share and is registered in the group.
+
+### The Group
+
+The organiser maintains a group as an **incremental Merkle tree**. Every registered participant's identity commitment occupies a leaf. The Merkle root represents the entire group and is anchored on-chain inside the Semaphore NFT.
+
+### Proving Membership Without Revealing Identity
+
+When a participant wants to vote, they produce a Groth16 zero-knowledge proof that simultaneously demonstrates:
+
+1. They know the secret behind one of the commitments in the Merkle tree (group membership).
+2. The signal they are sending (the encoded vote) is bound to that proof.
+3. They have computed a **nullifier hash** — a one-time value derived from their secret and the specific voting event — that cannot be traced back to their identity.
+
+The proof is verified on-chain by the Semaphore smart contract. Because the proof reveals nothing except its own validity, the voter's identity remains anonymous.
+
+### Double-Vote Prevention
+
+The nullifier hash is inserted into a **Merkle Patricia Forestry (MPF) trie** stored off-chain and anchored on-chain. Submitting the same nullifier twice is rejected by the smart contract, preventing any participant from voting more than once — without ever exposing who they are.
+
+---
+
 ## Cryptographic Primitives
 
 ### Curve: BLS12-381
 
-All ZK operations use the **BLS12-381** pairing-friendly elliptic curve. This curve was chosen because:
-- It is supported natively in Cardano's Plutus built-ins (since Chang hard fork).
+**BLS12-381** is a pairing-friendly elliptic curve defined over a 381-bit prime field. "Pairing-friendly" means it supports bilinear pairings — a mathematical operation that makes efficient on-chain ZK-proof verification possible. This curve was chosen because:
+- It is supported natively in Cardano's Plutus built-ins (since the Chang hard fork).
 - The Semaphore circuit was compiled with `--prime bls12381`, matching the on-chain verifier.
 - The scalar field prime `r ≈ 2^255` fits within Cardano's integer limits.
 
 ### Proof system: Groth16
 
-The application uses the **Groth16** zk-SNARK proving system:
-- Constant-size proofs (3 elliptic curve points: π_A, π_B, π_C).
-- Fast on-chain verification (suitable for Plutus execution budget).
-- Requires a trusted setup (see below).
+**Groth16** is a zk-SNARK (Zero-Knowledge Succinct Non-interactive ARgument of Knowledge) proving system. A zk-SNARK lets a prover convince a verifier that a statement is true without revealing any information beyond its truth. Groth16's specific properties make it suitable for on-chain use:
+- Constant-size proofs — always 3 elliptic curve points (π_A ∈ G1, π_B ∈ G2, π_C ∈ G1), regardless of circuit complexity.
+- Fast on-chain verification — a fixed number of pairing operations, within the Plutus execution budget.
+- Requires a trusted setup (see [Trusted Setup](#trusted-setup) below).
 
 Proving is performed by **snarkjs** in the browser via a compiled WASM module. The on-chain verifier is implemented in `modulo-p/cardano-semaphore` using the BLS12-381 built-ins.
 
 ### Hash function: Poseidon
 
-Group Merkle tree leaves and internal nodes are hashed with the **Poseidon** hash function, which is ZK-circuit-friendly (low constraint count). The specific instantiation is `poseidon-bls12381` over the BLS12-381 scalar field.
+**Poseidon** is a cryptographic hash function designed specifically for ZK circuits. Unlike general-purpose hashes (SHA-256, blake2b), Poseidon operates natively over prime field arithmetic — the same arithmetic used inside ZK circuits — which results in a very low constraint count. This makes it practical to compute Poseidon inside a circuit without blowing up proof generation time. All identity and group hashing in Semaphore uses Poseidon. The specific instantiation here is `poseidon-bls12381` over the BLS12-381 scalar field.
+
+### Identity secret
+
+The **identity secret** is an intermediate private value derived from the voter's two secret inputs:
+
+```
+identitySecret = poseidon(identityTrapdoor, identityNullifier)
+```
+
+It is never shared or exposed — it exists only inside the circuit and the voter's local state.
+
+### Identity commitment
+
+The **identity commitment** is the voter's public identifier — the value added as a leaf in the group Merkle tree:
+
+```
+identityCommitment = poseidon(identitySecret)
+```
+
+It is safe to share publicly because Poseidon is a one-way function: the commitment reveals nothing about the underlying `identitySecret`, `identityTrapdoor`, or `identityNullifier`. It is analogous to a public key.
+
+### Merkle inclusion proof
+
+To prove group membership without revealing which leaf they occupy, a voter provides a **Merkle inclusion proof**: the sequence of sibling hashes (`siblings`) and left/right positions (`pathIndices`) from their leaf up to the root. The circuit recomputes the root from the leaf and this path, then checks it matches the public root anchored on-chain. If the recomputed root matches, group membership is proven — without disclosing which leaf belongs to the voter.
+
+### External nullifier
+
+The **external nullifier** is a public value that scopes a nullifier to a specific context (in this case, a specific voting event). In this application it is set to:
+
+```
+externalNullifier = BigInt('0x' + semaphoreNftPolicyId)
+```
+
+Using the Semaphore NFT policy ID — which is unique per voting event — means a voter's nullifier hash is different in every event. This preserves cross-event anonymity: a voter's participation in one event cannot be linked to their participation in another.
 
 ### Nullifier hash
 
-The nullifier is computed inside the circuit as:
+The **nullifier hash** is the double-vote prevention token. It is computed inside the circuit as:
 
 ```
 nullifierHash = poseidon(externalNullifier, identityNullifier)
 ```
 
-`externalNullifier` is derived from the voting event, making each nullifier event-specific. The same identity produces a different nullifier in every event, preserving cross-event anonymity.
+Because `identityNullifier` is secret and the computation happens inside the ZK proof, the nullifier hash can be published on-chain without revealing the voter's identity. The smart contract rejects any vote transaction that reuses a nullifier hash already stored in the MPF trie.
 
 ### Signal hash
 
-The signal hash is the circuit's public input binding the proof to the vote content:
+The **signal hash** binds the ZK proof to the specific vote content, preventing a proof from being replayed with a different vote:
 
 ```
 signalHash = blake2b_256(signal_message) % BLS12_381_R
 ```
 
-The modular reduction is required because `blake2b_256` produces 256-bit values and the BLS12-381 scalar field prime `r` is ~255 bits. Without it, ~55% of possible messages would produce an out-of-range value. Both the off-chain prover and the on-chain verifier apply this reduction.
+`blake2b_256` is used here (rather than Poseidon) because the signal is arbitrary bytes, not a field element. The modular reduction by `BLS12_381_R` is required because `blake2b_256` produces 256-bit values while the BLS12-381 scalar field prime `r` is ~255 bits — without it, ~55% of possible messages would produce an out-of-range value. Both the off-chain prover and the on-chain verifier apply this reduction.
 
 ---
 
@@ -91,7 +153,7 @@ For the browser, these files are served as static assets from `src/frontend/publ
 
 ### `generateVoteProof(params)` — `proof.ts` / `proof-browser.ts`
 
-Runs the Groth16 prover and returns a compressed proof.
+Runs the Groth16 prover and returns a compressed proof, the nullifier hash, and the circuit's public signals.
 
 ```ts
 const { zkProof, nullifierHash, publicSignals } = await generateVoteProof({

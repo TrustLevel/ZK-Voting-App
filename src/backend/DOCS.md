@@ -133,7 +133,6 @@ SQLite via TypeORM. Default path: `db/voting-app.db` (configurable via `DATABASE
 | `GET` | `/voting-event` | List all events |
 | `GET` | `/voting-event/:eventId` | Get event details |
 | `PATCH` | `/voting-event/:eventId` | Update event (dates, options, voting power) |
-| `GET` | `/voting-event/current-slot` | Current blockchain slot (via Blockfrost) |
 
 ### Participants
 
@@ -152,8 +151,6 @@ SQLite via TypeORM. Default path: `db/voting-app.db` (configurable via `DATABASE
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/voting-event/:eventId/merkle-proof/:userId` | Merkle proof for a participant (used as ZK witness) |
-| `POST` | `/voting-event/:eventId/confirm-group-update` | Persist new Merkle root after on-chain TX confirms |
-| `POST` | `/voting-event/:eventId/build-update-group-tx` | Build unsigned group-update TX for admin to sign |
 
 ### Nullifiers
 
@@ -169,6 +166,27 @@ SQLite via TypeORM. Default path: `db/voting-app.db` (configurable via `DATABASE
 | `POST` | `/voting-event/:eventId/vote` | Submit signed TX hex to Blockfrost, returns `{ txHash }` |
 | `GET` | `/voting-event/:eventId/results` | Get current vote tallies |
 | `POST` | `/voting-event/:eventId/save-blockchain-data` | Persist on-chain contract addresses after bootstrap |
+
+### Group Transactions (admin)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/voting-event/:eventId/build-update-group-tx` | Build unsigned group-update TX for admin to sign. Body: `{ newMerkleRoot, walletUtxos, walletAddress, paymentKeyHash, collateralUtxo }` |
+| `POST` | `/voting-event/:eventId/confirm-group-update` | Persist new Merkle root in DB after the group-update TX confirms on-chain. Body: `{ newMerkleRoot, txHash }` |
+
+### Admin utilities
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/voting-event/:eventId/validate-admin-token` | Verify an admin token for the event. Body: `{ token }` |
+| `POST` | `/voting-event/:eventId/mark-invitations-sent` | Mark all pending invitations for an event as sent |
+| `POST` | `/mark-token-used/:token` | Mark an invitation token as used (called after a participant joins) |
+
+### Blockchain utilities
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/current-slot` | Current blockchain slot via Blockfrost, returns `{ currentSlot }`. Used to compute TX validity windows |
 
 ---
 
@@ -191,3 +209,38 @@ When `POST /voting-event/:eventId/nullifier` is called:
 4. The vote transaction includes this proof; the on-chain Semaphore validator verifies the insertion against the stored root.
 
 If the vote transaction fails after the nullifier was inserted, `DELETE /voting-event/:eventId/nullifier` rolls back the insertion so the voter can retry.
+
+---
+
+## Deployment
+
+### Build and run
+
+```sh
+cd src/backend
+npm ci
+npm run build
+NODE_ENV=production node dist/main.js
+```
+
+### Environment variables (production)
+
+Copy `.env.example` to `.env` and fill in all values. Critical production settings:
+
+| Variable | Production requirement |
+|---|---|
+| `CORS_ORIGIN` | Set to the deployed frontend URL (e.g. `https://app.yourdomain.com`) |
+| `DATABASE_PATH` | Path on a **persistent volume** — survives restarts and redeployments |
+| `JWT_SECRET` | Cryptographically random, at least 32 bytes |
+| `BLOCKFROST_NETWORK` | `preprod` for Preprod Testnet, `mainnet` for Mainnet |
+
+### Persistent storage
+
+The backend requires two directories that must be on a persistent volume:
+
+- **SQLite database** — path set by `DATABASE_PATH` (default `db/voting-app.db`). Create the `db/` directory before first run.
+- **LevelDB nullifier store** — `nullifiers-db/<eventId>/` relative to the working directory. Created automatically, but must survive restarts. Losing this data makes it impossible to verify previously used nullifiers without replaying on-chain history.
+
+### Hosting options
+
+Any Node.js 20+ host works: fly.io, Render, EC2, DigitalOcean Droplet, etc. The only requirement is a persistent filesystem for the two storage paths above.

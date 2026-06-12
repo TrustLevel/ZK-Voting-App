@@ -57,7 +57,7 @@ The organiser fills in the event configuration. On submit, the frontend:
 Three-tab dashboard:
 
 - **Parameters** — read-only display of voting configuration.
-- **Participants** — add/remove participants by wallet address; each participant must connect their wallet and submit their identity commitment. Triggers a group Merkle tree update and, once participants are finalised, an on-chain group-update transaction.
+- **Participants** — add/remove participants by wallet address or email. As participants register via their invitation link (`/join`), their identity commitments are added to the group Merkle tree. Once the list is finalised, triggers an on-chain group-update transaction to push the new Merkle root on-chain.
 - **Start** — set event start/end dates and execute the two-transaction on-chain bootstrap (Group NFT mint → Semaphore + Voting NFT mint).
 
 ### `/event/[id]`
@@ -94,7 +94,7 @@ Key functions imported via `lib/vote-helpers.ts`:
 
 | Function | Source | Description |
 |---|---|---|
-| `generateVoteProof()` | `@src/zk/browser` | Runs Groth16 prover in WASM, returns compressed proof |
+| `generateVoteProof()` | `@src/zk/browser` | Runs Groth16 prover in WASM, returns compressed proof, nullifier hash, and public signals |
 | `encodeVoteSignal()` | `@src/zk/browser` | CBOR-encodes vote options as `List<(Int,Int)>` |
 | `buildVoteTransaction()` | `@src/tx/browser` | Assembles the Cardano vote transaction |
 | `applyOrefParamToScript()` | `@src/tx/browser` | Parameterises validator CBOR with an OutputReference |
@@ -114,3 +114,44 @@ The WASM file and zkey are served as static assets from `public/zk/` and fetched
 - `@meshsdk/web3-sdk` — imports `@peculiar/webcrypto` in its Node.js branch
 
 **Client-side alias** — maps `@peculiar/webcrypto → false` for browser bundles. In the browser, `window.crypto.subtle` is used directly, so the Node.js polyfill is never needed and would fail to bundle.
+
+---
+
+## Deployment
+
+### Vercel (recommended)
+
+1. Push the repository to GitHub.
+2. Create a new Vercel project and set **Root Directory** to `src/frontend`.
+3. Add the environment variables:
+
+   | Variable | Value |
+   |---|---|
+   | `NEXT_PUBLIC_BACKEND_API_URL` | URL of the deployed backend, e.g. `https://api.yourdomain.com` |
+   | `NEXT_PUBLIC_BLOCKFROST_API_KEY` | Blockfrost project ID for the target network |
+
+4. Deploy. Vercel detects Next.js automatically.
+
+### Other Node.js hosts
+
+```sh
+cd src/frontend
+npm ci
+npm run build       # outputs .next/
+npm run start       # production server, port 3002
+```
+
+Set `PORT` if you need a different port. The `NEXT_PUBLIC_*` environment variables must be available at **build time** (not just runtime), because Next.js inlines them into the client bundle.
+
+### Static assets for ZK proving
+
+The Groth16 prover runs in the browser and loads two large static files from `public/zk/`:
+
+| File | Size | Notes |
+|---|---|---|
+| `semaphore.wasm` | ~1 MB | Compiled Semaphore circuit |
+| `semaphore_final.zkey` | ~40 MB | Groth16 proving key |
+
+Both files are served at `/zk/semaphore.wasm` and `/zk/semaphore_final.zkey`. Vercel and other CDN-backed hosts cache them automatically. On first load, the browser downloads and caches the zkey; subsequent votes use the cached copy.
+
+Ensure your host does not apply a response-size limit that would reject the ~40 MB zkey file.
