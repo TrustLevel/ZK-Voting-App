@@ -1,0 +1,33 @@
+# Build-context excludes — keep image builds clean, reproducible, and secret-free.
+# node_modules are reinstalled via `npm ci`; dist/.next are rebuilt inside the image.
+**/node_modules
+**/dist
+**/.next
+**/build
+**/coverage
+**/*.tsbuildinfo
+
+# Stateful data must NEVER be baked into an image — it lives in named volumes.
+# (Losing nullifiers-db corrupts double-vote protection.)
+src/backend/db
+src/backend/nullifiers-db
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Secrets never enter image layers — provided at runtime via env_file / build args.
+**/.env
+**/.env.*
+!**/.env.example
+
+# Aiken on-chain build artifacts are not needed by the JS images.
+# (@src/tx compiles committed validator CBORs from src/tx/src, not from here.)
+src/on-chain/build
+
+# VCS / editor / OS noise
+.git
+.gitignore
+**/.DS_Store
+**/*.log
+.vscode
+.idea

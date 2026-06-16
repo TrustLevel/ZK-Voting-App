@@ -1,0 +1,52 @@
+# syntax=docker/dockerfile:1
+# Frontend (Next.js 15 / React 19) image for the ZK-Voting-App preview branch.
+# Build context = repo ROOT (npm workspaces monorepo).
+
+#############################################
+# Builder — install workspaces, build @src/zk + @src/tx, then `next build`
+#############################################
+FROM node:22-bookworm-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 make g++ git ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . .
+
+# Same mandatory `npm ci` as the backend (pins @meshsdk 1.9.0 for live preprod
+# cost models; root postinstall builds modp-semaphore-bls12381).
+RUN npm ci
+
+# The frontend imports `@src/tx/browser` (resolved to ../tx/dist via tsconfig
+# paths), which pulls in @src/zk. If those dist/ dirs are missing, `next build`
+# fails with: Module not found: Can't resolve '@src/tx/browser' / '@src/zk/browser'.
+# @src/tx uses `npx tsc` (NOT `npm run build`) to bypass the check-validators guard.
+RUN cd src/zk && npm run build
+RUN cd src/tx && npx tsc
+
+# NEXT_PUBLIC_* are INLINED into the client bundle at BUILD time — they must be
+# present here, not just at runtime. docker-compose passes them as build args.
+ARG NEXT_PUBLIC_BACKEND_API_URL
+ARG NEXT_PUBLIC_BLOCKFROST_API_KEY
+ENV NEXT_PUBLIC_BACKEND_API_URL=$NEXT_PUBLIC_BACKEND_API_URL
+ENV NEXT_PUBLIC_BLOCKFROST_API_KEY=$NEXT_PUBLIC_BLOCKFROST_API_KEY
+
+# Heavy bundle (MeshSDK + snarkjs + WASM) — raise the heap to avoid OOM, mirroring
+# the dev script's --max-old-space-size=4096.
+ENV NODE_OPTIONS=--max-old-space-size=4096
+RUN cd src/frontend && npm run build
+
+#############################################
+# Runtime
+#############################################
+FROM node:22-bookworm-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=builder /app /app
+
+# `next start` serves the production build, including the committed ZK assets at
+# public/zk/{semaphore.wasm,semaphore_final.zkey} that the browser fetches.
+WORKDIR /app/src/frontend
+EXPOSE 3002
+CMD ["npx", "next", "start", "-p", "3002"]
