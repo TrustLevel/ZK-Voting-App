@@ -20,7 +20,9 @@ import { VotingEventModule } from './voting-event/voting-event.module';
         database:
           configService.get<string>('DATABASE_PATH') ?? 'db/voting-app.db',
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: configService.get<string>('NODE_ENV') !== 'production',
+        synchronize:
+          configService.get<string>('DB_SYNCHRONIZE') === 'true' ||
+          configService.get<string>('NODE_ENV') !== 'production',
       }),
     }),
     AuthModule,

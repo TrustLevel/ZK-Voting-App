@@ -21,6 +21,7 @@ services:
       # Authoritative values — override anything in .env so the deploy stays consistent.
       PORT: 3001                              # NOT 3000 (CLAUDE.md is outdated)
       BLOCKFROST_NETWORK: preprod
+      DB_SYNCHRONIZE: "true"                  # opt-in TypeORM schema sync (no migrations in this POC)
       DATABASE_PATH: db/voting-app.db
       CORS_ORIGIN: "https://${DOMAIN}"        # must equal the deployed frontend origin
       FRONTEND_URL: "https://${DOMAIN}"
