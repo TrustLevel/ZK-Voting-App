@@ -33,7 +33,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/typeorm": "^11.0.0",
     "@zk-kit/incremental-merkle-tree": "^1.1.0",
-    "modp-semaphore-bls12381": "github:Modulo-P/modp-semaphore-bls12381#main",
+    "modp-semaphore-bls12381": "github:Modulo-P/modp-semaphore-bls12381#9caefda6612bc19b2c9bbec73ef2ffb22a56a0a5",
     "poseidon-bls12381": "^1.0.2",
     "reflect-metadata": "^0.2.2",
     "resend": "^6.5.2",
