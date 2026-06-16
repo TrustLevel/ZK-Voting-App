@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { VotingEvent } from './voting-event.entity';
 import { InvitationToken } from './invitation-token.entity';
 // @ts-ignore - types not exported from deep path, runtime resolves correctly
-import { Group } from 'modp-semaphore-bls12381/packages/typescript/lib/group';
+import { Group } from 'modp-semaphore-bls12381/packages/typescript/src/group';
 import { UsersService } from '../users/users.service';
 import { EmailService } from './email.service';
 import { v4 as uuidv4 } from 'uuid';
