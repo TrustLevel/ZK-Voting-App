@@ -63,6 +63,26 @@ The system supports two voting modes:
 
 ---
 
+## Component Evidence Index
+
+The application is delivered as six components, each independently documented. The table below
+links each component to its source tree and documentation. The live deployment is hosted at
+[vote.trustlevel.io](https://vote.trustlevel.io) (frontend) and
+[api.vote.trustlevel.io](https://api.vote.trustlevel.io) (backend).
+
+| Component | Source | Documentation |
+|---|---|---|
+| Frontend | [`src/frontend`](src/frontend) | [DOCS.md](src/frontend/DOCS.md) |
+| On-chain interaction layer | [`src/tx`](src/tx) · [`src/on-chain`](src/on-chain) | [tx/DOCS.md](src/tx/DOCS.md) · [on-chain/DOCS.md](src/on-chain/DOCS.md) |
+| Off-chain computations | [`src/zk`](src/zk) | [zk/DOCS.md](src/zk/DOCS.md) |
+| Backend server setup | [`src/backend`](src/backend) | [backend/DOCS.md](src/backend/DOCS.md) · [DEPLOY.md](DEPLOY.md) |
+| Database management | [`src/backend`](src/backend) (SQLite + LevelDB/MPF) | [backend/DOCS.md#database](src/backend/DOCS.md#database) |
+| Cryptographic primitives | [`src/zk`](src/zk) · [`src/on-chain`](src/on-chain) | [zk/DOCS.md#cryptographic-primitives](src/zk/DOCS.md#cryptographic-primitives) |
+
+Phase 1 design references: [SMART_CONTRACT_SPECIFICATION.md](design/SMART_CONTRACT_SPECIFICATION.md), [SYSTEM_DESIGN.md](design/SYSTEM_DESIGN.md).
+
+---
+
 ## The Semaphore Protocol
 
 This application uses a BLS12-381 variant of [Semaphore](https://semaphore.appliedzkp.org/) — a zero-knowledge protocol for anonymous group signalling. Each voter holds a secret identity and proves group membership with a Groth16 ZK proof, without revealing who they are. A one-time nullifier prevents double voting. The proof is verified entirely on-chain by the Semaphore smart contract.
