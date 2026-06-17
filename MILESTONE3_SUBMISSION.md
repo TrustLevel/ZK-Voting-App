@@ -8,9 +8,7 @@
 
 ## Deliverable summary
 
-The initial version of the zk voting app is deployed, hosted, and functionally complete, ready for public testing in Milestone 4. A full end-to-end vote has been confirmed in production:
-in-browser proof generation → backend MPF nullifier insertion → on-chain proof verification + MPF root check + vote tally, all on Cardano Preprod Testnet:
-
+The initial version of the zk voting app is deployed, hosted, and functionally complete, ready for public testing in Milestone 4. 
 
 | Surface | URL |
 |---|---|
@@ -19,6 +17,15 @@ in-browser proof generation → backend MPF nullifier insertion → on-chain pro
 | Source (this milestone) | https://github.com/TrustLevel/ZK-Voting-App/tree/preview |
 | Walkthrough video | _[VIDEO LINK — pending from Agustin]_ |
 
+A full end-to-end vote has been confirmed in production: in-browser proof generation → backend MPF nullifier insertion → on-chain proof verification + MPF root check + vote tally. All on-chain tx are on Cardano Preprod Testnet:
+
+  1. Group-NFT Mint: https://preprod.cardanoscan.io/transaction/eb0814806fdae20b1b5bef4427e2f4c1ee00c64ff018ec4f8f046263011a1272
+
+  2. Semaphore + Voting-NFT Mint — 18:52 CEST:
+https://preprod.cardanoscan.io/transaction/381eb4506edf88b1942c3f836a6d4d3285d2f9e348b1b2b8950d1c6866675ebb
+
+  3. Anonymous Vote (ZK-Proof + Nullifier) — 19:07:17 CEST, 2 Redeemer, Fee 2.10 ₳, Block 4829762:
+https://preprod.cardanoscan.io/transaction/3dd103810b62bc628065d42bb81957638fdcd9d890568968236c35344afcb0e7
 
 ---
 

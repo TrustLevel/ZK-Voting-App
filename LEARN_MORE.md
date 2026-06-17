@@ -43,16 +43,11 @@ test ADA:
 You set up and run a voting event end to end.
 
 1. **Create the event** — connect your wallet at [vote.trustlevel.io](https://vote.trustlevel.io)
-   and enter the event name, the options voters choose from, the voting mode (simple or weighted),
-   and the voting date (must be at least ~15 minutes in the future).
-2. **Invite participants** — add people by wallet address or email. Each invitee gets a unique
-   private link. The group is closed: only invited people can register and vote.
+   and enter the event name, the options voters choose from, the voting mode (simple or weighted), and the voting date (must be at least ~15 minutes in the future).
+2. **Invite participants** — add people by wallet address or email. Each invitee gets a unique private link. The group is closed: only invited people can register and vote.
 3. **Wait for registration** — invitees open their link and register. Their browser generates a
-   private cryptographic identity locally; only a public commitment is added to the group. No
-   personal data is collected.
-4. **Deploy on-chain** — once the participant list is final, set the start/end dates and deploy.
-   Two transactions anchor the voting contracts on Cardano. From here, options, dates, and group
-   membership are **immutable**.
+   private cryptographic identity locally; only a public commitment is added to the group. No personal data is collected.
+4. **Deploy on-chain** — once the participant list is final, publish the event on the blockchain: Two transactions anchor the voting contracts on Cardano. From here, options, dates, and group membership are **immutable**.
 5. **Read the results** — when voting closes, the tally is publicly readable on-chain. You see
    the totals only — never who voted for what.
 

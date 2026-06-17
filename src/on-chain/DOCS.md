@@ -29,7 +29,6 @@ The compiled output is `plutus.json`. The transaction builder (`src/tx`) reads t
 | Parameter | Value |
 |---|---|
 | Network | Cardano Preprod Testnet |
-| `network_id` | `41` (in `aiken.toml`) |
 | Plutus version | v3 |
 | Curve | BLS12-381 |
 

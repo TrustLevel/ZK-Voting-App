@@ -165,7 +165,7 @@ const { zkProof, nullifierHash, publicSignals } = await generateVoteProof({
 });
 ```
 
-**Browser behaviour**: loads `semaphore.wasm` and `semaphore_final.zkey` via `fetch('/zk/...')`. Both files are large (~40 MB for the zkey) and are cached by the browser after first load.
+**Browser behaviour**: loads `semaphore.wasm` and `semaphore_final.zkey` via `fetch('/zk/...')`. Both files are large (~9 MB for the zkey) and are cached by the browser after first load.
 
 ### `encodeVoteSignal(options)` — `signal.ts` / `signal-browser.ts`
 

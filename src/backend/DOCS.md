@@ -180,7 +180,7 @@ SQLite via TypeORM. Default path: `db/voting-app.db` (configurable via `DATABASE
 |---|---|---|
 | `POST` | `/voting-event/:eventId/validate-admin-token` | Verify an admin token for the event. Body: `{ token }` |
 | `POST` | `/voting-event/:eventId/mark-invitations-sent` | Mark all pending invitations for an event as sent |
-| `POST` | `/mark-token-used/:token` | Mark an invitation token as used (called after a participant joins) |
+| `POST` | `/voting-event/mark-token-used/:token` | Mark an invitation token as used (called after a participant joins) |
 
 ### Blockchain utilities
 
