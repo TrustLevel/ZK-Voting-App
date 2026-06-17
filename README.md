@@ -98,7 +98,7 @@ There are two roles: an **organiser** who sets up and manages the voting event, 
 ### The Organiser's Journey
 
 **1. Create the event**
-Connect a Cardano wallet and fill in the event details: a name, the list of options voters can choose from, the voting mode (simple — one vote per person — or weighted — each person distributes a fixed number of points across options), and the maximum number of participants.
+Connect a Cardano wallet and fill in the event details: a name, the list of options voters can choose from, the voting mode (simple — one vote per person — or weighted — each person distributes a fixed number of points across options), and the voting date (must bei at least 15min in the future).
 
 **2. Invite participants**
 Add participants by wallet address or email. Each invited person receives a unique private link. Only invited participants can vote — the group is closed.
