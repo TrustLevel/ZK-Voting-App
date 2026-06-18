@@ -737,52 +737,58 @@ export class VotingEventService {
   }
 
   // Fetch live vote tallies from the on-chain UrnaDatum via Blockfrost.
-  // Returns { options: [{ index, text, votes }] } — text comes from DB, votes from chain.
+  // Returns { options: [{ index, text, votes }] } — text from DB, votes from chain (zeros if not deployed or Blockfrost unreachable).
   async getResults(eventId: number): Promise<{ options: Array<{ index: number; text: string; votes: number }> }> {
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
-    if (!event) throw new Error('Voting event not found');
+    if (!event) throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
+
+    const dbOptions: Array<{ index: number; text: string }> = JSON.parse(event.options ?? '[]');
+    const emptyOptions = dbOptions.map(o => ({ ...o, votes: 0 }));
+
     if (!event.votingValidatorAddress || !event.votingNft) {
-      throw new Error('Blockchain setup not complete for this event');
+      return { options: emptyOptions };
     }
 
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
-    const response = await fetch(
-      `https://cardano-preprod.blockfrost.io/api/v0/addresses/${event.votingValidatorAddress}/utxos`,
-      { headers: { project_id: apiKey } },
-    );
+    const network = this.configService.get<string>('BLOCKFROST_NETWORK') ?? 'preprod';
 
-    if (!response.ok) {
-      throw new Error(`Blockfrost error: ${response.status}`);
+    try {
+      const response = await fetch(
+        `https://cardano-${network}.blockfrost.io/api/v0/addresses/${event.votingValidatorAddress}/utxos`,
+        { headers: { project_id: apiKey } },
+      );
+
+      // 404 = address has no UTxO history yet — return zeros
+      if (!response.ok) return { options: emptyOptions };
+
+      const utxos: any[] = await response.json();
+      const votingUtxo = utxos.find(u =>
+        Array.isArray(u.amount) && u.amount.some((a: any) => a.unit.startsWith(event.votingNft))
+      );
+      if (!votingUtxo) return { options: emptyOptions };
+
+      // inline_datum from Blockfrost is raw CBOR hex — decode to Plutus data JSON
+      const datumCbor: string | null = votingUtxo.inline_datum;
+      if (!datumCbor) return { options: emptyOptions };
+      const datum = deserializeDatum(datumCbor);
+      if (!datum?.fields?.[1]) return { options: emptyOptions };
+
+      // UrnaDatum fields[1] = List<(Int, Int)> — each item is a 2-element list [index, votes]
+      const onChainOptions: Array<[number, number]> = datum.fields[1].list.map((item: any) => [
+        Number(item.list[0].int),
+        Number(item.list[1].int),
+      ]);
+
+      const merged = dbOptions.map(opt => {
+        const onChain = onChainOptions.find(([idx]) => idx === opt.index);
+        return { index: opt.index, text: opt.text, votes: onChain ? onChain[1] : 0 };
+      });
+
+      return { options: merged };
+    } catch {
+      // Blockfrost unreachable — return zeros so the page still renders
+      return { options: emptyOptions };
     }
-
-    const utxos: any[] = await response.json();
-    const votingUtxo = utxos.find(u =>
-      Array.isArray(u.amount) && u.amount.some((a: any) => a.unit.startsWith(event.votingNft))
-    );
-    if (!votingUtxo) throw new Error('Voting UTxO not found on chain');
-
-    // inline_datum from Blockfrost is raw CBOR hex — decode to Plutus data JSON
-    const datumCbor: string | null = votingUtxo.inline_datum;
-    if (!datumCbor) throw new Error('Could not read UrnaDatum from Voting UTxO');
-    const datum = deserializeDatum(datumCbor);
-    if (!datum || !datum.fields || !datum.fields[1]) {
-      throw new Error('Could not read UrnaDatum from Voting UTxO');
-    }
-
-    // UrnaDatum fields[1] = List<(Int, Int)> — each item is a 2-element list [index, votes]
-    const onChainOptions: Array<[number, number]> = datum.fields[1].list.map((item: any) => [
-      Number(item.list[0].int),
-      Number(item.list[1].int),
-    ]);
-
-    // Merge on-chain vote counts with option texts from DB
-    const dbOptions: Array<{ index: number; text: string; votes: number }> = JSON.parse(event.options ?? '[]');
-    const merged = dbOptions.map(opt => {
-      const onChain = onChainOptions.find(([idx]) => idx === opt.index);
-      return { index: opt.index, text: opt.text, votes: onChain ? onChain[1] : 0 };
-    });
-
-    return { options: merged };
   }
 
   // Save blockchain data related to the event (Temporary implementation)
