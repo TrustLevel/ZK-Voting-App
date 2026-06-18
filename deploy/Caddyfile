@@ -1,0 +1,22 @@
+# Caddy reverse proxy with automatic HTTPS (Let's Encrypt).
+# Hostnames and ACME email come from the environment (set in deploy/.env,
+# passed through by docker-compose). HTTPS is REQUIRED — the frontend generates
+# the Semaphore identity in-browser via WebCrypto (crypto.subtle), which is only
+# available in a secure context (HTTPS or localhost).
+
+{
+	# Account email for Let's Encrypt (expiry notices). Safe to leave blank.
+	email {$ACME_EMAIL}
+}
+
+# Public app — Next.js frontend.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy frontend:3002
+}
+
+# Backend API — separate subdomain (must match NEXT_PUBLIC_BACKEND_API_URL + CORS_ORIGIN).
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy backend:3001
+}

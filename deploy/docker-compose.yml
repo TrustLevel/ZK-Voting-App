@@ -1,0 +1,72 @@
+# ZK-Voting-App — preview branch deploy (Cardano preprod, Catalyst milestone).
+# Single VPS: Caddy (auto-HTTPS) reverse-proxies the frontend + backend; both
+# stateful stores (SQLite + LevelDB nullifier trie) live on named volumes.
+#
+# Run from THIS directory so compose auto-loads ./.env for ${VAR} interpolation:
+#   cd deploy
+#   cp .env.example .env        # then edit
+#   docker compose up -d --build
+#
+# Build context is the repo root (..) because this is an npm-workspaces monorepo.
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    # Loads ./.env (BLOCKFROST_API_KEY, JWT_SECRET, RESEND_*, etc.) into the container.
+    env_file: .env
+    environment:
+      # Authoritative values — override anything in .env so the deploy stays consistent.
+      PORT: 3001                              # NOT 3000 (CLAUDE.md is outdated)
+      BLOCKFROST_NETWORK: preprod
+      DB_SYNCHRONIZE: "true"                  # opt-in TypeORM schema sync (no migrations in this POC)
+      DATABASE_PATH: db/voting-app.db
+      CORS_ORIGIN: "https://${DOMAIN}"        # must equal the deployed frontend origin
+      FRONTEND_URL: "https://${DOMAIN}"
+    volumes:
+      # PERSISTENT STATE. Losing backend_nullifiers corrupts double-vote protection.
+      - backend_db:/app/src/backend/db
+      - backend_nullifiers:/app/src/backend/nullifiers-db
+    expose:
+      - "3001"                                # internal only; Caddy fronts it
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+      args:
+        # NEXT_PUBLIC_* are baked into the client bundle AT BUILD TIME.
+        # Changing these requires a rebuild (`up -d --build`), not just a restart.
+        NEXT_PUBLIC_BACKEND_API_URL: "https://${API_DOMAIN}"
+        NEXT_PUBLIC_BLOCKFROST_API_KEY: "${NEXT_PUBLIC_BLOCKFROST_API_KEY}"
+    restart: unless-stopped
+    expose:
+      - "3002"                                # internal only; Caddy fronts it
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"                               # required for ACME HTTP challenge + redirect
+      - "443:443"
+    environment:
+      DOMAIN: "${DOMAIN}"
+      API_DOMAIN: "${API_DOMAIN}"
+      ACME_EMAIL: "${ACME_EMAIL}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data                      # persists issued TLS certs across restarts
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  backend_db:
+  backend_nullifiers:
+  caddy_data:
+  caddy_config:

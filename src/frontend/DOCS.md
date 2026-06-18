@@ -40,7 +40,7 @@ NEXT_PUBLIC_BLOCKFROST_API_KEY=                     # Blockfrost project ID (Pre
 |---|---|
 | `/` | Landing page |
 | `/create` | Create a new voting event (name, options, voting mode, group size) |
-| `/manage/[eventId]` | Event management dashboard (parameters, participants, on-chain deployment) |
+| `/event/[id]/manage` | Event management dashboard (parameters, participants, on-chain deployment) |
 | `/join` | Join a voting event as a participant via invitation token |
 | `/event/[id]` | Vote casting interface |
 | `/info` | Documentation and help |
@@ -52,7 +52,7 @@ The organiser fills in the event configuration. On submit, the frontend:
 2. Calls `POST /voting-event` to create the event record in the backend.
 3. Redirects to `/manage/:eventId` with the `adminToken` in the query string.
 
-### `/manage/[eventId]`
+### `/event/[id]/manage`
 
 Three-tab dashboard:
 

@@ -20,7 +20,7 @@
     "@zk-kit/incremental-merkle-tree": "^1.1.0",
     "bigint-buffer": "^1.1.5",
     "js-sha512": "^0.9.0",
-    "modp-semaphore-bls12381": "github:Modulo-P/modp-semaphore-bls12381#main",
+    "modp-semaphore-bls12381": "github:Modulo-P/modp-semaphore-bls12381#9caefda6612bc19b2c9bbec73ef2ffb22a56a0a5",
     "next": "15.5.4",
     "poseidon-bls12381": "^1.0.2",
     "react": "19.1.0",

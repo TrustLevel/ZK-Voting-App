@@ -71,6 +71,9 @@ temp/
 *.sqlite
 *.sqlite3
 
+# Runtime nullifier MPF trie stores (LevelDB, per voting event)
+nullifiers-db/
+
 # Vercel
 .vercel
 

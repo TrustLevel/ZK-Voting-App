@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1
+# Backend (NestJS 11) image for the ZK-Voting-App preview branch.
+# Build context = repo ROOT (npm workspaces monorepo).
+
+#############################################
+# Builder — install workspaces, build @src/zk + @src/tx, then the backend
+#############################################
+FROM node:22-bookworm-slim AS builder
+
+# Native deps (sqlite3, classic-level for the MPF nullifier trie) may compile
+# from source if no prebuilt binary matches — provide the toolchain. `git` is
+# needed because modp-semaphore-bls12381 is a github: dependency.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 make g++ git ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the whole monorepo. The root .dockerignore strips node_modules/, dist/,
+# .next/, the stateful data dirs, and all .env files.
+COPY . .
+
+# `npm ci` is MANDATORY (not `npm install`): the lockfile pins @meshsdk 1.9.0,
+# which fetches LIVE preprod cost models via fetcher.fetchCostModels(). A stale
+# 1.8.14 install breaks EVERY script tx with ConwayUtxowFailure
+# ScriptIntegrityHashMismatch. The root `postinstall` builds
+# modp-semaphore-bls12381 automatically after install.
+RUN npm ci
+
+# Build order is load-bearing and the @src/tx step is special:
+#   - @src/zk first (plain tsc via its build script).
+#   - @src/tx via `npx tsc` directly, NOT `npm run build` — that would run the
+#     check-validators guard and regenerate the committed validator CBORs, which
+#     must stay byte-identical to what is deployed on-chain.
+# The backend require()s @src/tx at runtime, so both dist/ trees must exist.
+RUN cd src/zk && npm run build
+RUN cd src/tx && npx tsc
+RUN cd src/backend && npm run build
+
+#############################################
+# Runtime
+#############################################
+FROM node:22-bookworm-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+
+# Copy the fully-built tree: node_modules (incl. compiled native .node files —
+# same base image so they stay ABI-compatible), all dist/, and the modp build.
+COPY --from=builder /app /app
+
+# The backend resolves DATABASE_PATH=db/voting-app.db and nullifiers-db/
+# RELATIVE to its own working directory — these are the two volume mount points.
+WORKDIR /app/src/backend
+
+EXPOSE 3001
+CMD ["node", "dist/main"]
