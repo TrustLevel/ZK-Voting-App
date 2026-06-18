@@ -15,7 +15,7 @@ The initial version of the zk voting app is deployed, hosted, and functionally c
 | Hosted frontend | https://vote.trustlevel.io |
 | Hosted backend API | https://api.vote.trustlevel.io |
 | Source (this milestone) | https://github.com/TrustLevel/ZK-Voting-App/tree/preview |
-| Walkthrough video | (https://youtu.be/b8HeAZMSW6s)[https://youtu.be/b8HeAZMSW6s]_ |
+| Walkthrough video | https://youtu.be/b8HeAZMSW6s |
 
 A full end-to-end vote has been confirmed in production: in-browser proof generation → backend MPF nullifier insertion → on-chain proof verification + MPF root check + vote tally. All on-chain tx are on Cardano Preprod Testnet:
 
