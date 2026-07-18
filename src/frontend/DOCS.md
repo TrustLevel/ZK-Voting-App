@@ -150,7 +150,7 @@ The Groth16 prover runs in the browser and loads two large static files from `pu
 | File | Size | Notes |
 |---|---|---|
 | `semaphore.wasm` | ~1 MB | Compiled Semaphore circuit |
-| `semaphore_final.zkey` | ~40 MB | Groth16 proving key |
+| `semaphore_final.zkey` | ~9 MB | Groth16 proving key |
 
 Both files are served at `/zk/semaphore.wasm` and `/zk/semaphore_final.zkey`. Vercel and other CDN-backed hosts cache them automatically. On first load, the browser downloads and caches the zkey; subsequent votes use the cached copy.
 
