@@ -222,8 +222,8 @@ export async function buildVoteTransaction(params: BuildVoteTransactionParams): 
   const txValidityEndSlot = Math.min(currentSlot + 1200, eventEndSlot);
 
   // No evaluator: execution units are declared statically.
-  // Semaphore 11M + Voting 3M = 14M = protocol memory limit on Preprod.
-  // Steps: 7B + 2.5B = 9.5B < 10B limit.
+  // Measured by OfflineEvaluator (CEK machine): Semaphore ~266K mem/2.48B steps, Voting ~381K mem/131M steps.
+  // Values declared here include headroom for deeper MPF tries (more voters) and longer option lists.
   const txBuilder = new MeshTxBuilder({ fetcher: provider, verbose: false });
 
   let unsignedTx: string;
@@ -237,13 +237,13 @@ export async function buildVoteTransaction(params: BuildVoteTransactionParams): 
       .txIn(semaphoreUtxo.input.txHash, semaphoreUtxo.input.outputIndex, semaphoreUtxo.output.amount, semaphoreScriptAddress)
       .txInScript(semaphoreValidatorCbor)
       .txInInlineDatumPresent()
-      .txInRedeemerValue(semaphoreRedeemerCbor, 'CBOR', { mem: 11000000, steps: 7000000000 })
+      .txInRedeemerValue(semaphoreRedeemerCbor, 'CBOR', { mem: 600000, steps: 5000000000 })
 
       .spendingPlutusScriptV3()
       .txIn(votingUtxo.input.txHash, votingUtxo.input.outputIndex, votingUtxo.output.amount, votingScriptAddress)
       .txInScript(votingValidatorCbor)
       .txInInlineDatumPresent()
-      .txInRedeemerValue(conStr(1, []), 'JSON', { mem: 3000000, steps: 2500000000 })
+      .txInRedeemerValue(conStr(1, []), 'JSON', { mem: 800000, steps: 300000000 })
 
       .readOnlyTxInReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX)
 

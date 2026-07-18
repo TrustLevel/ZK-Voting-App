@@ -200,7 +200,7 @@ export async function buildVoteTransaction(
       )
       .txInScript(semaphoreValidatorCbor)
       .txInInlineDatumPresent()
-      .txInRedeemerValue(semaphoreRedeemer, "JSON", { mem: 12000000, steps: 7000000000 })
+      .txInRedeemerValue(semaphoreRedeemer, "JSON", { mem: 600000, steps: 5000000000 })
 
       // Spend Voting UTxO — returned with updated vote tally; UrnaRedeemer.Vote = conStr(1, [])
       .spendingPlutusScriptV3()
@@ -212,7 +212,7 @@ export async function buildVoteTransaction(
       )
       .txInScript(votingValidatorCbor)
       .txInInlineDatumPresent()
-      .txInRedeemerValue(conStr(1, []), "JSON", { mem: 4000000, steps: 2500000000 })
+      .txInRedeemerValue(conStr(1, []), "JSON", { mem: 800000, steps: 300000000 })
 
       // VKey UTxO as read-only reference input — semaphore validator reads vkey datum from it
       .readOnlyTxInReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX)
