@@ -12,7 +12,8 @@
     "build": "npm run check-validators && tsc",
     "build:force": "npm run extract-validators && tsc",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "node tests/utils.test.mjs && node --experimental-wasm-modules tests/mint-group.test.mjs && node --experimental-wasm-modules tests/mint-sv.test.mjs && node --experimental-wasm-modules tests/vote.test.mjs && node --experimental-wasm-modules tests/vote-cek.test.mjs"
   },
   "dependencies": {
     "@meshsdk/core": "^1.9.0",
