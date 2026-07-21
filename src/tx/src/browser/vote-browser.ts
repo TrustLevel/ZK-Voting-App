@@ -120,6 +120,28 @@ function mpfStepsToPlutusData(steps: Array<any>) {
 
 // ── Public interface ──────────────────────────────────────────────────────────
 
+/**
+ * Fetch the on-chain Semaphore UTxO and return its group_merke_root field.
+ * Used by the frontend before ZK proof generation to detect root drift and
+ * request the correct historical Merkle proof from the backend.
+ */
+export async function fetchOnChainGroupMerkleRoot(
+  provider: BlockfrostProvider,
+  semaphoreScriptAddress: string,
+  semaphoreNftPolicyId: string,
+): Promise<bigint> {
+  const utxos: UTxO[] = await provider.fetchAddressUTxOs(semaphoreScriptAddress);
+  const utxo = utxos.find(u => u.output.amount.some(a => a.unit.startsWith(semaphoreNftPolicyId)));
+  if (!utxo) throw new Error('Semaphore UTxO not found at ' + semaphoreScriptAddress);
+  const datumHex = utxo.output.plutusData;
+  if (!datumHex) throw new Error('Semaphore UTxO has no inline datum');
+  const { csl } = await getCsl();
+  const pd = csl.PlutusData.from_hex(datumHex);
+  const constr = pd.as_constr_plutus_data();
+  if (!constr) throw new Error('Semaphore datum is not a constructor');
+  return BigInt(constr.data().get(1).as_integer().to_str());
+}
+
 export interface BuildVoteTransactionParams {
   provider: BlockfrostProvider;
   semaphoreScriptAddress: string;
@@ -127,7 +149,6 @@ export interface BuildVoteTransactionParams {
   semaphoreNftPolicyId: string;
   votingNftPolicyId: string;
   groupNftPolicyId: string;
-  groupMerkleRoot: bigint;
   semaphoreValidatorCbor: string;
   votingValidatorCbor: string;
   walletUtxos: UTxO[];
@@ -152,7 +173,7 @@ export async function buildVoteTransaction(params: BuildVoteTransactionParams): 
     semaphoreScriptAddress, votingScriptAddress,
     semaphoreNftPolicyId, votingNftPolicyId,
     semaphoreValidatorCbor, votingValidatorCbor,
-    groupNftPolicyId, groupMerkleRoot,
+    groupNftPolicyId,
     walletUtxos, walletAddress, paymentKeyHash,
     zkProof, nullifierHash, signalHash, signalMessage,
     mpfProofSteps, mpfNewRoot,
@@ -165,6 +186,18 @@ export async function buildVoteTransaction(params: BuildVoteTransactionParams): 
     u.output.amount.some(a => a.unit.startsWith(semaphoreNftPolicyId))
   );
   if (!semaphoreUtxo) throw new Error('Semaphore UTxO not found at ' + semaphoreScriptAddress);
+
+  // Parse on-chain Semaphore datum to read group_merke_root.
+  // This field is immutable (the validator requires it to be preserved on every vote),
+  // so we must use the value stored on-chain, not the frontend's groupMerkleRootHash
+  // which can drift as new participants register after Phase 2 mint.
+  const semaphoreDatumHex = semaphoreUtxo.output.plutusData;
+  if (!semaphoreDatumHex) throw new Error('Semaphore UTxO has no inline datum');
+  const { csl: cslForDatum } = await getCsl();
+  const semPd = cslForDatum.PlutusData.from_hex(semaphoreDatumHex);
+  const semConstr = semPd.as_constr_plutus_data();
+  if (!semConstr) throw new Error('Semaphore datum is not a constructor');
+  const onChainGroupMerkleRoot = BigInt(semConstr.data().get(1).as_integer().to_str());
 
   const votingUtxos: UTxO[] = await provider.fetchAddressUTxOs(votingScriptAddress);
   const votingUtxo = votingUtxos.find(u =>
@@ -201,7 +234,7 @@ export async function buildVoteTransaction(params: BuildVoteTransactionParams): 
 
   const updatedSemaphoreDatum = conStr(0, [
     byteString(groupNftPolicyId),
-    integer(groupMerkleRoot),
+    integer(onChainGroupMerkleRoot),
     byteString(mpfNewRoot),
     createOutputReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX),
   ]);

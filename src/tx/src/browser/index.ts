@@ -4,6 +4,7 @@
 
 export {
   buildVoteTransaction,
+  fetchOnChainGroupMerkleRoot,
   VKEY_REF_TX_HASH,
   VKEY_REF_OUTPUT_INDEX,
 } from './vote-browser.js';
