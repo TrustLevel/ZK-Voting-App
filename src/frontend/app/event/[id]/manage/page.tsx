@@ -846,9 +846,18 @@ export default function EventDashboard() {
       setMintingStep('voting');
       setTxStatus('Step 2/2: Minting Semaphore + Voting NFTs...');
 
-      // Get fresh UTxOs (after Group NFT mint)
-      const walletUtxos2 = await getWalletUtxos(wallet);
-      console.log('Available wallet UTxOs (after Group mint):', walletUtxos2.length);
+      // Fetch confirmed UTxOs from Blockfrost for Phase 2 building.
+      //
+      // Using wallet.getUtxos() here is unreliable: some wallets (Eternl) include
+      // unconfirmed or recently-spent UTxOs that Blockfrost hasn't indexed yet, causing
+      // MeshTxBuilder's internal fetchUTxOs() call to 404. Since the UTxO poll above
+      // already confirmed the Group NFT TX is indexed (visible at the script address),
+      // all of the wallet's UTxOs at walletAddress are also indexed and safe to use.
+      const walletUtxos2 = await provider.fetchAddressUTxOs(walletAddress);
+      if (walletUtxos2.length === 0) {
+        throw new Error('No UTxOs found at wallet address via Blockfrost. Please wait for transactions to confirm.');
+      }
+      console.log('Available wallet UTxOs (Blockfrost, confirmed):', walletUtxos2.length);
 
       // Select different UTxO for Semaphore + Voting NFT minting
       const { selectedUtxo: votingUtxo } =
