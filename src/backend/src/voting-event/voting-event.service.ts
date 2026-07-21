@@ -39,6 +39,11 @@ interface CreateVotingEventDto {
 
 @Injectable()
 export class VotingEventService {
+  // LevelDB allows only one open handle per path. Caching the Store instance per event
+  // prevents LOCK contention when insertNullifier and rollbackNullifier are called in
+  // rapid succession (e.g. user cancels wallet signature and immediately retries).
+  private readonly nullifierStores = new Map<number, any>();
+
   constructor(
     @InjectRepository(VotingEvent)
     private votingEventRepository: Repository<VotingEvent>,
@@ -48,6 +53,17 @@ export class VotingEventService {
     private usersService: UsersService,
     private emailService: EmailService,
   ) {}
+
+  private async getNullifierStore(eventId: number): Promise<any> {
+    if (!this.nullifierStores.has(eventId)) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Store } = require('@aiken-lang/merkle-patricia-forestry');
+      const store = new Store(`nullifiers-db/${eventId}`);
+      await store.ready();
+      this.nullifierStores.set(eventId, store);
+    }
+    return this.nullifierStores.get(eventId)!;
+  }
 
   async createBasicVotingEvent(
     eventName: string,
@@ -595,7 +611,7 @@ export class VotingEventService {
   // Return the Semaphore group Merkle proof for a specific participant.
   // The frontend passes this proof (siblings, pathIndices) to the ZK circuit
   // as witness data when generating the vote proof.
-  async getMerkleProof(eventId: number, userId: number): Promise<{
+  async getMerkleProof(eventId: number, userId: number, targetRoot?: string): Promise<{
     root: string;
     leaf: string;
     siblings: string[];
@@ -606,10 +622,45 @@ export class VotingEventService {
       throw new Error('Voting event not found');
     }
 
-    const participants = JSON.parse(event.groupLeafCommitments) as Array<{userId: number, commitment: string}>;
+    // Use the semaphore snapshot if available — ZK proof must verify against the
+    // Semaphore datum's immutable group_merke_root, not the live group root.
+    const leafSource = event.semaphoreLeafCommitments ?? event.groupLeafCommitments;
+    let participants = JSON.parse(leafSource) as Array<{userId: number, commitment: string}>;
     const index = participants.findIndex(p => p.userId === Number(userId));
     if (index === -1) {
-      throw new Error('User is not a participant in this event');
+      throw new Error(
+        event.semaphoreLeafCommitments
+          ? 'User was not registered when the voting system was set up and cannot vote'
+          : 'User is not a participant in this event',
+      );
+    }
+
+    // If the caller provides a targetRoot (the on-chain Semaphore datum value), find the
+    // historical participant subset whose tree root matches. This handles events that were
+    // minted before the snapshot was introduced and where semaphoreLeafCommitments is null.
+    if (targetRoot) {
+      const allCommitments = participants.map(p => BigInt(p.commitment));
+      const currentGroup = new Group(BigInt(eventId), event.groupSize, allCommitments);
+      const currentProof = currentGroup.generateMerkleProof(index);
+      if (currentProof.root.toString() !== BigInt(targetRoot).toString()) {
+        let found = false;
+        for (let m = index + 1; m <= participants.length; m++) {
+          const subset = participants.slice(0, m);
+          const g = new Group(BigInt(eventId), event.groupSize, subset.map(p => BigInt(p.commitment)));
+          const testProof = g.generateMerkleProof(index);
+          if (testProof.root.toString() === BigInt(targetRoot).toString()) {
+            participants = subset;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          throw new HttpException(
+            'Voter was not in the group at the time the voting system was set up and cannot vote',
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+      }
     }
 
     const commitments = participants.map(p => BigInt(p.commitment));
@@ -640,7 +691,7 @@ export class VotingEventService {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { Trie, Store } = require('@aiken-lang/merkle-patricia-forestry');
+    const { Trie } = require('@aiken-lang/merkle-patricia-forestry');
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { blake2b } = require('@noble/hashes/blake2b');
 
@@ -659,8 +710,7 @@ export class VotingEventService {
     const value = Buffer.from(Buffer.from(bigEndian).reverse()); // minimal LE
     const key = Buffer.from(blake2b(value, { dkLen: 32 }));
 
-    const store = new Store(`nullifiers-db/${eventId}`);
-    await store.ready();
+    const store = await this.getNullifierStore(eventId);
     const trie = await Trie.load(store).catch(() => new Trie(store));
 
     // Throws if nullifier already exists — prevents double voting at the backend level.
@@ -707,7 +757,7 @@ export class VotingEventService {
     if (!event) throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { Trie, Store } = require('@aiken-lang/merkle-patricia-forestry');
+    const { Trie } = require('@aiken-lang/merkle-patricia-forestry');
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { blake2b } = require('@noble/hashes/blake2b');
 
@@ -719,8 +769,7 @@ export class VotingEventService {
     const value = Buffer.from(Buffer.from(bigEndian).reverse());
     const key = Buffer.from(blake2b(value, { dkLen: 32 }));
 
-    const store = new Store(`nullifiers-db/${eventId}`);
-    await store.ready();
+    const store = await this.getNullifierStore(eventId);
     const trie = await Trie.load(store).catch(() => new Trie(store));
 
     try {
@@ -813,6 +862,15 @@ export class VotingEventService {
       if (blockchainData.mintingOrefTxHash) event.mintingOrefTxHash = blockchainData.mintingOrefTxHash;
       if (blockchainData.mintingOrefIndex !== undefined && blockchainData.mintingOrefIndex !== null) {
         event.mintingOrefIndex = blockchainData.mintingOrefIndex;
+      }
+
+      // Snapshot the group tree when Semaphore NFT data is first saved.
+      // SemaphoreDatum.group_merke_root is fixed at SV mint time and never changes on-chain.
+      // Participants added after this point can register but cannot vote (group is closed).
+      if (blockchainData.semaphoreNft && !event.semaphoreMerkleRoot) {
+        event.semaphoreMerkleRoot = event.groupMerkleRootHash;
+        event.semaphoreLeafCommitments = event.groupLeafCommitments;
+        console.log(`[saveBlockchainData] Snapshotted semaphoreMerkleRoot=${event.semaphoreMerkleRoot} for event ${eventId}`);
       }
 
       await this.votingEventRepository.save(event);

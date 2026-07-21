@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Patch, Body, Param } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Patch, Body, Param, Query } from '@nestjs/common';
 import { VotingEventService } from './voting-event.service';
 
 @Controller('voting-event')
@@ -149,8 +149,9 @@ export class VotingEventController {
   async getMerkleProof(
     @Param('eventId') eventId: number,
     @Param('userId') userId: number,
+    @Query('targetRoot') targetRoot?: string,
   ) {
-    return await this.votingEventService.getMerkleProof(eventId, userId);
+    return await this.votingEventService.getMerkleProof(eventId, userId, targetRoot);
   }
 
   // Inserts a nullifier into the MPF trie and returns the proof.
