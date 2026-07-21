@@ -28,7 +28,7 @@ import { Identity } from 'modp-semaphore-bls12381/packages/typescript/src/identi
 import { useWallet } from '@meshsdk/react';
 import { BlockfrostProvider, deserializeAddress } from '@meshsdk/core';
 import { encodeVoteSignal, generateVoteProof, buildVoteTransaction, applyOrefParamToScript } from '@/lib/vote-helpers';
-import { VALIDATORS } from '@src/tx/browser';
+import { VALIDATORS, fetchOnChainGroupMerkleRoot } from '@src/tx/browser';
 import { createOutputReference } from '@/lib/blockchain-helpers';
 
 // ============================================================================
@@ -127,6 +127,7 @@ export default function EventPage() {
   const [votedOptionIndex, setVotedOptionIndex] = useState<number | null>(null);
   const [voteStep, setVoteStep] = useState<string | null>(null);
   const [voteTxHash, setVoteTxHash] = useState<string | null>(null);
+  const [voteError, setVoteError] = useState<string | null>(null);
 
   // Results State
   const [results, setResults] = useState<VotingOption[] | null>(null);
@@ -442,6 +443,27 @@ export default function EventPage() {
   };
 
   /**
+   * Convert a raw Blockfrost/backend submission error into a short user-facing message.
+   * The full error is always logged to the console for debugging.
+   */
+  const classifySubmissionError = (errData: any): string => {
+    const raw = typeof errData?.message === 'string' ? errData.message : JSON.stringify(errData);
+    if (raw.includes('PlutusFailure') || raw.includes('ValidationTagMismatch')) {
+      return 'The transaction was rejected by the on-chain validator. This may happen if the voting period has ended or if the ZK proof was invalid. Please contact the event organizer.';
+    }
+    if (raw.includes('OutsideValidityInterval') || raw.includes('ValidityInterval')) {
+      return 'The transaction expired before it was submitted. Please try voting again.';
+    }
+    if (raw.includes('InsufficientFunds') || raw.includes('ValueNotConserved') || raw.includes('FeeTooSmall')) {
+      return 'Insufficient funds to pay the transaction fee. Please ensure your wallet has enough ADA.';
+    }
+    if (raw.includes('BadInputs') || raw.includes('UtxoFailure')) {
+      return 'One or more transaction inputs are no longer available on-chain. Please try again.';
+    }
+    return 'The transaction was rejected by the blockchain. Please try again or contact the event organizer.';
+  };
+
+  /**
    * Submit vote — 8-step ZK vote flow.
    * voteSignal: [[optionIndex, voteCount], ...]
    */
@@ -470,12 +492,39 @@ export default function EventPage() {
       }
       const storedIdentity: StoredIdentity = JSON.parse(storedIdentityStr);
 
-      // Step 2: Fetch Merkle proof
-      setVoteStep('Fetching Merkle proof...');
-      const merkleResponse = await fetch(
-        `${BACKEND_API_URL}/voting-event/${eventId}/merkle-proof/${validatedUserId}`
+      // Create provider early — needed for on-chain root fetch and TX building.
+      const provider = new BlockfrostProvider(
+        process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY!
       );
-      if (!merkleResponse.ok) throw new Error('Failed to fetch Merkle proof');
+
+      // Fetch the on-chain Semaphore UTxO's group_merke_root before generating the ZK proof.
+      // This value is frozen at SV mint time; the backend's groupMerkleRootHash can drift
+      // if participants register after minting. The ZK proof and output datum must both use
+      // the on-chain root, not the backend's current root.
+      let onChainGroupMerkleRoot: bigint | null = null;
+      try {
+        onChainGroupMerkleRoot = await fetchOnChainGroupMerkleRoot(
+          provider,
+          event.semaphoreAddress,
+          event.semaphoreNft!,
+        );
+        console.log('  onChainGroupMerkleRoot:', onChainGroupMerkleRoot.toString());
+      } catch (rootErr: any) {
+        console.warn('⚠️ Could not fetch on-chain Semaphore root (will use backend root):', rootErr?.message);
+      }
+
+      // Step 2: Fetch Merkle proof
+      // If the on-chain root differs from the backend's current root, pass targetRoot so
+      // the backend reconstructs the proof for the historical tree state at SV mint time.
+      setVoteStep('Fetching Merkle proof...');
+      const merkleUrl = onChainGroupMerkleRoot !== null
+        ? `${BACKEND_API_URL}/voting-event/${eventId}/merkle-proof/${validatedUserId}?targetRoot=${onChainGroupMerkleRoot.toString()}`
+        : `${BACKEND_API_URL}/voting-event/${eventId}/merkle-proof/${validatedUserId}`;
+      const merkleResponse = await fetch(merkleUrl);
+      if (!merkleResponse.ok) {
+        const merkleErr = await merkleResponse.json().catch(() => ({}));
+        throw new Error(merkleErr.message || 'Failed to fetch Merkle proof');
+      }
       const merkleData = await merkleResponse.json();
 
       const merkleProof = {
@@ -570,10 +619,6 @@ export default function EventPage() {
       const semaphoreValidatorCbor = await applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
       const votingValidatorCbor = await applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
 
-      const provider = new BlockfrostProvider(
-        process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY!
-      );
-
       const collateralUtxo = walletUtxos.find(u =>
         u.output.amount.length === 1 &&
         u.output.amount[0].unit === 'lovelace' &&
@@ -588,7 +633,6 @@ export default function EventPage() {
         semaphoreNftPolicyId: event.semaphoreNft!,
         votingNftPolicyId: event.votingNft!,
         groupNftPolicyId: event.groupNft!,
-        groupMerkleRoot: BigInt(event.groupMerkleRootHash),
         semaphoreValidatorCbor,
         votingValidatorCbor,
         walletUtxos,
@@ -611,14 +655,18 @@ export default function EventPage() {
       // Helper: roll back nullifier if anything after insertion fails, so the voter can retry.
       const rollbackNullifier = async () => {
         try {
-          await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/nullifier`, {
+          const res = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/nullifier`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ nullifier: nullifierHash.toString() }),
           });
-          console.log('↩️ Nullifier rolled back — voter can retry.');
+          if (res.ok) {
+            console.log('↩️ Nullifier rolled back — voter can retry.');
+          } else {
+            console.warn('⚠️ Nullifier rollback returned HTTP', res.status, '— voter may be locked out on retry.');
+          }
         } catch {
-          console.warn('⚠️ Nullifier rollback failed — voter may need organizer help to retry.');
+          console.warn('⚠️ Nullifier rollback network error — voter may need organizer help to retry.');
         }
       };
 
@@ -646,7 +694,8 @@ export default function EventPage() {
       if (!submitResponse.ok) {
         await rollbackNullifier();
         const errData = await submitResponse.json().catch(() => ({}));
-        throw new Error(errData.message || 'Failed to submit transaction');
+        console.error('Submission error (full):', JSON.stringify(errData, null, 2));
+        throw new Error(classifySubmissionError(errData));
       }
       const submitResult = await submitResponse.json();
       const txHash: string = submitResult.txHash;
@@ -672,7 +721,7 @@ export default function EventPage() {
     } catch (err) {
       console.error('Error submitting vote:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to submit vote. Please try again.';
-      setError(errorMessage);
+      setVoteError(errorMessage);
       setVoteStep(null);
       setSubmitting(false);
     }
@@ -1683,6 +1732,26 @@ export default function EventPage() {
                     </button>
                     {voteStep && (
                       <p className="mt-3 text-sm text-gray-600 text-center">{voteStep}</p>
+                    )}
+
+                    {voteError && (
+                      <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4">
+                        <div className="flex items-start gap-3">
+                          <svg className="w-5 h-5 text-red-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold text-red-900">Vote Failed</p>
+                            <p className="text-sm text-red-800 mt-1">{voteError}</p>
+                            <button
+                              onClick={() => setVoteError(null)}
+                              className="mt-2 text-xs text-red-700 underline hover:no-underline"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     )}
 
                     {!isSimpleVote && getTotalDistributedPoints() !== event.votingPower && (
