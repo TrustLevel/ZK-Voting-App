@@ -15,6 +15,10 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.backend
     restart: unless-stopped
+    # Cap RAM so a compromised/runaway container can't starve the host (the
+    # 2026-06-24 miner ran with no limit and OOM-starved the co-located motti/
+    # whisper services). Backend is a light NestJS process — 1g is ample.
+    mem_limit: 1g
     # Loads ./.env (BLOCKFROST_API_KEY, JWT_SECRET, RESEND_*, etc.) into the container.
     env_file: .env
     environment:
@@ -42,6 +46,10 @@ services:
         NEXT_PUBLIC_BACKEND_API_URL: "https://${API_DOMAIN}"
         NEXT_PUBLIC_BLOCKFROST_API_KEY: "${NEXT_PUBLIC_BLOCKFROST_API_KEY}"
     restart: unless-stopped
+    # Cap RAM (see backend note). This is the public-facing surface that was
+    # exploited in 2026-06-24 — the limit is the safety net against a repeat
+    # resource-exhaustion DoS on the host. `next start` runtime fits well under 1.5g.
+    mem_limit: 1536m
     expose:
       - "3002"                                # internal only; Caddy fronts it
     depends_on:

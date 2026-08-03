@@ -48,6 +48,16 @@ WORKDIR /app
 # same base image so they stay ABI-compatible), all dist/, and the modp build.
 COPY --from=builder /app /app
 
+# Run as the non-root `node` user (uid 1000, ships with the base image). A
+# container-root process that got exploited would BE host-root (no userns remap)
+# — that was the entry vector of the 2026-06-24 VPS compromise. Create the two
+# state dirs and hand the whole tree to `node` BEFORE the volumes mount: a fresh
+# named volume inherits ownership from the image dir, so `node` can write to
+# db/ and nullifiers-db/. (On a re-used volume, chown it once on the host.)
+RUN mkdir -p /app/src/backend/db /app/src/backend/nullifiers-db \
+ && chown -R node:node /app
+USER node
+
 # The backend resolves DATABASE_PATH=db/voting-app.db and nullifiers-db/
 # RELATIVE to its own working directory — these are the two volume mount points.
 WORKDIR /app/src/backend

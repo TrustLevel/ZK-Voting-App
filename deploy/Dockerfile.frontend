@@ -45,6 +45,14 @@ ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=builder /app /app
 
+# Run as the non-root `node` user (uid 1000, ships with the base image). The
+# public-facing Next.js frontend is the exploited surface — a container-root
+# process there would BE host-root (no userns remap), which is how the
+# 2026-06-24 VPS compromise escalated. `next start` writes .next/cache at
+# runtime, so `node` must own the tree.
+RUN chown -R node:node /app
+USER node
+
 # `next start` serves the production build, including the committed ZK assets at
 # public/zk/{semaphore.wasm,semaphore_final.zkey} that the browser fetches.
 WORKDIR /app/src/frontend
