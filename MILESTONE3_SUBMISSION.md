@@ -15,7 +15,8 @@ The initial version of the zk voting app is deployed, hosted, and functionally c
 | Hosted frontend | https://vote.trustlevel.io |
 | Hosted backend API | https://api.vote.trustlevel.io |
 | Source (this milestone) | https://github.com/TrustLevel/ZK-Voting-App/tree/preview |
-| Walkthrough video | https://youtu.be/b8HeAZMSW6s |
+| Walkthrough video (simple voting) | https://youtu.be/b8HeAZMSW6s |
+| Walkthrough video (weighted voting) | https://www.youtube.com/watch?v=EuaH2kGwe_0 |
 
 A full end-to-end vote has been confirmed in production: in-browser proof generation → backend MPF nullifier insertion → on-chain proof verification + MPF root check + vote tally. All on-chain tx are on Cardano Preprod Testnet:
 
@@ -26,6 +27,43 @@ https://preprod.cardanoscan.io/transaction/381eb4506edf88b1942c3f836a6d4d3285d2f
 
   3. Anonymous Vote (ZK-Proof + Nullifier) — 19:07:17 CEST, 2 Redeemer, Fee 2.10 ₳, Block 4829762:
 https://preprod.cardanoscan.io/transaction/3dd103810b62bc628065d42bb81957638fdcd9d890568968236c35344afcb0e7
+
+---
+
+## Response to Milestone 3 review feedback
+
+Milestone 3 is the **initial release** — a deployed, functionally complete application. Advanced
+development, including refined error handling and further UX polish, is scoped for **Milestone 4**
+(public testing). Each point raised in the review has nonetheless been addressed:
+
+**1. Unit test coverage (backend, tx builder).** On-chain validators and the ZK module already
+had coverage. We added backend unit tests for the auth and voting-event services, plus a
+transaction-builder test suite — including a CEK-machine evaluation pass with a real ZK proof,
+which exercises the critical vote-path code.
+- Backend unit tests (auth + voting-event service): https://github.com/TrustLevel/ZK-Voting-App/commit/e84392c
+- TX-builder test suite (utils, mint, vote structure): https://github.com/TrustLevel/ZK-Voting-App/commit/d1637b5
+- CEK-machine evaluation with a real ZK proof: https://github.com/TrustLevel/ZK-Voting-App/commit/425178d
+
+**2. Demo of weighted voting.** Added a walkthrough demonstrating weighted (power) voting, in
+addition to the existing simple-voting video.
+- Weighted voting video: https://www.youtube.com/watch?v=EuaH2kGwe_0
+
+**3. Unfriendly raw transaction error in the UI.** Blockchain errors are now categorized and
+shown as short, human-readable messages in a dismissible error card, instead of the raw error text.
+- Fix: https://github.com/TrustLevel/ZK-Voting-App/commit/89889fb
+
+**4. Cancelling the wallet signature locked the voter out.** The signing step now calls
+`rollbackNullifier()` on any failure, restoring the nullifier trie so the voter can retry. A user
+cancellation surfaces a clean *"Wallet signature declined. Your vote was not submitted."* message
+instead of the previous "identity already used" lock-out.
+- Fix: https://github.com/TrustLevel/ZK-Voting-App/commit/89889fb
+
+**Running a demo.** The end-to-end vote flow works reliably in our testing. Because this is a
+Cardano **Preprod testnet** application, a successful vote requires the one-time setup described in
+the Learn More guide: select the **Preprod** testnet in your wallet, fund it with free test ADA
+from the faucet, and use a supported CIP-30 wallet (**Eternl recommended**). With these
+prerequisites met, the full create → register → vote → results flow completes successfully.
+- Learn More (setup & walkthrough): https://github.com/TrustLevel/ZK-Voting-App/blob/preview/LEARN_MORE.md
 
 ---
 

@@ -31,8 +31,8 @@ number of points across options).
 Because this is a testnet preview, you need a Cardano wallet set to **Preprod** and some free
 test ADA:
 
-1. **Install a CIP-30 wallet** browser extension — [Eternl](https://eternl.io/),
-   [Lace](https://www.lace.io/), or [Yoroi](https://yoroi-wallet.com/).
+1. **Install a CIP-30 wallet** browser extension — [Eternl](https://eternl.io/) (recommended) or
+   [Lace](https://www.lace.io/).
 2. **Switch the wallet network to Preprod** (testnet), not Mainnet.
 3. **Get free test ADA** from the [Cardano Testnet Faucet](https://docs.cardano.org/cardano-testnets/tools/faucet) — paste your wallet's Preprod address and request funds. A few test ADA is enough to cover transaction fees.
 
@@ -44,7 +44,7 @@ You set up and run a voting event end to end.
 
 1. **Create the event** — connect your wallet at [vote.trustlevel.io](https://vote.trustlevel.io)
    and enter the event name, the options voters choose from, the voting mode (simple or weighted), and the voting date (must be at least ~15 minutes in the future).
-2. **Invite participants** — add people by wallet address or email. Each invitee gets a unique private link. The group is closed: only invited people can register and vote.
+2. **Invite participants** — add people by email. Each invitee gets a unique private link. The group is closed: only invited people can register and vote.
 3. **Wait for registration** — invitees open their link and register. Their browser generates a
    private cryptographic identity locally; only a public commitment is added to the group. No personal data is collected.
 4. **Deploy on-chain** — once the participant list is final, publish the event on the blockchain: Two transactions anchor the voting contracts on Cardano. From here, options, dates, and group membership are **immutable**.
