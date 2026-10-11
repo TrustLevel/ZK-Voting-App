@@ -133,13 +133,75 @@ Any other purpose fails unconditionally.
 
 ### `mint` — Property 1: NFT uniqueness
 
-Both conditions are enforced via `expect` — Aiken's fail-hard pattern match. If the pattern does not match, the transaction is immediately rejected with no fallback path.
+```aiken
+// Condition 0: Is expected UTxO spent?
+expect Some(_nft_utxo) = find_input(inputs, oref)
 
-- **Condition 0** uses `find_input` (stdlib `cardano/transaction`), which does a linear search over inputs and returns `Option<Input>`. The `expect Some(...)` wrapper fails hard if the oref is absent from the inputs. Since a UTxO can only be consumed once on Cardano, this guarantees the policy can only mint in one transaction ever. *Confirmed by test:* `wrong_parameter_utxo` *(fail — wrong oref → tx rejected).*
+// Condition 1: Is only one Voting NFT minted?
+expect [Pair(_asset_name, amount)] =
+  mint
+    |> assets.tokens(policy_id)
+    |> dict.to_pairs()
+let is_one_token_minted: Bool = amount == 1
+```
 
-- **Condition 1** uses `assets.tokens(policy_id)` (stdlib `cardano/assets`), which returns a `Dict<AssetName, Int>` of all tokens under the policy in the minted value. `dict.to_pairs()` converts it to a list. `expect [Pair(_, amount)]` matches exactly one element — fails hard if zero or more than one asset name is present. `amount == 1` then checks the quantity. *Confirmed by tests:* `tx_doesnt_mint_group_nft` *(zero minted → fail)* and `tx_mints_more_than_two_tokens` *(quantity 2 → fail).*
+Both conditions are enforced via `expect`. The Aiken glossary defines it as:
+
+> *"Keyword for non-exhaustive pattern matching that halts (fails) if the pattern doesn't match."*
+> — [Aiken Glossary — expect](https://aiken-lang.org/glossary#expect)
+
+If the pattern does not match, the transaction is immediately rejected with no fallback path.
+
+- **Condition 0** uses `find_input` (stdlib `cardano/transaction`). The stdlib documents it as:
+
+  > *"Find an input by its OutputReference."* `find_input(inputs: List<Input>, output_reference: OutputReference) -> Option<Input>`
+  > — [stdlib cardano/transaction](https://aiken-lang.github.io/stdlib/cardano/transaction.html#find_input)
+
+  The `expect Some(...)` wrapper fails hard if the oref is absent from the inputs. Since a UTxO can only be consumed once on Cardano, this guarantees the policy can only mint in one transaction ever. *Confirmed by test:* `wrong_parameter_utxo` *(fail — wrong oref → tx rejected).*
+
+- **Condition 1** uses `assets.tokens` (stdlib `cardano/assets`). The stdlib documents it as:
+
+  > *"Get all tokens associated with a given policy."* `tokens(self: Assets, policy_id: PolicyId) -> Dict<AssetName, Int>`
+  > — [stdlib cardano/assets](https://aiken-lang.github.io/stdlib/cardano/assets.html#tokens)
+
+  `dict.to_pairs()` converts the result to a list. `expect [Pair(_, amount)]` matches exactly one element — fails hard if zero or more than one asset name is present. `amount == 1` then checks the quantity. *Confirmed by tests:* `tx_doesnt_mint_group_nft` *(zero minted → fail)* and `tx_mints_more_than_two_tokens` *(quantity 2 → fail).*
 
 **Test gap:** The existing tests cover quantity > 1 for a single asset name, but there is no test for minting two tokens with *different* asset names under the same policy (each with quantity 1). The `expect [Pair(_, amount)]` pattern structurally handles this case, but it is not empirically confirmed. → **[F-1]**
+
+### `mint` — Property 2: STT correctly initialised
+
+```aiken
+// Condition 2: Is Voting NFT sent to script?
+let own_script_credential = Script(policy_id)
+expect [output_to_script] =
+  list.filter(
+    outputs,
+    fn(o) { o.address.payment_credential == own_script_credential },
+  )
+let is_nft_sent_to_script: Bool =
+  is_policy_on_value(output_to_script.value, policy_id)
+
+// Condition 3: Is there a Urna Datum attached?
+expect InlineDatum(out_datum) = output_to_script.datum
+expect urna_datum: UrnaDatum = out_datum
+```
+
+Both conditions are enforced via `expect` (see Property 1 for the glossary definition).
+
+- **Condition 2** (lines 45–52): builds a `Script(policy_id)` credential and filters all transaction outputs for those whose `payment_credential` matches. `expect [output_to_script]` fails hard if zero or more than one output reaches the script address — there must be exactly one. `is_policy_on_value` then confirms the policy is present in that output's value, using:
+
+  > *"A list of all token policies in that Assets with non-zero tokens."* `policies(self: Assets) -> List<PolicyId>`
+  > — [stdlib cardano/assets](https://aiken-lang.github.io/stdlib/cardano/assets.html#policies)
+
+  Soundness of `is_policy_on_value` was established in the Property 1 analysis: it is sound because Condition 0 guarantees no pre-existing tokens under `policy_id`. *Confirmed by test:* `wrong_address_output` *(fail — NFT sent to wrong address → filter returns empty → `expect` rejects).*
+
+- **Condition 3** (lines 55–56): `Datum` is a 3-variant stdlib type (`NoDatum`, `DatumHash(DataHash)`, `InlineDatum(Data)`), defined in:
+
+  > `cardano/transaction` — [stdlib cardano/transaction](https://aiken-lang.github.io/stdlib/cardano/transaction.html)
+
+  `expect InlineDatum(out_datum)` rejects both `NoDatum` and `DatumHash` — only a fully inlined datum passes. `expect urna_datum: UrnaDatum = out_datum` then fails hard if the data does not match the `UrnaDatum` shape.
+
+**Test gap:** No test attempts to mint with a missing datum, a datum-hash datum, or a datum of the wrong type. → **[F-2]**
 
 ---
 
@@ -165,6 +227,13 @@ Each finding follows this structure:
 ---
 
 ### Notes
+
+**[F-2] No test for missing or non-inline datum on mint output**
+- **Type:** Note
+- **Location:** `src/on-chain/validators/tests/minting_logic_test.ak`
+- **Description:** There is no test that attempts to mint while sending the output with `NoDatum`, `DatumHash`, or a datum of the wrong type. Condition 3 uses `expect InlineDatum(...)` and `expect urna_datum: UrnaDatum`, which structurally reject all three cases, but none are empirically confirmed.
+- **Recommendation:** Add failure tests for `NoDatum` output, `DatumHash` output, and a datum that does not match `UrnaDatum`.
+- **Status:** Open
 
 **[F-1] No test for minting two tokens with different asset names under the same policy**
 - **Type:** Note
