@@ -129,6 +129,20 @@ Any other purpose fails unconditionally.
 
 ---
 
+## Analysis
+
+### `mint` — Property 1: NFT uniqueness
+
+Both conditions are enforced via `expect` — Aiken's fail-hard pattern match. If the pattern does not match, the transaction is immediately rejected with no fallback path.
+
+- **Condition 0** uses `find_input` (stdlib `cardano/transaction`), which does a linear search over inputs and returns `Option<Input>`. The `expect Some(...)` wrapper fails hard if the oref is absent from the inputs. Since a UTxO can only be consumed once on Cardano, this guarantees the policy can only mint in one transaction ever. *Confirmed by test:* `wrong_parameter_utxo` *(fail — wrong oref → tx rejected).*
+
+- **Condition 1** uses `assets.tokens(policy_id)` (stdlib `cardano/assets`), which returns a `Dict<AssetName, Int>` of all tokens under the policy in the minted value. `dict.to_pairs()` converts it to a list. `expect [Pair(_, amount)]` matches exactly one element — fails hard if zero or more than one asset name is present. `amount == 1` then checks the quantity. *Confirmed by tests:* `tx_doesnt_mint_group_nft` *(zero minted → fail)* and `tx_mints_more_than_two_tokens` *(quantity 2 → fail).*
+
+**Test gap:** The existing tests cover quantity > 1 for a single asset name, but there is no test for minting two tokens with *different* asset names under the same policy (each with quantity 1). The `expect [Pair(_, amount)]` pattern structurally handles this case, but it is not empirically confirmed. → **[F-1]**
+
+---
+
 ## Findings
 
 Findings are classified into four tiers:
@@ -147,6 +161,17 @@ Each finding follows this structure:
 > - **Impact:**
 > - **Recommendation:**
 > - **Status:** Open / Acknowledged / Fixed
+
+---
+
+### Notes
+
+**[F-1] No test for minting two tokens with different asset names under the same policy**
+- **Type:** Note
+- **Location:** `src/on-chain/validators/tests/minting_logic_test.ak`
+- **Description:** The existing test `tx_mints_more_than_two_tokens` covers quantity > 1 for a single asset name. There is no test for the case where two tokens with *different* asset names (each with quantity 1) are minted under the same policy. The `expect [Pair(_, amount)]` pattern structurally handles this, but it is not empirically confirmed.
+- **Recommendation:** Add a test that attempts to mint two tokens with distinct asset names under the voting policy and asserts failure.
+- **Status:** Open
 
 ---
 
