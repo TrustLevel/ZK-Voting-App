@@ -648,6 +648,109 @@ Both conditions are enforced via `expect`:
 
 ---
 
+### `semaphore.ak` — `mint` Property 2: STT correctly initialised
+
+```aiken
+// Condition 2: Is Semaphore NFT sent to script?
+let own_script_credential = Script(policy_id)
+expect [output_to_script] =
+  list.filter(
+    outputs,
+    fn(o) { o.address.payment_credential == own_script_credential },
+  )
+let is_nft_sent_to_script: Bool =
+  is_policy_on_value(output_to_script.value, policy_id)
+
+// Condition 3: Is there a Semaphore Datum attached?
+expect InlineDatum(out_datum) = output_to_script.datum
+expect out_semaphore_dat: SemaphoreDatum = out_datum
+```
+
+Both conditions are enforced via `expect` (see Property 1 for the glossary definition).
+
+- **Condition 2** builds a `Script(policy_id)` credential and filters all transaction outputs for those whose `payment_credential` matches. `expect [output_to_script]` fails hard if zero or more than one output reaches the script address — there must be exactly one:
+
+  > *"Produce a list of elements that satisfy a predicate."* `filter(self: List<a>, predicate: fn(a) -> Bool) -> List<a>`
+  > — [stdlib aiken/collection/list](https://aiken-lang.github.io/stdlib/aiken/collection/list.html#filter)
+
+  `is_policy_on_value` then confirms the Semaphore NFT is present in that output's value, using `policies` (stdlib `cardano/assets`) — already verified sound in `voting.ak` mint Property 2. This check is weaker than `group.ak`'s Condition 2, which asserts the NFT is the *only* non-lovelace asset at the output. → **[F-SEM-3]**
+
+  *Confirmed by test:* `mint_wrong_address` *(fail — NFT sent to wrong script address → filter returns empty → `expect` rejects).*
+
+- **Condition 3** uses `expect InlineDatum(out_datum)` and `expect out_semaphore_dat: SemaphoreDatum` — the same datum extraction pattern verified in `voting.ak` mint Property 2. Only a fully inlined, correctly typed `SemaphoreDatum` passes; `NoDatum`, `DatumHash`, and wrong-typed data all fail hard. As established in the discussion of `expect` laziness: these statements are only evaluated when `out_semaphore_dat` is used in Conditions 4 and 5. Since both are in the final `and {}`, the datum check is always enforced on any passing path.
+
+  *Confirmed by test:* `mint_no_datum` *(fail — `NoDatum` → `expect InlineDatum(...)` rejects).*
+
+**Test gap:** No test attempts to mint with a `DatumHash` datum or a datum of the wrong type. Both are structurally rejected by `expect InlineDatum(...)` and `expect out_semaphore_dat: SemaphoreDatum`, but neither is empirically confirmed. → **[F-SEM-4]**
+
+---
+
+### `semaphore.ak` — `mint` Property 3: Group binding
+
+```aiken
+// Condition 4: Is group merkle root correctly set?
+expect [group_reference_input] =
+  list.filter(
+    reference_inputs,
+    fn(i) {
+      is_policy_on_value(
+        i.output.value,
+        out_semaphore_dat.group_token_policy,
+      )
+    },
+  )
+expect InlineDatum(group_datum) = group_reference_input.output.datum
+expect group_datum_data: GroupDatum = group_datum
+let is_merkle_root_correct: Bool =
+  group_datum_data.group_merke_root == out_semaphore_dat.group_merke_root
+```
+
+Condition 4 anchors the Semaphore datum to the Group NFT's current state at creation time. It has three sub-steps:
+
+- `list.filter` searches `reference_inputs` (not `inputs`) for an input carrying `out_semaphore_dat.group_token_policy`:
+
+  > *"Produce a list of elements that satisfy a predicate."* `filter(self: List<a>, predicate: fn(a) -> Bool) -> List<a>`
+  > — [stdlib aiken/collection/list](https://aiken-lang.github.io/stdlib/aiken/collection/list.html#filter)
+
+  Using `reference_inputs` is correct: the Group NFT is read without being consumed, keeping the group state thread alive for future registration transactions. `expect [group_reference_input]` fails hard if zero or more than one input carrying the group policy is found. Since the Group NFT is a one-shot token, exactly one can exist, so the `expect` is always well-formed when the input is present.
+
+  The policy to search for is `out_semaphore_dat.group_token_policy` — the value the minter placed in the Semaphore datum. The validator does not verify that this policy ID is legitimate; it trusts the minter to supply the correct group policy. A minter controlling a fake group could pass any policy here, but a dishonest Semaphore minting provides no security guarantee regardless, as the admin controls the bootstrap.
+
+- `expect InlineDatum(group_datum)` and `expect group_datum_data: GroupDatum` extract the `GroupDatum` from the reference input — same datum extraction pattern verified throughout. `NoDatum`, `DatumHash`, and wrong-typed data all fail hard.
+
+- `is_merkle_root_correct` asserts equality between the two Merkle roots:
+
+  ```aiken
+  group_datum_data.group_merke_root == out_semaphore_dat.group_merke_root
+  ```
+
+  This ensures the Semaphore datum commits to the exact Merkle root the group holds at creation time. The ZK circuit will use this root as a public input — so any voter registering after this point (causing a root update) would require a new Semaphore NFT or a group update transaction to remain consistent.
+
+*Confirmed by test:* `mint_group_root_tamper` *(fail — Semaphore datum sets `group_merke_root: 1111111111111111111` while Group NFT holds `12345678901234567890` → equality fails).*
+
+**Test gap:** No test attempts to mint without including the Group NFT in `reference_inputs`. `expect [group_reference_input]` would fail hard on an empty filter result, but this is not empirically confirmed. → **[F-SEM-5]**
+
+---
+
+### `semaphore.ak` — `mint` Property 4: Clean nullifier state
+
+```aiken
+pub const null_hash =
+  #"0000000000000000000000000000000000000000000000000000000000000000"
+
+// Condition 5: Is initial MPF root empty?
+let is_nullifier_root_empty: Bool =
+  out_semaphore_dat.nullifier_mpf_root == null_hash
+```
+
+`null_hash` is a module-level constant — 32 zero bytes — representing the root of an empty MPF trie. The check is a direct equality: `out_semaphore_dat.nullifier_mpf_root` must be exactly `null_hash`. Any non-zero value is rejected. This prevents a minter from pre-loading the trie with nullifiers at creation time, which would allow pre-burning voter identities.
+
+Note: `is_nullifier_root_empty` depends on `out_semaphore_dat`, which is bound by the `expect` in Condition 3. As established in Property 2, this `expect` is always evaluated before `is_nullifier_root_empty` is needed in the `and {}`, so the datum check is guaranteed to have run on any passing path.
+
+*Confirmed by tests:* `mint_create_semaphore_token_1` *(pass — `nullifier_mpf_root: null_hash` → accepted)* and `mint_mpf_root_wrong_setup` *(fail — `nullifier_mpf_root: #"111111111111"` → equality fails).*
+
+---
+
 ## Findings
 
 Findings are classified into four tiers:
@@ -754,6 +857,30 @@ Each finding follows this structure:
 - **Status:** Open
 
 ### `semaphore.ak`
+
+**[F-SEM-3] `semaphore.ak` mint: weaker NFT destination check than `group.ak`**
+- **Type:** Improvement
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/semaphore.ak:46`
+- **Description:** `semaphore.ak` Condition 2 uses `is_policy_on_value` to confirm the Semaphore NFT reached the script address. This only checks that the policy is *present* in the output value — other tokens can coexist in the same output. `group.ak` uses the stricter `policies(without_lovelace(value)) == [policy_id]`, which asserts the NFT is the *only* non-lovelace asset at that output. Same issue as F-VOTING-3.
+- **Impact:** Medium
+- **Recommendation:** Replace `is_policy_on_value(output_to_script.value, policy_id)` with `assets.policies(assets.without_lovelace(output_to_script.value)) == [policy_id]` to align with `group.ak`.
+- **Status:** Open
+
+**[F-SEM-5] `semaphore.ak`: no test for missing Group NFT in `reference_inputs` on mint**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
+- **Description:** No test attempts to mint the Semaphore NFT without including the Group NFT as a reference input. `expect [group_reference_input]` fails hard when the filter returns empty, but this is not empirically confirmed.
+- **Impact:** Low
+- **Recommendation:** Add a failure test that omits the Group reference input from `reference_inputs`.
+- **Status:** Open
+
+**[F-SEM-4] `semaphore.ak`: no test for `DatumHash` or wrong-typed datum on mint output**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
+- **Description:** `mint_no_datum` confirms the `NoDatum` case is rejected, but there is no test for a `DatumHash` datum or a datum that does not match `SemaphoreDatum`. Both are structurally rejected by `expect InlineDatum(...)` and `expect out_semaphore_dat: SemaphoreDatum`, but neither is empirically confirmed.
+- **Impact:** Low
+- **Recommendation:** Add failure tests for a `DatumHash` output and a datum that does not match `SemaphoreDatum`.
+- **Status:** Open
 
 **[F-SEM-2] `semaphore.ak`: no test for minting two tokens with different asset names**
 - **Type:** Note
