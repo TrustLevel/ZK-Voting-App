@@ -67,6 +67,28 @@ Finally, the contract enforces a **voting window** defined by `(start, end)` tim
 
 ---
 
+### `semaphore.ak` — Semaphore Validator
+
+The contract is a **multi-validator**: a single Aiken validator (`semaphore.ak`) that contains both a minting policy and a spending validator. The minting policy creates the Semaphore NFT; the spending validator processes each vote, verifying the ZK proof and advancing the nullifier state.
+
+The validator is **parameterised by an `OutputReference` (`oref`)**, making it a one-shot minting policy — the same one-shot guarantee that applies to `group.ak` and `voting.ak`.
+
+The Semaphore NFT is the **on-chain carrier of the ZK verification state**. Its `SemaphoreDatum` holds four fields: the group Merkle root (which voter group this Semaphore is bound to), the group token policy (used to locate the Group NFT), the VKey reference input (the `OutputReference` of the permanently locked `SnarkVerificationKey` UTxO), and the nullifier MPF root (the current root of the used-nullifier trie). Like the Group and Urna NFTs, the Semaphore NFT follows the **State Thread Token (STT)** pattern — every vote transaction spends and returns it with an updated `nullifier_mpf_root`, threading the nullifier set forward vote by vote.
+
+The **Groth16 ZK proof** is the only place in the entire system where group membership is checked on-chain. The public inputs to the proof are: the group Merkle root (from the datum), the nullifier (from the redeemer), the signal hash (from the redeemer), and an **external nullifier** — the Semaphore script's own policy ID (`script_hash`) converted to a BLS12-381 scalar via `scalar.from_bytearray_big_endian`. The external nullifier binds each proof to a specific contract instance: proofs generated for one voting event cannot be replayed in another.
+
+**Double-vote prevention** is enforced by the MPF trie: each vote inserts the nullifier into the trie, and `mpf.insert` fails hard if the key already exists. The output datum's `nullifier_mpf_root` must equal the root after the insertion — proving both that the insert succeeded and that the new root was committed to on-chain.
+
+**Signal integrity** is enforced by recomputing `blake2b_256(signal_message) % scalar.field_prime` on-chain and asserting it equals `signal_hash`. The ZK circuit takes `signal_hash` as a public input, so the proof commits to the signal content. This two-step linkage — proof commits to hash, validator checks hash against message — ensures the vote content cannot be substituted after proof generation.
+
+The **VKey UTxO** (`dat.vkey_ref_input`) is fetched from `reference_inputs` as a read-only input. It holds the `SnarkVerificationKey` in its inline datum and is permanently locked at an always-false script address. It can never be spent or altered; every vote transaction reads it without consuming it.
+
+**`mint` (redeemer: `Create`)** initialises a Semaphore NFT for a voting event. It enforces: one-shot oref consumption; exactly one token minted; token locked at script address; valid `SemaphoreDatum` attached; Merkle root in the datum matches the Group NFT reference input; nullifier root initialised to `null_hash`.
+
+**`spend` (redeemer: `Signal(...)`)** processes a single anonymous vote. It enforces: STT continuity (Semaphore NFT returned with equal value); immutable datum fields preserved; VKey loaded from the reference input and Groth16 proof verified; nullifier inserted and new MPF root committed; signal hash matches the signal message.
+
+---
+
 
 ## Properties
 
@@ -93,7 +115,7 @@ These conditions establish two properties:
 1. **Administrator proof of ownership** — Condition 0 gates all group updates behind the admin's signature. No other party can modify the group.
 2. **STT continuity** — Condition 1 ensures the Group NFT is returned to the same script address with equal non-lovelace value, keeping the state thread alive.
 
-> **Note:** Neither `mint` nor `spend` validates the `GroupDatum` structure. Datum correctness is trusted to the off-chain layer at creation time and to the admin at update time. → **[F-7]**
+> **Note:** Neither `mint` nor `spend` validates the `GroupDatum` structure. Datum correctness is trusted to the off-chain layer at creation time and to the admin at update time. → **[F-GROUP-1]**
 
 ---
 
@@ -147,6 +169,47 @@ These conditions establish four properties:
 4. **Datum preservation** — Condition 5 ensures the immutable parameters (`weight`, `event_date`, `semaphore_nft`) are unchanged across the transaction. Only the `options` tally is allowed to change.
 
 ### `else` — Catch-all
+
+Any other purpose fails unconditionally.
+
+---
+
+### `semaphore.ak` — Semaphore validator
+
+#### `mint` — Create a Semaphore NFT
+
+- **Condition 0:** The parameterised `oref` is consumed (one-shot uniqueness)
+- **Condition 1:** Exactly one token minted under this policy
+- **Condition 2:** Token sent to script address; policy confirmed present in output value
+- **Condition 3:** The output carries a valid `SemaphoreDatum` inline datum (enforced via `expect`, not in final `and {}`)
+- **Condition 4:** `SemaphoreDatum.group_merke_root` equals the current root in the Group NFT reference input
+- **Condition 5:** `SemaphoreDatum.nullifier_mpf_root` initialised to `null_hash` (empty trie)
+
+These conditions establish four properties:
+
+1. **NFT uniqueness** — Conditions 0 and 1 guarantee exactly one Semaphore NFT can ever exist under this policy.
+2. **STT correctly initialised** — Conditions 2 and 3 lock the token at the script address with a well-typed datum.
+3. **Group binding** — Condition 4 ties the Semaphore datum's Merkle root to the Group NFT's current state at creation time, ensuring the ZK circuit will use the same root the group was initialised with.
+4. **Clean nullifier state** — Condition 5 ensures no nullifiers are pre-loaded at creation time.
+
+#### `spend` — Process a vote (Signal)
+
+- **Condition 0:** Semaphore NFT returned to same script address with equal non-lovelace value (STT continuity)
+- **Condition 1:** Immutable datum fields preserved: `group_merke_root`, `group_token_policy`, `vkey_ref_input`
+- **Condition 2:** VKey UTxO fetched from `reference_inputs` via `dat.vkey_ref_input`; inline datum decoded as `SnarkVerificationKey`
+- **Condition 3:** Groth16 ZK proof verified against public values `[group_merke_root, nullifier, signal_hash, external_nullifier]`
+- **Condition 4:** Nullifier inserted into MPF trie from current `nullifier_mpf_root`; resulting root matches `out_datum.nullifier_mpf_root`
+- **Condition 5:** Signal integrity: `blake2b_256(signal_message) % scalar.field_prime == signal_hash`
+
+These conditions establish five properties:
+
+1. **STT continuity** — Condition 0 returns the Semaphore NFT to the same script address with equal non-lovelace value, keeping the state thread alive.
+2. **Datum preservation** — Condition 1 locks the immutable parameters in place. Only `nullifier_mpf_root` is allowed to change.
+3. **ZK proof verification** — Conditions 2 and 3 load the trusted VKey from the permanent reference input and verify the Groth16 proof, proving the voter is a group member.
+4. **Double-vote prevention** — Condition 4 inserts the nullifier into the MPF trie (hard-failing if already present) and commits the new root to the output datum, permanently consuming the voter's nullifier.
+5. **Signal integrity** — Condition 5 recomputes `blake2b_256(signal_message) % field_prime` on-chain and asserts it equals `signal_hash`. Since the ZK circuit takes `signal_hash` as a public input, this proves the signal message was not substituted after proof generation.
+
+#### `else` — Catch-all
 
 Any other purpose fails unconditionally.
 
@@ -207,7 +270,7 @@ Both conditions are enforced via `expect`:
 
   `dict.to_pairs()` converts the result to a list. `expect [Pair(_, amount)]` matches exactly one element — fails hard if zero or more than one asset name is present. `amount == 1` checks the quantity. *Confirmed by test:* `mint_wrong_minted_value` *(fail — quantity 2 → rejected).*
 
-**Test gap:** No test for minting two tokens with different asset names under the same policy (each with quantity 1). Same gap as `voting.ak` F-1 — the `expect [Pair(_, amount)]` pattern structurally handles it but it is not empirically confirmed. → **[F-8]**
+**Test gap:** No test for minting two tokens with different asset names under the same policy (each with quantity 1). Same gap as `voting.ak` F-VOTING-4 — the `expect [Pair(_, amount)]` pattern structurally handles it but it is not empirically confirmed. → **[F-GROUP-2]**
 
 ---
 
@@ -241,11 +304,11 @@ Three sub-steps lock the Group NFT at the script address:
   > *"A list of all token policies in that Assets with non-zero tokens."* `policies(self: Assets) -> List<PolicyId>`
   > — [stdlib cardano/assets](https://aiken-lang.github.io/stdlib/cardano/assets.html#policies)
 
-  The equality `out_value == [policy_id]` asserts that the Group NFT is the *only* non-lovelace asset at that output — no other tokens can be co-locked. This is stricter than `voting.ak`'s Condition 2, which only checks presence (see **[F-9]**).
+  The equality `out_value == [policy_id]` asserts that the Group NFT is the *only* non-lovelace asset at that output — no other tokens can be co-locked. This is stricter than `voting.ak`'s Condition 2, which only checks presence (see **[F-VOTING-3]**).
 
 *Confirmed by test:* `mint_sent_to_wrong_address` *(fail — NFT sent to wrong script address → filter returns empty → `expect` rejects).*
 
-**Test gap:** No test attempts to mint the Group NFT alongside an extra token in the same output. The `out_value == [policy_id]` equality structurally rejects it, but it is not empirically confirmed. → **[F-10]**
+**Test gap:** No test attempts to mint the Group NFT alongside an extra token in the same output. The `out_value == [policy_id]` equality structurally rejects it, but it is not empirically confirmed. → **[F-GROUP-3]**
 
 ---
 
@@ -264,6 +327,34 @@ let is_signed_by_admin: Bool = list.has(extra_signatories, dat.admin_pkh)
 `extra_signatories` is the list of required signers declared on the transaction. The Cardano ledger enforces that every key in this list has actually signed the transaction — the validator only needs to check that `dat.admin_pkh` is among them. Together, ledger + validator guarantee: only the admin's key can authorise a group update.
 
 *Confirmed by test:* `spend_malicious_pkh` *(fail — `extra_signatories: [#"0abc"]` while `admin_pkh = #"0001"` → `list.has` returns false).*
+
+---
+
+### `group.ak` — `spend` Property 2: STT continuity
+
+```aiken
+// Condition 1: Is NFT value returned?
+expect Some(this_script_input) = find_input(inputs, utxo)
+let this_script_address = this_script_input.output.address
+let this_script_value = this_script_input.output.value |> assets.without_lovelace()
+expect [output_to_script] =
+  list.filter(outputs, fn(o) { o.address == this_script_address })
+let is_value_returned: Bool =
+  assets.without_lovelace(output_to_script.value) == this_script_value
+```
+
+Three sub-checks keep the state thread alive across each group update:
+
+- `find_input(inputs, utxo)` locates the script's own input — already cited in `group.ak` mint Property 1. `expect Some(...)` fails hard if absent.
+
+- `list.filter` finds all outputs returning to the same address. Full address equality is used — both payment credential and staking credential must match. `expect [output_to_script]` fails hard if zero or more than one such output exists:
+
+  > *"Produce a list of elements that satisfy a predicate."* `filter(self: List<a>, predicate: fn(a) -> Bool) -> List<a>`
+  > — [stdlib aiken/collection/list](https://aiken-lang.github.io/stdlib/aiken/collection/list.html#filter)
+
+- `assets.without_lovelace` strips ADA from both sides before comparing — already cited in `voting.ak` spend Property 2. The equality asserts all native tokens (including the Group NFT) are returned intact. The Group NFT is always present on the input side (locked there at mint time), so this comparison is never trivially `empty == empty`.
+
+*Confirmed by tests:* `spend_wrong_address` *(fail — output sent to a different address → filter returns empty → `expect` rejects)* and `spend_value_not_conserved` *(fail — output value missing the Group NFT → equality fails).*
 
 ---
 
@@ -302,7 +393,7 @@ If the pattern does not match, the transaction is immediately rejected with no f
 
   `dict.to_pairs()` converts the result to a list. `expect [Pair(_, amount)]` matches exactly one element — fails hard if zero or more than one asset name is present. `amount == 1` then checks the quantity. *Confirmed by tests:* `tx_doesnt_mint_group_nft` *(zero minted → fail)* and `tx_mints_more_than_two_tokens` *(quantity 2 → fail).*
 
-**Test gap:** The existing tests cover quantity > 1 for a single asset name, but there is no test for minting two tokens with *different* asset names under the same policy (each with quantity 1). The `expect [Pair(_, amount)]` pattern structurally handles this case, but it is not empirically confirmed. → **[F-1]**
+**Test gap:** The existing tests cover quantity > 1 for a single asset name, but there is no test for minting two tokens with *different* asset names under the same policy (each with quantity 1). The `expect [Pair(_, amount)]` pattern structurally handles this case, but it is not empirically confirmed. → **[F-VOTING-4]**
 
 ### `mint` — Property 2: STT correctly initialised
 
@@ -329,7 +420,7 @@ Both conditions are enforced via `expect` (see Property 1 for the glossary defin
   > *"A list of all token policies in that Assets with non-zero tokens."* `policies(self: Assets) -> List<PolicyId>`
   > — [stdlib cardano/assets](https://aiken-lang.github.io/stdlib/cardano/assets.html#policies)
 
-  Soundness of `is_policy_on_value` was established in the Property 1 analysis: it is sound because Condition 0 guarantees no pre-existing tokens under `policy_id`. *Confirmed by test:* `wrong_address_output` *(fail — NFT sent to wrong address → filter returns empty → `expect` rejects).*
+  Soundness of `is_policy_on_value` was established in the Property 1 analysis: it is sound because Condition 0 guarantees no pre-existing tokens under `policy_id`. *Confirmed by test:* `wrong_address_output` *(fail — NFT sent to wrong address → filter returns empty → `expect` rejects).* This check is weaker than `group.ak`'s Condition 2, which asserts the NFT is the *only* non-lovelace asset at the output. → **[F-VOTING-3]**
 
 - **Condition 3** (lines 55–56): `Datum` is a 3-variant stdlib type (`NoDatum`, `DatumHash(DataHash)`, `InlineDatum(Data)`), defined in:
 
@@ -337,7 +428,7 @@ Both conditions are enforced via `expect` (see Property 1 for the glossary defin
 
   `expect InlineDatum(out_datum)` rejects both `NoDatum` and `DatumHash` — only a fully inlined datum passes. `expect urna_datum: UrnaDatum = out_datum` then fails hard if the data does not match the `UrnaDatum` shape.
 
-**Test gap:** No test attempts to mint with a missing datum, a datum-hash datum, or a datum of the wrong type. → **[F-2]**
+**Test gap:** No test attempts to mint with a missing datum, a datum-hash datum, or a datum of the wrong type. → **[F-VOTING-5]**
 
 ---
 
@@ -365,7 +456,7 @@ Two sub-checks combined with `&&`:
 
   *Confirmed by test:* `wrong_event_date` *(fail — validity range starts at 0, equal to `event_start` → `is_entirely_before` returns false).*
 
-**Test gap:** No test exercises the case where `event_start >= event_end` (inverted or zero-length window). The `event_start < event_end` check handles it, but it is not empirically confirmed. → **[F-3]**
+**Test gap:** No test exercises the case where `event_start >= event_end` (inverted or zero-length window). The `event_start < event_end` check handles it, but it is not empirically confirmed. → **[F-VOTING-6]**
 
 ### `mint` — Property 4: Clean initial state
 
@@ -390,7 +481,7 @@ Both conditions verify the `options` field of the datum is well-formed before th
 
 - **Condition 6** delegates to `check_options_index`, a custom recursive function. It rejects an empty options list with `error "Empty options"` — a voting event must have at least one option. It then calls `check_options_index_rec(options, 0)`, which walks the list asserting `o.1st == state` at each step and recurses with `state + 1`. By induction: base case `[]` → `True`; inductive step accepts only if the current index matches the expected position. *Confirmed by test:* `incorrect_options_index` *(fail — options `[(0,0),(3,0),(2,0)]` skip index 1 → rejected at position 1).*
 
-**Improvement:** `check_options_index` rejects an empty list but does not enforce a minimum of 2 options. A single-option voting event passes all checks. Since the purpose is to offer voters a choice — at minimum two options, or three when abstain is included — a minimum count should be enforced. → **[F-4]**
+**Improvement:** `check_options_index` rejects an empty list but does not enforce a minimum of 2 options. A single-option voting event passes all checks. Since the purpose is to offer voters a choice — at minimum two options, or three when abstain is included — a minimum count should be enforced. → **[F-VOTING-1]**
 
 ### `spend` — Property 4: Datum preservation
 
@@ -455,7 +546,7 @@ let is_weight_correct: Bool = check_weight(vote, dat.weight)
 
 - **Condition 6 — simple** (`weight <= 1`): `expect [vote_target] = vote` enforces exactly one option in the signal. `simple_vote` checks the index is in range (errors on out-of-bounds) and increments that option by 1. The comparison with `out_dat.options` enforces the output tally is exactly what `simple_vote` produces. Sound — invalid indices fail hard.
 
-- **Condition 6 — weighted** (`weight > 1`): `weighted_vote` applies all `(index, count)` pairs from the signal to the options. `check_weight` verifies the total weight sums to `dat.weight`. The comparison with `out_dat.options` enforces the output tally matches. However, `update_option` (used internally by `weighted_vote`) silently ignores an index that does not exist in the options list — weight assigned to a non-existent option is discarded without failing. `check_weight` does not detect this, as it only sums the counts in the signal, not in the updated tally. A voter could silently lose part of their weight. → **[F-6]**
+- **Condition 6 — weighted** (`weight > 1`): `weighted_vote` applies all `(index, count)` pairs from the signal to the options. `check_weight` verifies the total weight sums to `dat.weight`. The comparison with `out_dat.options` enforces the output tally matches. However, `update_option` (used internally by `weighted_vote`) silently ignores an index that does not exist in the options list — weight assigned to a non-existent option is discarded without failing. `check_weight` does not detect this, as it only sums the counts in the signal, not in the updated tally. A voter could silently lose part of their weight. → **[F-VOTING-7]**
 
 *Confirmed by tests:* `wrong_option_format`, `wrong_option_format_2` *(fail — incorrect tally)*, `vote_out_of_time`, `vote_out_of_time_2`, `vote_out_of_time_3` *(fail — validity range outside event window).*
 
@@ -490,7 +581,7 @@ Three sub-checks keep the state thread alive:
 
   The source implementation deletes the ADA policy key from the value's inner dictionary. The equality check then asserts that all native tokens — including the Urna NFT — are preserved in the output.
 
-  The code carries a TODO comment questioning whether `empty_value == empty_value` could trivially pass. This cannot happen: `this_script_input` is the Urna UTxO, which always holds the Urna NFT (locked there at mint time). `without_lovelace` on the input side always returns a non-empty value. The TODO should be removed. → **[F-5]**
+  The code carries a TODO comment questioning whether `empty_value == empty_value` could trivially pass. This cannot happen: `this_script_input` is the Urna UTxO, which always holds the Urna NFT (locked there at mint time). `without_lovelace` on the input side always returns a non-empty value. The TODO should be removed. → **[F-VOTING-2]**
 
 *Confirmed by test:* `group_token_has_not_been_returned` *(fail — output carries only lovelace, no NFT → `without_lovelace` comparison fails).*
 
@@ -520,6 +611,43 @@ This is the most load-bearing line in the contract. The voting validator does no
 
 ---
 
+### `semaphore.ak` — `mint` Property 1: NFT uniqueness
+
+```aiken
+// Condition 0: Is expected UTxO spent?
+expect Some(_nft_utxo) = find_input(inputs, oref)
+
+// Condition 1: Is only one Semaphore NFT minted?
+expect [Pair(_asset_name, amount)] =
+  mint
+    |> assets.tokens(policy_id)
+    |> dict.to_pairs()
+let is_one_token_minted: Bool = amount == 1
+```
+
+Both conditions are enforced via `expect`:
+
+> *"Keyword for non-exhaustive pattern matching that halts (fails) if the pattern doesn't match."*
+> — [Aiken Glossary — expect](https://aiken-lang.org/glossary#expect)
+
+- **Condition 0** uses `find_input` (stdlib `cardano/transaction`):
+
+  > *"Find an input by its OutputReference."* `find_input(inputs: List<Input>, output_reference: OutputReference) -> Option<Input>`
+  > — [stdlib cardano/transaction](https://aiken-lang.github.io/stdlib/cardano/transaction.html#find_input)
+
+  `expect Some(...)` fails hard if the oref is absent. Since a UTxO can only be consumed once on Cardano, the policy can only mint in one transaction ever. *Confirmed by test:* `mint_create_semaphore_token_1` *(pass — oref present → succeeds).*
+
+- **Condition 1** uses `assets.tokens` (stdlib `cardano/assets`):
+
+  > *"Get all tokens associated with a given policy."* `tokens(self: Assets, policy_id: PolicyId) -> Dict<AssetName, Int>`
+  > — [stdlib cardano/assets](https://aiken-lang.github.io/stdlib/cardano/assets.html#tokens)
+
+  `dict.to_pairs()` converts the result to a list. `expect [Pair(_, amount)]` matches exactly one element — fails hard if zero or more than one asset name is present. `amount == 1` checks the quantity. *Confirmed by test:* `mint_wrong_value` *(fail — quantity 2 → rejected).*
+
+**Test gap:** No test for minting two tokens with different asset names under the same policy (each with quantity 1). The `expect [Pair(_, amount)]` pattern structurally handles it, but it is not empirically confirmed. Same gap as F-GROUP-2 and F-VOTING-4. → **[F-SEM-2]**
+
+---
+
 ## Findings
 
 Findings are classified into four tiers:
@@ -541,78 +669,106 @@ Each finding follows this structure:
 
 ---
 
-### Improvements
+### `group.ak`
 
-**[F-4] No minimum options count enforced**
-- **Type:** Improvement
-- **Location:** `src/on-chain/lib/voting_utilities.ak:24`
-- **Description:** `check_options_index` rejects an empty options list but does not enforce a minimum of 2. A single-option voting event passes all mint checks. A meaningful vote requires at least two options; with an abstain option, at least three.
-- **Recommendation:** Add a `list.length(options) >= 2` (or `>= 3`) guard in `check_options_index` before the recursive check.
-- **Status:** Open
-
-**[F-5] Unresolved TODO comment on value preservation check**
-- **Type:** Improvement
-- **Location:** `src/on-chain/validators/voting.ak:106`
-- **Description:** A TODO comment questions whether `assets.without_lovelace(output) == assets.without_lovelace(input)` could trivially pass if both sides are empty. This cannot happen — `this_script_input` is the Urna UTxO, which always holds the Urna NFT from mint time, so the input side is never empty. The comment should be resolved and removed.
-- **Recommendation:** Remove the TODO comment.
-- **Status:** Open
-
-**[F-9] `voting.ak` Condition 2: weaker NFT destination check than `group.ak`**
-- **Type:** Improvement
-- **Location:** `src/on-chain/lib/voting_utilities.ak:111`, `src/on-chain/validators/voting.ak:52`
-- **Description:** `voting.ak` Condition 2 uses `is_policy_on_value` to confirm the Urna NFT reached the script address. This only checks that the policy is *present* in the output value — other tokens can coexist in the same output. `group.ak` uses the stricter `policies(without_lovelace(value)) == [policy_id]`, which asserts the NFT is the *only* non-lovelace asset at that output. Both serve the same purpose, but `group.ak`'s approach is more defensive.
-- **Recommendation:** Replace `is_policy_on_value(output_to_script.value, policy_id)` with `assets.policies(assets.without_lovelace(output_to_script.value)) == [policy_id]` to align with `group.ak` and prevent unintended tokens from being co-locked at the Urna UTxO.
-- **Status:** Open
-
-### Notes
-
-**[F-1] `voting.ak`: no test for minting two tokens with different asset names**
-- **Type:** Note
-- **Location:** `src/on-chain/validators/tests/minting_logic_test.ak`
-- **Description:** The existing test `tx_mints_more_than_two_tokens` covers quantity > 1 for a single asset name. There is no test for the case where two tokens with *different* asset names (each with quantity 1) are minted under the same policy. The `expect [Pair(_, amount)]` pattern structurally handles this, but it is not empirically confirmed.
-- **Recommendation:** Add a test that attempts to mint two tokens with distinct asset names under the voting policy and asserts failure.
-- **Status:** Open
-
-**[F-2] `voting.ak`: no test for missing or non-inline datum on mint output**
-- **Type:** Note
-- **Location:** `src/on-chain/validators/tests/minting_logic_test.ak`
-- **Description:** There is no test that attempts to mint while sending the output with `NoDatum`, `DatumHash`, or a datum of the wrong type. Condition 3 uses `expect InlineDatum(...)` and `expect urna_datum: UrnaDatum`, which structurally reject all three cases, but none are empirically confirmed.
-- **Recommendation:** Add failure tests for `NoDatum` output, `DatumHash` output, and a datum that does not match `UrnaDatum`.
-- **Status:** Open
-
-**[F-3] `voting.ak`: no test for inverted or zero-length voting window**
-- **Type:** Note
-- **Location:** `src/on-chain/validators/tests/minting_logic_test.ak`
-- **Description:** There is no test that attempts to mint with `event_start >= event_end`. The `event_start < event_end` check in Condition 4 handles it, but it is not empirically confirmed.
-- **Recommendation:** Add a failure test with `event_start == event_end` and another with `event_start > event_end`.
-- **Status:** Open
-
-**[F-6] `voting.ak`: weighted vote — invalid option index silently discards weight**
-- **Type:** Note
-- **Location:** `src/on-chain/lib/voting_utilities.ak:40`
-- **Description:** `update_option` returns the options unchanged if the given index is not found, rather than failing. `weighted_vote` calls `update_option` for each `(index, count)` pair in the signal. `check_weight` only verifies the total weight in the signal sums to `dat.weight` — it does not verify all indices are valid. A voter can include weight on a non-existent option index: `check_weight` passes, but that weight is silently lost from the tally. The voter's nullifier is consumed. This is asymmetric with simple mode, where `simple_vote` fails hard on an invalid index.
-- **Recommendation:** Add an index validation step in `weighted_vote` or `check_weight` to verify all option indices in the signal exist in `dat.options`. Alternatively, make `update_option` fail on a missing index.
-- **Status:** Open
-
-**[F-7] `group.ak` does not validate `GroupDatum` structure**
+**[F-GROUP-1] `group.ak` does not validate `GroupDatum` structure**
 - **Type:** Note
 - **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/group.ak`
 - **Description:** Neither `mint` nor `spend` validate the `GroupDatum` inline datum. At mint time no datum check exists at all; at update time the admin is trusted to write a correct datum. A malformed datum at mint time would not be caught by `group.ak` — errors would surface later in `semaphore.ak` mint (which reads the Group reference input). This is a deliberate trade-off for cheaper execution, but the assumption is implicit.
+- **Impact:** Low
 - **Recommendation:** Document the off-chain invariant explicitly. Optionally add a minimal datum shape check at mint time.
 - **Status:** Open
 
-**[F-8] `group.ak`: no test for minting two tokens with different asset names**
+**[F-GROUP-2] `group.ak`: no test for minting two tokens with different asset names**
 - **Type:** Note
 - **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/group_test.ak`
-- **Description:** Same gap as F-1 in `voting.ak`. No test attempts to mint two tokens with distinct asset names under the Group policy (each with quantity 1). The `expect [Pair(_, amount)]` pattern structurally handles this but it is not empirically confirmed.
+- **Description:** No test attempts to mint two tokens with distinct asset names under the Group policy (each with quantity 1). The `expect [Pair(_, amount)]` pattern structurally handles this but it is not empirically confirmed.
+- **Impact:** Low
 - **Recommendation:** Add a failure test minting two tokens with distinct asset names under the group policy.
 - **Status:** Open
 
-**[F-10] `group.ak`: no test for minting Group NFT alongside an extra token**
+**[F-GROUP-3] `group.ak`: no test for minting Group NFT alongside an extra token**
 - **Type:** Note
 - **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/group_test.ak`
 - **Description:** No test attempts to mint the Group NFT while sending an extra token (under a different policy) to the same script output. The `policies(without_lovelace(value)) == [policy_id]` check structurally rejects it, but it is not empirically confirmed.
+- **Impact:** Low
 - **Recommendation:** Add a failure test that includes an extra token in the minted output alongside the Group NFT.
+- **Status:** Open
+
+### `voting.ak`
+
+**[F-VOTING-1] No minimum options count enforced**
+- **Type:** Improvement
+- **Location:** `src/on-chain/lib/voting_utilities.ak:24`
+- **Description:** `check_options_index` rejects an empty options list but does not enforce a minimum of 2. A single-option voting event passes all mint checks. A meaningful vote requires at least two options; with an abstain option, at least three.
+- **Impact:** Medium
+- **Recommendation:** Add a `list.length(options) >= 2` (or `>= 3`) guard in `check_options_index` before the recursive check.
+- **Status:** Open
+
+**[F-VOTING-2] Unresolved TODO comment on value preservation check**
+- **Type:** Improvement
+- **Location:** `src/on-chain/validators/voting.ak:106`
+- **Description:** A TODO comment questions whether `assets.without_lovelace(output) == assets.without_lovelace(input)` could trivially pass if both sides are empty. This cannot happen — `this_script_input` is the Urna UTxO, which always holds the Urna NFT from mint time, so the input side is never empty. The comment should be resolved and removed.
+- **Impact:** Low
+- **Recommendation:** Remove the TODO comment.
+- **Status:** Open
+
+**[F-VOTING-3] Weaker NFT destination check than `group.ak`**
+- **Type:** Improvement
+- **Location:** `src/on-chain/lib/voting_utilities.ak:111`, `src/on-chain/validators/voting.ak:52`
+- **Description:** `voting.ak` Condition 2 uses `is_policy_on_value` to confirm the Urna NFT reached the script address. This only checks that the policy is *present* in the output value — other tokens can coexist in the same output. `group.ak` uses the stricter `policies(without_lovelace(value)) == [policy_id]`, which asserts the NFT is the *only* non-lovelace asset at that output. Both serve the same purpose, but `group.ak`'s approach is more defensive.
+- **Impact:** Medium
+- **Recommendation:** Replace `is_policy_on_value(output_to_script.value, policy_id)` with `assets.policies(assets.without_lovelace(output_to_script.value)) == [policy_id]` to align with `group.ak` and prevent unintended tokens from being co-locked at the Urna UTxO.
+- **Status:** Open
+
+**[F-VOTING-4] No test for minting two tokens with different asset names**
+- **Type:** Note
+- **Location:** `src/on-chain/validators/tests/minting_logic_test.ak`
+- **Description:** The existing test `tx_mints_more_than_two_tokens` covers quantity > 1 for a single asset name. There is no test for the case where two tokens with *different* asset names (each with quantity 1) are minted under the same policy. The `expect [Pair(_, amount)]` pattern structurally handles this, but it is not empirically confirmed.
+- **Impact:** Low
+- **Recommendation:** Add a test that attempts to mint two tokens with distinct asset names under the voting policy and asserts failure.
+- **Status:** Open
+
+**[F-VOTING-5] No test for missing or non-inline datum on mint output**
+- **Type:** Note
+- **Location:** `src/on-chain/validators/tests/minting_logic_test.ak`
+- **Description:** There is no test that attempts to mint while sending the output with `NoDatum`, `DatumHash`, or a datum of the wrong type. Condition 3 uses `expect InlineDatum(...)` and `expect urna_datum: UrnaDatum`, which structurally reject all three cases, but none are empirically confirmed.
+- **Impact:** Low
+- **Recommendation:** Add failure tests for `NoDatum` output, `DatumHash` output, and a datum that does not match `UrnaDatum`.
+- **Status:** Open
+
+**[F-VOTING-6] No test for inverted or zero-length voting window**
+- **Type:** Note
+- **Location:** `src/on-chain/validators/tests/minting_logic_test.ak`
+- **Description:** There is no test that attempts to mint with `event_start >= event_end`. The `event_start < event_end` check in Condition 4 handles it, but it is not empirically confirmed.
+- **Impact:** Low
+- **Recommendation:** Add a failure test with `event_start == event_end` and another with `event_start > event_end`.
+- **Status:** Open
+
+**[F-VOTING-7] Weighted vote — invalid option index silently discards weight**
+- **Type:** Note
+- **Location:** `src/on-chain/lib/voting_utilities.ak:40`
+- **Description:** `update_option` returns the options unchanged if the given index is not found, rather than failing. `weighted_vote` calls `update_option` for each `(index, count)` pair in the signal. `check_weight` only verifies the total weight in the signal sums to `dat.weight` — it does not verify all indices are valid. A voter can include weight on a non-existent option index: `check_weight` passes, but that weight is silently lost from the tally. The voter's nullifier is consumed. This is asymmetric with simple mode, where `simple_vote` fails hard on an invalid index.
+- **Impact:** Medium
+- **Recommendation:** Add an index validation step in `weighted_vote` or `check_weight` to verify all option indices in the signal exist in `dat.options`. Alternatively, make `update_option` fail on a missing index.
+- **Status:** Open
+
+### `semaphore.ak`
+
+**[F-SEM-2] `semaphore.ak`: no test for minting two tokens with different asset names**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
+- **Description:** No test attempts to mint two tokens with distinct asset names under the Semaphore policy (each with quantity 1). The `expect [Pair(_, amount)]` pattern structurally handles this but it is not empirically confirmed. Same gap as F-GROUP-2 and F-VOTING-4.
+- **Impact:** Low
+- **Recommendation:** Add a failure test minting two tokens with distinct asset names under the Semaphore policy.
+- **Status:** Open
+
+**[F-SEM-1] All spending tests use `inputs` instead of `reference_inputs` for the VKey input**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
+- **Description:** Every spending test builds the transaction with `vkey_input` in the `inputs` field, but the spending validator reads from `reference_inputs` (`find_input(reference_inputs, dat.vkey_ref_input)`). Since `reference_inputs` is never set in these tests, it is always empty, causing `expect Some(snark_vkey_ref_input)` to fail before any of the intended conditions are reached. The happy path test `spend_signal_semaphore_1` fails. All `fail` spending tests (`spend_value_not_sent_back`, `spend_datum_not_preserved_1/2`, `spend_vkey_field_with_incorrect_value`, `spend_incorrect_zk_proof`, `spend_nullifier_already_inserted`, `spend_tampered_message`) pass, but for the wrong reason — each errors at Condition 2 rather than the condition it is intended to test. Confirmed by running `aiken check` in the dependency package.
+- **Impact:** High
+- **Recommendation:** In all spending tests, move `vkey_input` from `inputs` to `reference_inputs` in the transaction construction. Verify that `spend_signal_semaphore_1` then passes and that each `fail` test fails at its intended condition.
 - **Status:** Open
 
 ---
