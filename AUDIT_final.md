@@ -751,6 +751,202 @@ Note: `is_nullifier_root_empty` depends on `out_semaphore_dat`, which is bound b
 
 ---
 
+### `semaphore.ak` — `spend` Property 1: STT continuity
+
+```aiken
+// Find script input
+expect Some(this_script_input) = find_input(inputs, utxo)
+// Find output sent back to script
+let this_script_address = this_script_input.output.address
+expect [output_to_script] =
+  list.filter(outputs, fn(o) { o.address == this_script_address })
+// Condition 0: Is script value sent back?
+let is_value_returned: Bool =
+  assets.without_lovelace(output_to_script.value) == assets.without_lovelace(
+    this_script_input.output.value,
+  )
+```
+
+Three sub-checks keep the state thread alive — the same pattern verified in `group.ak` spend Property 2 and `voting.ak` spend Property 2.
+
+- `find_input(inputs, utxo)` locates the script's own input (the Semaphore UTxO being spent):
+
+  > *"Find an input by its OutputReference."* `find_input(inputs: List<Input>, output_reference: OutputReference) -> Option<Input>`
+  > — [stdlib cardano/transaction](https://aiken-lang.github.io/stdlib/cardano/transaction.html#find_input)
+
+  `expect Some(...)` fails hard if absent.
+
+- `list.filter(outputs, fn(o) { o.address == this_script_address })` finds the output returning to the same address. Full address equality is used — both payment credential and staking credential must match. `expect [output_to_script]` fails hard if zero or more than one such output exists:
+
+  > *"Produce a list of elements that satisfy a predicate."* `filter(self: List<a>, predicate: fn(a) -> Bool) -> List<a>`
+  > — [stdlib aiken/collection/list](https://aiken-lang.github.io/stdlib/aiken/collection/list.html#filter)
+
+- `assets.without_lovelace` strips ADA from both sides before comparing:
+
+  > *"Get Assets excluding Ada."* `without_lovelace(self: Assets) -> Assets`
+  > — [stdlib cardano/assets](https://aiken-lang.github.io/stdlib/cardano/assets.html#without_lovelace)
+
+  The equality asserts all native tokens — including the Semaphore NFT — are preserved in the output. The input side is never empty: `this_script_input` is the Semaphore UTxO, which always holds the Semaphore NFT locked there at mint time.
+
+*Confirmed by test:* `spend_value_not_sent_back` *(fail — output sent to a different address → filter returns empty → `expect` rejects).* The happy path test `spend_signal_semaphore_1` fails due to F-SEM-1 and does not confirm this property.
+
+---
+
+### `semaphore.ak` — `spend` Property 2: Datum preservation
+
+```aiken
+// Condition 1: Is Datum preserved?
+expect InlineDatum(out_data) = output_to_script.datum
+expect out_datum: SemaphoreDatum = out_data
+let is_datum_preserved: Bool = and {
+    dat.group_merke_root == out_datum.group_merke_root,
+    dat.group_token_policy == out_datum.group_token_policy,
+    dat.vkey_ref_input == out_datum.vkey_ref_input,
+  }
+```
+
+The output datum is first extracted via `expect InlineDatum(out_data)` and `expect out_datum: SemaphoreDatum` — the same datum extraction pattern verified throughout. Then three fields are checked for equality: `group_merke_root`, `group_token_policy`, and `vkey_ref_input`. The fourth field, `nullifier_mpf_root`, is intentionally absent from this check — it is the only field permitted to change, updated by Condition 4.
+
+This separation is the key design decision: the immutable event parameters — which group this Semaphore is bound to, and which VKey UTxO holds the proof verification key — are locked in place for the lifetime of the event. Only the nullifier accumulator is allowed to advance.
+
+**Test isolation note:** `spend_datum_not_preserved_1` and `spend_datum_not_preserved_2` set `is_datum_preserved` to `False`, which causes the `and {}` to short-circuit before reaching Condition 2 (the VKey lookup). This means these tests correctly exercise Condition 1 and are not affected by F-SEM-1.
+
+*Confirmed by tests:* `spend_datum_not_preserved_1` *(fail — `group_merke_root` altered in output datum → equality fails)* and `spend_datum_not_preserved_2` *(fail — `group_token_policy` altered in output datum → equality fails).*
+
+**Test gap:** No test alters `vkey_ref_input` in the output datum while keeping other fields intact. The third equality check is structurally enforced but not independently confirmed. → **[F-SEM-6]**
+
+---
+
+### `semaphore.ak` — `spend` Property 3: ZK proof verification
+
+```aiken
+// Condition 2: Is Snark Verification Keys reference input correct?
+expect Some(snark_vkey_ref_input) =
+  find_input(reference_inputs, dat.vkey_ref_input)
+expect InlineDatum(snark_vkey_input) = snark_vkey_ref_input.output.datum
+expect snark_vkey: SnarkVerificationKey = snark_vkey_input
+
+// Get external nullifier value (The scripthash/policyID of the validator itself)
+expect Script(script_hash) = this_script_address.payment_credential
+expect Some(external_nullifier) =
+  scalar.from_bytearray_big_endian(script_hash)
+
+// Cond 3: Verify ZK proof
+let public_values: List<Int> =
+  [
+    dat.group_merke_root,
+    nullifier,
+    signal_hash,
+    scalar.to_int(external_nullifier),
+  ]
+let is_snark_correct: Bool =
+  groth_verify(snark_vkey, zk_proof, public_values)
+```
+
+Two steps load the trusted VKey and run the proof verifier.
+
+**Condition 2** loads the `SnarkVerificationKey` from the permanent VKey UTxO:
+
+- `find_input(reference_inputs, dat.vkey_ref_input)` locates the VKey UTxO by `OutputReference` in `reference_inputs` — fixed in `cardano-semaphore v0.9.4` (previously searched `inputs`, which would have consumed the UTxO). `expect Some(...)` fails hard if the reference input is absent.
+
+- `expect InlineDatum(snark_vkey_input)` and `expect snark_vkey: SnarkVerificationKey = snark_vkey_input` decode the datum using the standard pattern. A datum that is not an inline `SnarkVerificationKey` fails hard.
+
+**External nullifier** is derived from the Semaphore script's own address:
+
+- `expect Script(script_hash) = this_script_address.payment_credential` extracts the 28-byte script hash. Since `this_script_address` was already located from a valid `find_input(inputs, utxo)` in Property 1, the payment credential is always `Script(...)` — this `expect` cannot fail.
+
+- `expect Some(external_nullifier) = scalar.from_bytearray_big_endian(script_hash)`:
+
+  `scalar.from_bytearray_big_endian` returns `None` only when the byte value is ≥ the BLS12-381 scalar field prime `r` (~2^254.87). A Cardano script hash is 28 bytes = 224 bits, always strictly less than `r`, so this `expect Some(...)` never fails in practice.
+
+  Note: this still uses the old pre-v0.9.3 pattern (without `% scalar.field_prime`), unlike Condition 5's `signal_hash` computation. It is safe here due to the fixed 28-byte length, but the two conditions are inconsistent in style.
+
+  The external nullifier binds each proof to a specific contract instance — a proof generated for one voting event cannot be replayed under another, because each event's distinct script hash produces a distinct external nullifier in the circuit's public inputs.
+
+**Condition 3** assembles the four public inputs and calls the Groth16 verifier:
+
+- `public_values = [group_merke_root, nullifier, signal_hash, external_nullifier]`
+- `groth_verify(snark_vkey, zk_proof, public_values)` — the verifier is implemented in `ak-381` and is out of scope for this audit. Its correctness is trusted. A valid proof asserts: the voter knows a secret that is a leaf of the Merkle tree with root `group_merke_root`, produces nullifier `nullifier`, and committed to signal `signal_hash` under external context `external_nullifier`.
+
+*Confirmed by test:* `snark_1` *(pass — standalone `groth_verify` with a hardcoded valid proof and matching public values → verifier returns true).* The spending tests `spend_incorrect_zk_proof` (fail) and `spend_vkey_field_with_incorrect_value` (fail) are intended to confirm the rejection path for this condition, but both fail at Condition 2 due to **F-SEM-1** and never reach `groth_verify`. Neither provides empirical coverage of Condition 3. → **[F-SEM-1]**
+
+---
+
+### `semaphore.ak` — `spend` Property 4: Double-vote prevention
+
+```aiken
+// Cond 4: Is the Nullifier already inserted.
+let nullifier_mpf: MerklePatriciaForestry =
+  mpf.from_root(dat.nullifier_mpf_root)
+
+expect Some(n_value) = scalar.new(nullifier)
+let nullifier_value: ByteArray =
+  scalar.to_bytearray_little_endian(n_value, 0)
+let nullifier_key: ByteArray = crypto.blake2b_256(nullifier_value)
+let new_mpf_nullifier: MerklePatriciaForestry =
+  mpf.insert(nullifier_mpf, nullifier_key, nullifier_value, mpf_proof)
+
+let is_new_nullifier_root: Bool =
+  mpf.from_root(out_datum.nullifier_mpf_root) == new_mpf_nullifier
+```
+
+This condition enforces that each Semaphore identity can cast at most one vote per event, and that the on-chain nullifier state is durably updated.
+
+**Trie reconstruction.** `mpf.from_root(dat.nullifier_mpf_root)` reconstructs the MPF trie from the root hash stored in the current datum. This is the authenticated snapshot of all nullifiers used so far. The trie itself is not stored on-chain — only the root hash; the off-chain `mpf_proof` in the redeemer supplies the witness.
+
+**Nullifier serialisation.** Before inserting, the nullifier integer is converted to a canonical byte form:
+
+- `expect Some(n_value) = scalar.new(nullifier)` — `scalar.new` rejects values outside the BLS12-381 field. A valid Semaphore nullifier is `poseidon(identity_nullifier, external_nullifier)`, always within the field, so this `expect` succeeds on honest inputs. A malformed redeemer with an out-of-range integer fails hard here.
+
+- `scalar.to_bytearray_little_endian(n_value, 0)` produces the canonical little-endian byte representation.
+
+- `crypto.blake2b_256(nullifier_value)` derives the MPF trie key from the serialised nullifier. Hashing to derive the key is standard practice — it ensures uniform key length and avoids leaking scalar structure.
+
+**Insertion and double-vote prevention.** `mpf.insert(nullifier_mpf, nullifier_key, nullifier_value, mpf_proof)` is the core security step. The MPF library — [`aiken-lang/merkle-patricia-forestry`](https://github.com/aiken-lang/merkle-patricia-forestry) — requires `mpf_proof` to prove that `nullifier_key` does **not** already exist in the trie. If the key is already present (i.e., the voter previously cast a vote), the proof is invalid and `mpf.insert` fails, rejecting the transaction. This makes double-voting impossible without a valid non-membership proof.
+
+**Root update enforcement.** `is_new_nullifier_root = mpf.from_root(out_datum.nullifier_mpf_root) == new_mpf_nullifier` checks that the output datum's root matches the trie after the new nullifier is inserted. This is load-bearing: without it, a voter could present a valid non-membership proof and "insert" the nullifier without committing the updated root — leaving the trie state unchanged and the same nullifier reusable in a future transaction.
+
+*Confirmed by test:* `spend_nullifier_already_inserted_1` (fail) is intended to confirm rejection of a duplicate nullifier. Due to **F-SEM-1** it fails at Condition 2 and never reaches Condition 4. There is no test providing empirical coverage of this property. → **[F-SEM-1]**
+
+---
+
+### `semaphore.ak` — `spend` Property 5: Signal integrity
+
+```aiken
+// Condition 5. Is message tampered?
+// blake2b_256 produces a 256-bit value which may exceed the BLS12-381 scalar field prime r.
+// Using scalar.from_bytearray_big_endian would return None for ~55% of all messages.
+// Fix: reduce mod field_prime (same reduction the circom circuit applies implicitly).
+let message_digest_int =
+  builtin.bytearray_to_integer(True, crypto.blake2b_256(signal_message)) % scalar.field_prime
+let is_signal_message_tampered: Bool =
+  message_digest_int == signal_hash
+```
+
+This condition binds `signal_message` (the raw CBOR vote data decoded by `voting.ak`) to `signal_hash` (the ZK circuit's public input), preventing a third party from substituting a different vote payload after the proof has been generated.
+
+**Hash recomputation.** The validator hashes `signal_message` on-chain and compares the result to `signal_hash`:
+
+- `crypto.blake2b_256(signal_message)` produces a 256-bit hash of the raw signal bytes.
+- `builtin.bytearray_to_integer(True, ...)` interprets those bytes as a big-endian integer.
+- `% scalar.field_prime` reduces the integer into the BLS12-381 scalar field `r`. The result is what the circuit receives as the `signal_hash` public input.
+
+If `signal_message` is altered after proof generation, the recomputed hash diverges from `signal_hash` and the check fails. If `signal_hash` is altered instead, Condition 3 (`groth_verify`) already rejects the proof because the hash is a circuit public input — the two conditions are mutually reinforcing.
+
+**BLS12-381 field overflow fix.** `blake2b_256` produces 256 bits; the scalar field prime `r ≈ 2^{254.87}`, so ~55% of possible digests exceed `r`. Prior to `cardano-semaphore v0.9.3`, the code used `scalar.from_bytearray_big_endian(hash)`, which returns `None` for any value ≥ `r`, causing `expect Some(...)` to fail on roughly half of all valid votes. The current code uses `% scalar.field_prime`, matching the implicit modular reduction the circom circuit already performs on all field inputs. This makes on-chain and off-chain representations consistent without altering circuit behaviour.
+
+**Consistency with off-chain.** The same reduction is applied in `src/zk/src/proof.ts`:
+
+```ts
+signalHash = BigInt('0x' + digestHex) % BLS12_381_R
+```
+
+Both sides reduce the same 256-bit digest modulo the same prime, ensuring the public input the circuit was proved against equals the value recomputed on-chain.
+
+*Confirmed by test:* `spend_tampered_message` (fail) is intended to confirm rejection of an altered `signal_message`. Due to **F-SEM-1** it fails at Condition 2 and never reaches Condition 5. There is no test providing empirical coverage of this property. → **[F-SEM-1]**
+
+---
+
 ## Findings
 
 Findings are classified into four tiers:
@@ -864,6 +1060,14 @@ Each finding follows this structure:
 - **Description:** `semaphore.ak` Condition 2 uses `is_policy_on_value` to confirm the Semaphore NFT reached the script address. This only checks that the policy is *present* in the output value — other tokens can coexist in the same output. `group.ak` uses the stricter `policies(without_lovelace(value)) == [policy_id]`, which asserts the NFT is the *only* non-lovelace asset at that output. Same issue as F-VOTING-3.
 - **Impact:** Medium
 - **Recommendation:** Replace `is_policy_on_value(output_to_script.value, policy_id)` with `assets.policies(assets.without_lovelace(output_to_script.value)) == [policy_id]` to align with `group.ak`.
+- **Status:** Open
+
+**[F-SEM-6] `semaphore.ak`: no test for altered `vkey_ref_input` in output datum**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
+- **Description:** `spend_datum_not_preserved_1` and `spend_datum_not_preserved_2` confirm that `group_merke_root` and `group_token_policy` are independently enforced. No test alters `vkey_ref_input` in the output datum while keeping the other fields intact. The third equality check in `is_datum_preserved` is structurally enforced but not independently confirmed.
+- **Impact:** Low
+- **Recommendation:** Add a failure test that changes only `vkey_ref_input` in the output datum and asserts rejection.
 - **Status:** Open
 
 **[F-SEM-5] `semaphore.ak`: no test for missing Group NFT in `reference_inputs` on mint**
