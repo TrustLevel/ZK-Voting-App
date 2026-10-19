@@ -1131,6 +1131,137 @@ Each finding follows this structure:
 - [ ] Write findings and summary
 - [ ] **Before applying any finding fix: verify the change does not break the current running application (vote.trustlevel.io). Re-run on-chain tests (`aiken check`) and end-to-end vote flow after each change.**
 
+---
+
+## Annex A — Test Review: `voting.ak`
+
+Full test run: **154 pass, 0 fail** (`aiken check` in `src/on-chain/`).
+
+Test files reviewed:
+- `validators/tests/minting_logic_test.ak` — 8 tests (mint)
+- `validators/tests/spending_logic_test.ak` — 14 tests (spend)
+- `lib/tests/voting_tests.ak` — `simple_vote`, `weighted_vote`, `check_weight`, `update_option`
+- `lib/tests/check_option_values.ak` — `check_options_index`, `check_initial_options_value`
+- `lib/tests/is_interval_within.ak` — `is_interval_within`
+- `lib/tests/signal_tests.ak` — `serialise_signal`, `deserialise_signal`, signal hash computation
+
+### Clean areas
+
+- `minting_logic_test.ak` — all mint conditions covered independently; clean construction.
+- `check_option_values.ak` — thorough boundary coverage including negative indices, gaps, and duplicates.
+- `is_interval_within.ak` — 30 tests; boundary discipline is correct (touching-boundary cases are `fail`).
+- `voting_tests.ak` — `update_option`, `simple_vote`, `weighted_vote`, `check_weight` well-covered. `signal_tests.ak` includes property-based tests via Aiken's fuzzer for serialisation round-trip.
+
+### Issues found
+
+**T-1 — `vote_out_of_time_3` fails for the wrong reason** (`spending_logic_test.ak:914`)
+
+Labelled "validity range of the tx is not within the voting time event." The `signal_message` encodes a vote for option index 35 with weight 60, on a 3-option, weight-1 ballot. Option index 35 is out of bounds (`simple_vote` errors); weight 60 != 1. The test `fail`s but for an ambiguous reason — the time check and the malformed signal both cause rejection. The intended condition (time enforcement) is not cleanly isolated.
+
+**T-2 — `vote_out_of_time_2` output datum mutates `event_date`** (`spending_logic_test.ak:824`)
+
+Labelled "vote window is not open yet." The output `urna_datum_1` sets `event_date = (50, 100)` while the input has `(1, 100)`. `voting.ak` spend enforces `dat.event_date == out_dat.event_date` via `is_datum_preserved`. The test fails due to both the time check and the datum check, not the time check alone. Two confounding rejection reasons.
+
+**T-3 — `signal_digest_scalar` uses pre-v0.9.3 pattern on 256-bit hash** (`signal_tests.ak:89`)
+
+```aiken
+let signal_bytes = serialise_signal([(2,1)]) |> blake2b_256()
+expect Some(signal_scalar) = scalar.from_bytearray_big_endian(signal_bytes)
+```
+
+`scalar.from_bytearray_big_endian` returns `None` for values ≥ the BLS12-381 scalar field prime `r`. A 256-bit blake2b hash exceeds `r` ~55% of the time. This test passes only because the hash of `[(2,1)]` happens to be < `r`. The pattern is inconsistent with the on-chain fix introduced in v0.9.3 (`% scalar.field_prime`) and could mislead a developer using this test as a reference for computing `signal_hash`.
+
+**T-4 — `vote_14` comment is wrong** (`voting_tests.ak:179`)
+
+Comment reads: *"Validates voting on option that has negative vote count (-5→-4)."* The actual option is `(1, 5)` (positive). The test itself is correct (5→6) but the comment is misleading.
+
+**T-5 — `weighted_vote_10` has an unresolved TODO** (`voting_tests.ak:292`)
+
+`weighted_vote` accepts duplicate indices in `target_options` (e.g., `[(1,1),(1,1)]` adds 2 to option 1). The developer flagged this with `// TODO: Fix this corner case`. Not exploitable because `check_weight` enforces total == allowed weight, but the redundant format is unresolved and could confuse the off-chain signal encoder.
+
+**T-6 — Spending tests use stub Semaphore datum**
+
+All `cast_*` and `vote_*` tests set `semaphore_output.datum: NoDatum` and most use `nullifier = 0, signal_hash = 0`. Valid as unit tests of `voting.ak` in isolation. Confirms there is no integration test running both `voting.ak` and `semaphore.ak` on a fully-formed transaction with a real ZK proof.
+
+---
+
+## Annex B — Test Review: `group.ak`
+
+Full test run: **7 pass, 0 fail** (`aiken check` in `modulo-p-cardano-semaphore` package).
+
+Test file reviewed: `validators/tests/group_test.ak`
+
+### Clean areas
+
+All conditions are covered and tests are well-constructed. Mint conditions for token quantity and destination address have dedicated `fail` tests. Spend conditions for admin signature, return address, and value conservation each have a dedicated `fail` test.
+
+### Issues found
+
+**G-1 — No test for wrong `oref` in mint** (`group_test.ak`)
+
+`group.ak` mint Condition 0 consumes the parameterised `oref` (one-shot guarantee). No `fail` test passes a wrong UTxO as input while providing the correct `oref`. The equivalent test exists for `voting.ak` mint (`wrong_parameter_utxo`) but is absent here.
+
+**G-2 — No test for `Create` redeemer on spend**
+
+`group.ak` spend returns `False` for any redeemer other than `Update` (`_ -> False`). No test confirms that spending with the `Create` redeemer is rejected.
+
+**G-3 — `group.ak` mint does not verify the `GroupDatum` (design observation)**
+
+The mint validator has no condition checking that a `GroupDatum` is attached, that `admin_pkh` is non-empty, or that `group_merke_root` is initialised to 0. Any datum — or `NoDatum` — is accepted at mint time. `mint_create_group_1` tests with a valid datum, but this is not enforced on-chain. Initialisation constraints are entirely off-chain trust. Security consequence is limited (the minting admin controls the event regardless), but it is a design choice worth documenting explicitly.
+
+---
+
+## Annex C — Test Review: `semaphore.ak`
+
+Full test run: **15 pass, 1 fail** (`aiken check` in `modulo-p-cardano-semaphore` package).
+
+Test file reviewed: `validators/tests/semaphore_test.ak`
+
+### Mint tests — 6 tests, all pass/fail correctly
+
+All 5 mint conditions have dedicated coverage: one-shot UTxO (`mint_create_semaphore_token_1`), token quantity (`mint_wrong_value`), destination address (`mint_wrong_address`), group root copy (`mint_group_root_tamper`), datum presence (`mint_no_datum`), MPF root initialisation (`mint_mpf_root_wrong_setup`). These six tests are well-constructed.
+
+### Standalone proof test — `snark_1`
+
+`snark_1` calls `groth_verify(vk, zk_proof, public_values)` directly (outside the validator). It is the only test that provides empirical confirmation that the Groth16 verifier accepts a real proof with the hardcoded public inputs. Not a validator integration test, but important as a sanity check.
+
+### Spending tests — 8 tests, 5 broken by F-SEM-1
+
+All spending tests place `vkey_input` in `inputs` rather than `reference_inputs`. The validator's Condition 2 calls `find_input(reference_inputs, dat.vkey_ref_input)`. Due to UPLC call-by-need, the VKey lookup is reached only when all conditions up to that point hold. The per-test breakdown:
+
+| Test | Expected | Actual failure reason | Correct? |
+|---|---|---|---|
+| `spend_signal_semaphore_1` | PASS | F-SEM-1 — `reference_inputs` empty, VKey lookup returns `None` | ✗ WRONG |
+| `spend_value_not_sent_back` | FAIL | `expect [output_to_script]` — no output at the script address | ✓ RIGHT |
+| `spend_datum_not_preserved_1` | FAIL | `is_datum_preserved = False` — lazy short-circuit, VKey lookup never reached | ✓ RIGHT |
+| `spend_datum_not_preserved_2` | FAIL | `is_datum_preserved = False` — same | ✓ RIGHT |
+| `spend_vkey_field_with_incorrect_value` | FAIL | F-SEM-1 — both sides reference `OutputReference{#"01bc",0}`, so `is_datum_preserved = True` | ✗ WRONG |
+| `spend_incorrect_zk_proof` | FAIL | F-SEM-1 — `is_datum_preserved = True`, reaches Condition 2 | ✗ WRONG |
+| `spend_nullifier_already_inserted` | FAIL | F-SEM-1 — `is_datum_preserved = True`, reaches Condition 2 | ✗ WRONG |
+| `spend_tampered_message` | FAIL | F-SEM-1 — `is_datum_preserved = True`, reaches Condition 2 | ✗ WRONG |
+
+### Issues found
+
+**S-1 — `spend_vkey_field_with_incorrect_value` has a construction error beyond F-SEM-1**
+
+This test intends to verify that a VKey UTxO with a wrong datum type (`InlineDatum(1)`) is rejected. However, `initial_semaphore_datum.vkey_ref_input` and `output_semaphore_datum.vkey_ref_input` both point to `OutputReference { transaction_id: #"01bc", output_index: 0 }` — the same reference. So `is_datum_preserved` is `True`, and after fixing F-SEM-1, the test would proceed to Condition 2, find the wrong-typed datum, and fail at `expect snark_vkey: SnarkVerificationKey = snark_vkey_input`. The test will produce the correct outcome after fixing F-SEM-1, but for an indirect reason. A cleaner construction would set a distinct `OutputReference` for `wrong_vk_input` to isolate the datum-type rejection from the reference lookup.
+
+**S-2 — `spend_signal_semaphore_1` has an incomplete MPF proof** (`semaphore_test.ak`, lines 620–628)
+
+The happy-path test stubs `mpf_proof = []`. The code that would compute a real MPF proof from the LevelDB store is commented out. Because F-SEM-1 causes this test to fail before the MPF check, the empty-proof substitution has never been tested either. For an empty initial trie (`null_hash`), `mpf.insert` with an empty proof appears to work (the `insert_nullifier` test in `mpf_proofs.ak` passes with the same hardcoded root), but this is a coincidence of the empty-trie case. No test exercises MPF insertion into a non-empty trie through the spending path.
+
+**S-3 — No test for wrong `oref` in mint**
+
+Same gap as `group.ak`. No `fail` test passes a wrong UTxO as input while providing the correct `oref` parameter. `mint_wrong_oref` is absent.
+
+**S-4 — No test for `Signal` redeemer on mint**
+
+The mint validator's `_ -> False` branch is not exercised. No test confirms that a `Signal` redeemer on the mint endpoint is rejected.
+
+**S-5 — Misleading comment on `spend_signal_semaphore_1` (line 657)**
+
+The line `inputs: [semaphore_input, vkey_input],` is prefixed with the comment `// Include vkey as reference input`. The comment is correct about the intent; the code is wrong. This directly points at the root cause of F-SEM-1 and suggests the author knew the VKey should be a reference input but placed it in the wrong field.
+
 <!-- STRUCTURE NOTES
 - Technology Overview: high-level, no code — what the system is, what problem it solves,
   key concepts (ZK proofs, Semaphore, one-shot NFT pattern). Written for a reader unfamiliar
