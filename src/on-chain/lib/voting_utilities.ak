@@ -89,6 +89,11 @@ pub fn weighted_vote(options: Options, target_options: Options) -> Options {
     }
 }
 
+// Checks that all indices in vote exist in options.
+pub fn check_vote_indices(options: Options, vote: Options) -> Bool {
+  list.all(vote, fn(v) { list.any(options, fn(o) { o.1st == v.1st }) })
+}
+
 // The weight on the target_options must be equal to the weight allowed by the voting event.
 pub fn check_weight(target_options: Options, allowed_weight: Int) -> Bool {
     let weight: Int = list.foldr(target_options, 0, fn(to, total) { to.2nd + total } )
