@@ -2,7 +2,7 @@ use aiken/primitive/bytearray
 use aiken/interval.{between, Interval}
 use cardano/address.{from_script}
 use cardano/assets.{from_lovelace, from_asset, merge, Value}
-use cardano/transaction.{Input, NoDatum, InlineDatum, Output, OutputReference, Transaction} as transaction
+use cardano/transaction.{Input, NoDatum, DatumHash, InlineDatum, Output, OutputReference, Transaction} as transaction
 use voting.{ UrnaDatum, Mint }
 
 const validator_policy_id = bytearray.from_string(@"policy_id")
@@ -368,6 +368,155 @@ test wrong_option_values() fail {
 
     let tx: Transaction = create_voting_instance_tx(parameter_utxo, group_nft, output_to_script, time_range)
 
+
+    voting.voting.mint(parameter_utxo, Mint, validator_policy_id, tx)
+}
+
+// Two tokens with different asset names (qty 1 each) minted under the same policy — expect [Pair(...)] fails
+test tx_mints_two_tokens_different_names() fail {
+    let parameter_utxo = OutputReference { transaction_id: "#01", output_index: 0 }
+
+    let minting_value =
+        from_asset(policy_id: validator_policy_id, asset_name: bytearray.from_string(@"vote_example_1"), quantity: 1)
+            |> merge(_, from_asset(policy_id: validator_policy_id, asset_name: bytearray.from_string(@"vote_example_2"), quantity: 1))
+            |> merge(_, from_lovelace(2000000))
+
+    let urna_datum: UrnaDatum = UrnaDatum {
+        weight: 1,
+        options: [(0,0), (1,0), (2,0)],
+        event_date: (2, 100),
+        semaphore_nft: semaphore_policy_id,
+    }
+
+    let output_to_script: Output = Output {
+        address: from_script(validator_policy_id),
+        value: minting_value,
+        datum: InlineDatum(urna_datum),
+        reference_script: None,
+    }
+
+    let time_range: Interval<Int> = between(0, 1)
+
+    let tx: Transaction = create_voting_instance_tx(parameter_utxo, minting_value, output_to_script, time_range)
+
+    voting.voting.mint(parameter_utxo, Mint, validator_policy_id, tx)
+}
+
+// Mint output has NoDatum — expect InlineDatum(...) fails
+test mint_output_no_datum() fail {
+    let parameter_utxo = OutputReference { transaction_id: "#01", output_index: 0 }
+
+    let group_nft = from_asset(policy_id: validator_policy_id, asset_name: bytearray.from_string(@"vote_example_1"), quantity: 1)
+        |> merge(_, from_lovelace(2000000))
+
+    let output_to_script: Output = Output {
+        address: from_script(validator_policy_id),
+        value: group_nft,
+        datum: NoDatum,
+        reference_script: None,
+    }
+
+    let time_range: Interval<Int> = between(0, 1)
+
+    let tx: Transaction = create_voting_instance_tx(parameter_utxo, group_nft, output_to_script, time_range)
+
+    voting.voting.mint(parameter_utxo, Mint, validator_policy_id, tx)
+}
+
+// Mint output has DatumHash instead of inline datum — expect InlineDatum(...) fails
+test mint_output_datum_hash() fail {
+    let parameter_utxo = OutputReference { transaction_id: "#01", output_index: 0 }
+
+    let group_nft = from_asset(policy_id: validator_policy_id, asset_name: bytearray.from_string(@"vote_example_1"), quantity: 1)
+        |> merge(_, from_lovelace(2000000))
+
+    let output_to_script: Output = Output {
+        address: from_script(validator_policy_id),
+        value: group_nft,
+        datum: DatumHash(#"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"),
+        reference_script: None,
+    }
+
+    let time_range: Interval<Int> = between(0, 1)
+
+    let tx: Transaction = create_voting_instance_tx(parameter_utxo, group_nft, output_to_script, time_range)
+
+    voting.voting.mint(parameter_utxo, Mint, validator_policy_id, tx)
+}
+
+// Mint output has inline datum of wrong type — expect urna_datum: UrnaDatum fails
+test mint_output_wrong_datum_type() fail {
+    let parameter_utxo = OutputReference { transaction_id: "#01", output_index: 0 }
+
+    let group_nft = from_asset(policy_id: validator_policy_id, asset_name: bytearray.from_string(@"vote_example_1"), quantity: 1)
+        |> merge(_, from_lovelace(2000000))
+
+    let output_to_script: Output = Output {
+        address: from_script(validator_policy_id),
+        value: group_nft,
+        datum: InlineDatum(42),
+        reference_script: None,
+    }
+
+    let time_range: Interval<Int> = between(0, 1)
+
+    let tx: Transaction = create_voting_instance_tx(parameter_utxo, group_nft, output_to_script, time_range)
+
+    voting.voting.mint(parameter_utxo, Mint, validator_policy_id, tx)
+}
+
+// Voting window with equal start and end — event_start < event_end fails
+test mint_zero_length_voting_window() fail {
+    let parameter_utxo = OutputReference { transaction_id: "#01", output_index: 0 }
+
+    let group_nft = from_asset(policy_id: validator_policy_id, asset_name: bytearray.from_string(@"vote_example_1"), quantity: 1)
+        |> merge(_, from_lovelace(2000000))
+
+    let urna_datum: UrnaDatum = UrnaDatum {
+        weight: 1,
+        options: [(0,0), (1,0), (2,0)],
+        event_date: (50, 50),
+        semaphore_nft: semaphore_policy_id,
+    }
+
+    let output_to_script: Output = Output {
+        address: from_script(validator_policy_id),
+        value: group_nft,
+        datum: InlineDatum(urna_datum),
+        reference_script: None,
+    }
+
+    let time_range: Interval<Int> = between(0, 1)
+
+    let tx: Transaction = create_voting_instance_tx(parameter_utxo, group_nft, output_to_script, time_range)
+
+    voting.voting.mint(parameter_utxo, Mint, validator_policy_id, tx)
+}
+
+// Voting window with inverted start and end — event_start < event_end fails
+test mint_inverted_voting_window() fail {
+    let parameter_utxo = OutputReference { transaction_id: "#01", output_index: 0 }
+
+    let group_nft = from_asset(policy_id: validator_policy_id, asset_name: bytearray.from_string(@"vote_example_1"), quantity: 1)
+        |> merge(_, from_lovelace(2000000))
+
+    let urna_datum: UrnaDatum = UrnaDatum {
+        weight: 1,
+        options: [(0,0), (1,0), (2,0)],
+        event_date: (100, 1),
+        semaphore_nft: semaphore_policy_id,
+    }
+
+    let output_to_script: Output = Output {
+        address: from_script(validator_policy_id),
+        value: group_nft,
+        datum: InlineDatum(urna_datum),
+        reference_script: None,
+    }
+
+    let time_range: Interval<Int> = between(0, 1)
+
+    let tx: Transaction = create_voting_instance_tx(parameter_utxo, group_nft, output_to_script, time_range)
 
     voting.voting.mint(parameter_utxo, Mint, validator_policy_id, tx)
 }
