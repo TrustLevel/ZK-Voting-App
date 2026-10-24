@@ -1108,6 +1108,71 @@ Each finding follows this structure:
 
 > What was fixed or acknowledged in response to findings. Documents the response to each finding and closes the loop.
 
+### [F-VOTING-7] Weighted vote — invalid option index silently discards weight
+
+**Files:** `src/on-chain/lib/voting_utilities.ak`, `src/on-chain/validators/voting.ak`
+
+Added `check_vote_indices` to `voting_utilities.ak`:
+
+```aiken
+pub fn check_vote_indices(options: Options, vote: Options) -> Bool {
+  list.all(vote, fn(v) { list.any(options, fn(o) { o.1st == v.1st }) })
+}
+```
+
+In `voting.ak` weighted branch, extracted `weighted_vote` into its own variable and added `are_indices_valid` as an explicit condition:
+
+```aiken
+let updated_options: Options = weighted_vote(dat.options, vote)
+let are_indices_valid: Bool = check_vote_indices(dat.options, vote)
+let is_vote_correct: Bool = updated_options == out_dat.options
+let is_weight_correct: Bool = check_weight(vote, dat.weight)
+are_indices_valid && is_vote_correct && is_weight_correct && validator_conditions
+```
+
+A signal with an index not present in `dat.options` now fails the transaction. Brings the weighted path to the same standard as simple voting, where `simple_vote` already rejects out-of-bounds indices with `error "Index out of range"`.
+
+---
+
+### [F-VOTING-2] Unresolved TODO comment on value preservation check
+
+**File:** `src/on-chain/validators/voting.ak`
+
+Removed the TODO comment at the `is_value_returned` binding. The concern in the comment (that both sides could be empty) cannot arise — `this_script_input` is the Urna UTxO, which always holds the Urna NFT from mint time. The check is correct as written.
+
+---
+
+### [F-VOTING-3] Weaker NFT destination check than `group.ak`
+
+**File:** `src/on-chain/validators/voting.ak`
+
+Replaced `is_policy_on_value(output_to_script.value, policy_id)` with the stricter check used by `group.ak`:
+
+```aiken
+let is_nft_sent_to_script: Bool =
+  assets.policies(assets.without_lovelace(output_to_script.value)) == [
+    policy_id,
+  ]
+```
+
+This asserts the Urna NFT is the *only* non-lovelace asset at the script output, preventing arbitrary tokens from being co-locked at the Urna UTxO alongside the NFT.
+
+---
+
+### [F-VOTING-1] No minimum options count enforced
+
+**File:** `src/on-chain/validators/voting.ak`
+
+Added **Condition 7** to the `voting` mint validator:
+
+```aiken
+// Condition 7: Are there at least 2 options?
+let are_options_count_valid: Bool =
+  list.length(urna_datum.options) >= 2
+```
+
+`are_options_count_valid` is included in the final `and {}`. The observation comment was updated from "3 to 6" to "3 to 7". The threshold of 2 covers the minimal meaningful case (two-option vote) while leaving room for the typical three-option pattern (abstain + two choices). A single-option voting event is now rejected at mint time.
+
 ---
 
 ## Conclusions
