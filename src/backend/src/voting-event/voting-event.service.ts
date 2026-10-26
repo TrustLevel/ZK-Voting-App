@@ -529,6 +529,8 @@ export class VotingEventService {
   // (e.g. UTxO not yet visible to Ogmios), we proceed to submit anyway.
   async submitVote(
     signedTx: string,
+    eventId?: number,
+    nullifier?: string,
   ): Promise<{ txHash: string }> {
     if (!signedTx) {
       throw new HttpException('Missing signedTx in request body', HttpStatus.BAD_REQUEST);
@@ -592,6 +594,11 @@ export class VotingEventService {
 
     const body = await response.text();
     if (!response.ok) {
+      // F2: roll back the nullifier on transient submission failures so the voter can retry.
+      // Don't roll back script evaluation failures (those are definitive proof rejections).
+      if (eventId !== undefined && nullifier !== undefined) {
+        try { await this.rollbackNullifier(eventId, nullifier); } catch { /* ignore rollback errors */ }
+      }
       // Surface the real Blockfrost error to the frontend instead of a generic 500
       throw new HttpException(
         `Blockfrost submission failed (${response.status}): ${body}`,
@@ -733,6 +740,13 @@ export class VotingEventService {
     const { blake2b } = require('@noble/hashes/blake2b');
 
     const nullifierBigInt = BigInt(nullifier);
+
+    // F2: reject nullifiers outside the BLS12-381 scalar field — on-chain semaphore
+    // uses scalar.new() which wraps values mod r, so anything outside [1, r) is invalid.
+    const BLS12_381_R = BigInt('52435875175126190479447740508185965837690552500527637822603658699938581184513');
+    if (nullifierBigInt <= 0n || nullifierBigInt >= BLS12_381_R) {
+      throw new HttpException('Invalid nullifier: out of BLS12-381 scalar field range', HttpStatus.BAD_REQUEST);
+    }
 
     // Convert nullifier to key/value — mirrors on-chain semaphore.ak:
     //   scalar.new(nullifier) → scalar.to_bytearray_little_endian(n, 0) → blake2b_256(value)

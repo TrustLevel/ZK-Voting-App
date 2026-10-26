@@ -652,34 +652,15 @@ export default function EventPage() {
         eventEnd: event.endingDate! * 1000,
       });
 
-      // Helper: roll back nullifier if anything after insertion fails, so the voter can retry.
-      const rollbackNullifier = async () => {
-        try {
-          const res = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/nullifier`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nullifier: nullifierHash.toString() }),
-          });
-          if (res.ok) {
-            console.log('↩️ Nullifier rolled back — voter can retry.');
-          } else {
-            console.warn('⚠️ Nullifier rollback returned HTTP', res.status, '— voter may be locked out on retry.');
-          }
-        } catch {
-          console.warn('⚠️ Nullifier rollback network error — voter may need organizer help to retry.');
-        }
-      };
-
       // Step 7: Sign transaction
       setVoteStep('Waiting for wallet signature...');
       let signedTx: string;
       try {
         signedTx = await wallet.signTx(unsignedTx, true);
       } catch (signErr: any) {
-        await rollbackNullifier();
         const msg = signErr?.message ?? String(signErr);
         if (msg.toLowerCase().includes('user declined') || msg.toLowerCase().includes('declined sign')) {
-          throw new Error('Wallet signature declined. Your vote was not submitted.');
+          throw new Error('Wallet signature declined. Your vote was not submitted. To retry, contact the event organizer to reset your voting session.');
         }
         throw new Error('Signing failed: ' + msg);
       }
@@ -689,10 +670,10 @@ export default function EventPage() {
       const submitResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signedTx }),
+        body: JSON.stringify({ signedTx, nullifier: nullifierHash.toString() }),
       });
       if (!submitResponse.ok) {
-        await rollbackNullifier();
+        // Rollback is handled server-side when nullifier is passed with the submit request.
         const errData = await submitResponse.json().catch(() => ({}));
         console.error('Submission error (full):', JSON.stringify(errData, null, 2));
         throw new Error(classifySubmissionError(errData));
