@@ -46,7 +46,7 @@ export async function buildSemaphoreVotingMintTransaction(params: {
   votingValidatorCbor: string;
   selectedUtxo: UTxO;
   walletUtxos: UTxO[];
-  walletAddress: string;
+  changeAddress: string;
   semaphoreScriptAddr: string;
   semaphoreMintValue: Asset[];
   semaphoreDatum: any;
@@ -69,7 +69,7 @@ export async function buildSemaphoreVotingMintTransaction(params: {
     votingValidatorCbor,
     selectedUtxo,
     walletUtxos,
-    walletAddress,
+    changeAddress,
     semaphoreScriptAddr,
     semaphoreMintValue,
     semaphoreDatum,
@@ -115,7 +115,7 @@ export async function buildSemaphoreVotingMintTransaction(params: {
       })
 
       // Consume the UTxO (satisfies one-shot condition for both)
-      .txIn(selectedUtxo.input.txHash, selectedUtxo.input.outputIndex, selectedUtxo.output.amount, walletAddress)
+      .txIn(selectedUtxo.input.txHash, selectedUtxo.input.outputIndex, selectedUtxo.output.amount, selectedUtxo.output.address)
       .selectUtxosFrom(walletUtxos)
 
       // Collateral
@@ -134,7 +134,7 @@ export async function buildSemaphoreVotingMintTransaction(params: {
       .txOutInlineDatumValue(urnaDatum, "JSON")
 
       // Change and signature
-      .changeAddress(walletAddress)
+      .changeAddress(changeAddress)
       .requiredSignerHash(paymentKeyHash)
       .complete();
 
@@ -274,7 +274,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     votingValidatorCbor,
     selectedUtxo,
     walletUtxos,
-    walletAddress: walletAddress!,
+    changeAddress: walletAddress!,
     semaphoreScriptAddr,
     semaphoreMintValue,
     semaphoreDatum,

@@ -862,11 +862,11 @@ test vote_out_of_time_2() fail {
         output: output_from_script,
     }
 
-    // Condition 2: Is Vote NFT sent back to
+    // Output datum preserves event_date — only the time check causes rejection
     let urna_datum_1: UrnaDatum = UrnaDatum {
         weight: 1,
         options: [(0,0), (1,0), (2,1)],
-        event_date: (50, 100),
+        event_date: (1, 100),
         semaphore_nft: semaphore_policy_id,
     }
     let output_to_script: Output = Output {
@@ -888,8 +888,8 @@ test vote_out_of_time_2() fail {
     let signal_hash = 0
     let signal_message = serialise_signal([(2,1)])
     let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
-    
-    // Set a time event within the voting time. 
+
+    // Validity range [1,49] is not entirely after event_start=1 — is_interval_within fails
     let time_range: Interval<Int> = between(1, 49)
 
 
@@ -952,11 +952,11 @@ test vote_out_of_time_3() fail {
         output: output_from_script,
     }
 
-    // Condition 2: Is Vote NFT sent back to
+    // Output datum preserves event_date — only the time check causes rejection
     let urna_datum_1: UrnaDatum = UrnaDatum {
         weight: 1,
         options: [(0,0), (1,0), (2,1)],
-        event_date: (50, 100),
+        event_date: (1, 100),
         semaphore_nft: semaphore_policy_id,
     }
     let output_to_script: Output = Output {
@@ -976,10 +976,10 @@ test vote_out_of_time_3() fail {
     let mpf_proof = []
     let nullifier = 0
     let signal_hash = 0
-    let signal_message = serialise_signal([(35,60)])
+    let signal_message = serialise_signal([(2,1)])
     let semaphore_redeemer: SemaphoreRedeemer = Signal(zk_proof, mpf_proof, nullifier, signal_hash, signal_message)
-    
-    // Set a time event within the voting time. 
+
+    // Validity range [1,49] is not entirely after event_start=1 — is_interval_within fails
     let time_range: Interval<Int> = between(1, 49)
 
 

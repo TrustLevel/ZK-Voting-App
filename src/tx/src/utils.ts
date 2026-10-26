@@ -231,7 +231,7 @@ export function generateEventTiming(options?: {
  * @example
  * const datum = createGroupDatum(0, paymentKeyHash);
  */
-export function createGroupDatum(merkleRoot: number, adminPkh: string): any {
+export function createGroupDatum(merkleRoot: bigint | number, adminPkh: string): any {
   // Validate inputs
   if (merkleRoot < 0) {
     throw new Error('Merkle root must be non-negative');

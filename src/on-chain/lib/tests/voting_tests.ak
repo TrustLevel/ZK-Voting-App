@@ -1,5 +1,5 @@
  //use aiken/collection/list
-use voting_utilities.{ simple_vote, weighted_vote, check_weight, update_option }
+use voting_utilities.{ simple_vote, weighted_vote, check_weight, update_option, check_vote_indices }
 use types.{ Options }
 
 // Update option
@@ -175,8 +175,8 @@ test vote_13() fail {
     simple_vote(options, 999) == [(0,0), (1,0)]
 }
 
-// Test 14: Vote on option with negative existing value
-// Validates voting on option that has negative vote count (-5→-4)
+// Test 14: Vote on option with existing positive count
+// Validates increment on an option already holding a value (5→6)
 test vote_14() {
     let options: Options = [(0,0), (1, 5), (2,0)]
     simple_vote(options, 1) == [(0,0), (1, 6), (2,0)]
@@ -287,11 +287,10 @@ test weighted_vote_9() fail {
     weighted_vote(options, [(1,1)]) == [(0,1), (1,2), (2,0)]
 }
 
-// Test duplicate target options - adds to same option twice (1+1+1=3)
-// TODO: Fix this corner case
-test weighted_vote_10() {
+// Test duplicate target options — duplicate indices are rejected by check_vote_indices
+test weighted_vote_10() fail {
     let options: Options = [(0,1), (1,1), (2,1)]
-    weighted_vote(options, [(1,1),(1,1)]) == [(0,1), (1,3), (2,1)]
+    check_vote_indices(options, [(1,1),(1,1)])
 }
 
 // Check Weight
@@ -328,5 +327,47 @@ test check_weight_5() fail {
     let target_options = [(0,0), (1,0), (2, 0)]
     let allowed_weight = 1
     check_weight(target_options, allowed_weight)
+}
+
+// check_vote_indices: all signal indices exist in options
+test check_vote_indices_1() {
+    let options: Options = [(0,0), (1,0), (2,0)]
+    let vote: Options = [(0,1), (1,2), (2,2)]
+    check_vote_indices(options, vote)
+}
+
+// check_vote_indices: single valid index
+test check_vote_indices_2() {
+    let options: Options = [(0,0), (1,0), (2,0)]
+    let vote: Options = [(1,5)]
+    check_vote_indices(options, vote)
+}
+
+// check_vote_indices: empty signal is valid (no indices to check)
+test check_vote_indices_3() {
+    let options: Options = [(0,0), (1,0), (2,0)]
+    let vote: Options = []
+    check_vote_indices(options, vote)
+}
+
+// check_vote_indices: index out of bounds — should fail
+test check_vote_indices_4() fail {
+    let options: Options = [(0,0), (1,0), (2,0)]
+    let vote: Options = [(99,5)]
+    check_vote_indices(options, vote)
+}
+
+// check_vote_indices: one valid index, one invalid — should fail
+test check_vote_indices_5() fail {
+    let options: Options = [(0,0), (1,0), (2,0)]
+    let vote: Options = [(0,3), (99,2)]
+    check_vote_indices(options, vote)
+}
+
+// check_vote_indices: index present in signal but not in options — should fail
+test check_vote_indices_6() fail {
+    let options: Options = [(0,0), (1,0)]
+    let vote: Options = [(2,1)]
+    check_vote_indices(options, vote)
 }
 

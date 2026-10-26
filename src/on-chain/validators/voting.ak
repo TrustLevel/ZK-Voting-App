@@ -9,9 +9,9 @@ use cardano/transaction.{
 use semaphore_types.{SemaphoreRedeemer, Signal}
 use types.{Options}
 use voting_utilities.{
-  check_initial_options_value, check_options_index, check_weight,
-  deserialise_signal, is_interval_within, is_policy_on_value, simple_vote,
-  weighted_vote,
+  check_initial_options_value, check_options_index, check_vote_indices,
+  check_weight, deserialise_signal, is_interval_within, is_policy_on_value,
+  simple_vote, weighted_vote,
 }
 
 pub type UrnaDatum {
@@ -49,7 +49,9 @@ validator voting(oref: OutputReference) {
         fn(o) { o.address.payment_credential == own_script_credential },
       )
     let is_nft_sent_to_script: Bool =
-      is_policy_on_value(output_to_script.value, policy_id)
+      assets.policies(assets.without_lovelace(output_to_script.value)) == [
+        policy_id,
+      ]
 
     // Condition 3: Is there a Urna Datum atttached?
     expect InlineDatum(out_datum) = output_to_script.datum
@@ -68,13 +70,18 @@ validator voting(oref: OutputReference) {
     let are_options_indexes_correct: Bool =
       check_options_index(urna_datum.options)
 
-    // Observation: Conditions from 3 to 6 are optional - The datum construction could be trusted at the tx creation.
+    // Condition 7: Are there at least 2 options?
+    let are_options_count_valid: Bool =
+      list.length(urna_datum.options) >= 2
+
+    // Observation: Conditions from 3 to 7 are optional - The datum construction could be trusted at the tx creation.
     and {
       is_one_token_minted,
       is_nft_sent_to_script,
       is_event_time_set,
       are_options_values_correct,
       are_options_indexes_correct,
+      are_options_count_valid,
     }
   }
 
@@ -103,7 +110,6 @@ validator voting(oref: OutputReference) {
     expect [output_to_script] =
       list.filter(outputs, fn(o) { o.address == this_script_address })
 
-    // TODO: Check more precisely if prevents value preservation. It may be empty_value == empty_value too.
     let is_value_returned: Bool =
       assets.without_lovelace(output_to_script.value) == assets.without_lovelace(
         this_script_input.output.value,
@@ -146,11 +152,12 @@ validator voting(oref: OutputReference) {
       }
 
     if dat.weight > 1 {
-      // Weighted voting Condition: Is the vote correct?
-      let is_vote_correct: Bool =
-        weighted_vote(dat.options, vote) == out_dat.options
+      // Weighted voting Conditions: Are indices valid? Is the vote correct? Is the weight correct?
+      let updated_options: Options = weighted_vote(dat.options, vote)
+      let are_indices_valid: Bool = check_vote_indices(dat.options, vote)
+      let is_vote_correct: Bool = updated_options == out_dat.options
       let is_weight_correct: Bool = check_weight(vote, dat.weight)
-      is_vote_correct && is_weight_correct && validator_conditions
+      are_indices_valid && is_vote_correct && is_weight_correct && validator_conditions
     } else {
       // Simple voting Condition: Is the vote correct?
       expect [vote_target] = vote

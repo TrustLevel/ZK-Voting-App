@@ -64,7 +64,7 @@ export async function buildGroupMintTransaction(params: {
         selectedUtxo.input.txHash,
         selectedUtxo.input.outputIndex,
         selectedUtxo.output.amount,
-        walletAddress
+        selectedUtxo.output.address
       )
       .selectUtxosFrom(walletUtxos)
       .txInCollateral(
