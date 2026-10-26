@@ -44,6 +44,17 @@ export class VotingEventService {
   // rapid succession (e.g. user cancels wallet signature and immediately retries).
   private readonly nullifierStores = new Map<number, any>();
 
+  // F7: per-event promise chain that serialises addParticipant calls.
+  // Concurrent registrations overwrite each other because findOne+save is not atomic.
+  private readonly registrationLocks = new Map<number, Promise<any>>();
+
+  private withRegistrationLock<T>(eventId: number, fn: () => Promise<T>): Promise<T> {
+    const prev = this.registrationLocks.get(eventId) ?? Promise.resolve();
+    const result = prev.catch(() => {}).then(fn);
+    this.registrationLocks.set(eventId, result.catch(() => {}));
+    return result;
+  }
+
   constructor(
     @InjectRepository(VotingEvent)
     private votingEventRepository: Repository<VotingEvent>,
@@ -157,7 +168,7 @@ export class VotingEventService {
   }
 
   async addParticipant(eventId: number, token: string, commitment: string): Promise<VotingEvent> {
-    // 1. Validate invitation token
+    // 1. Validate invitation token (outside the lock — read-only, no shared state)
     const invitationToken = await this.invitationTokenRepository.findOne({ where: { token } });
 
     if (!invitationToken) {
@@ -178,44 +189,48 @@ export class VotingEventService {
     // 2. Extract userId from validated token (cannot be faked by frontend)
     const userId = invitationToken.userId;
 
-    // 3. Load event from database
-    const event = await this.votingEventRepository.findOne({ where: { eventId } });
-    if (!event) {
-      throw new Error('Voting event not found');
-    }
+    // F7: serialise the read-modify-write section per event to prevent concurrent
+    // registrations from overwriting each other (each sees stale groupLeafCommitments).
+    return this.withRegistrationLock(eventId, async () => {
+      // 3. Load event from database (inside lock — must be a fresh read)
+      const event = await this.votingEventRepository.findOne({ where: { eventId } });
+      if (!event) {
+        throw new Error('Voting event not found');
+      }
 
-    // 4. Parse participants from group_leaf_commitments (source of truth)
-    const participants = JSON.parse(event.groupLeafCommitments) as Array<{userId: number, commitment: string}>;
+      // 4. Parse participants from group_leaf_commitments (source of truth)
+      const participants = JSON.parse(event.groupLeafCommitments) as Array<{userId: number, commitment: string}>;
 
-    // Check if user has already committed
-    if (participants.some(p => p.userId === userId)) {
-      throw new Error('User has already committed to this event');
-    }
+      // Check if user has already committed
+      if (participants.some(p => p.userId === userId)) {
+        throw new Error('User has already committed to this event');
+      }
 
-    // 5. Reconstruct Semaphore group with existing members
-    const existingCommitments = participants.map(p => BigInt(p.commitment));
-    const group = new Group(BigInt(eventId), event.groupSize, existingCommitments);
+      // 5. Reconstruct Semaphore group with existing members
+      const existingCommitments = participants.map(p => BigInt(p.commitment));
+      const group = new Group(BigInt(eventId), event.groupSize, existingCommitments);
 
-    // Verify reconstructed root matches stored root (data integrity check)
-    if (participants.length > 0 && group.root.toString() !== event.groupMerkleRootHash) {
-      throw new Error('Data integrity error: merkle root mismatch');
-    }
+      // Verify reconstructed root matches stored root (data integrity check)
+      if (participants.length > 0 && group.root.toString() !== event.groupMerkleRootHash) {
+        throw new Error('Data integrity error: merkle root mismatch');
+      }
 
-    // 6. Add new member using addMember method from the library
-    group.addMember(BigInt(commitment));
+      // 6. Add new member using addMember method from the library
+      group.addMember(BigInt(commitment));
 
-    // 7. Update database with new participant and updated merkle root
-    const updatedParticipants = [...participants, { userId, commitment }];
-    event.groupLeafCommitments = JSON.stringify(updatedParticipants);
-    event.groupMerkleRootHash = group.root.toString();
+      // 7. Update database with new participant and updated merkle root
+      const updatedParticipants = [...participants, { userId, commitment }];
+      event.groupLeafCommitments = JSON.stringify(updatedParticipants);
+      event.groupMerkleRootHash = group.root.toString();
 
-    await this.votingEventRepository.save(event);
+      await this.votingEventRepository.save(event);
 
-    // 8. Mark invitation token as used (for audit purposes)
-    invitationToken.used = true;
-    await this.invitationTokenRepository.save(invitationToken);
+      // 8. Mark invitation token as used (for audit purposes)
+      invitationToken.used = true;
+      await this.invitationTokenRepository.save(invitationToken);
 
-    return event;
+      return event;
+    });
   }
 
   async removeParticipant(eventId: number, userId: number): Promise<VotingEvent> {
