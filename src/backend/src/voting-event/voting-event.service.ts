@@ -65,6 +65,20 @@ export class VotingEventService {
     return this.nullifierStores.get(eventId)!;
   }
 
+  // F0 fix: Trie.load returns a detached in-memory trie when the saved root is the null hash
+  // (i.e. after a rollback empties the trie). Re-attach to the store so inserts reach LevelDB.
+  private async loadTrie(store: any): Promise<any> {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Trie } = require('@aiken-lang/merkle-patricia-forestry');
+    try {
+      const trie = await Trie.load(store);
+      return trie.isEmpty() ? new Trie(store) : trie;
+    } catch (e) {
+      if (/NotFound/.test(String(e))) return new Trie(store);
+      throw e;
+    }
+  }
+
   async createBasicVotingEvent(
     eventName: string,
     options: string[], // Changed to array of option strings
@@ -711,7 +725,7 @@ export class VotingEventService {
     const key = Buffer.from(blake2b(value, { dkLen: 32 }));
 
     const store = await this.getNullifierStore(eventId);
-    const trie = await Trie.load(store).catch(() => new Trie(store));
+    const trie = await this.loadTrie(store);
 
     // Throws if nullifier already exists — prevents double voting at the backend level.
     await trie.insert(key, value);
@@ -770,7 +784,7 @@ export class VotingEventService {
     const key = Buffer.from(blake2b(value, { dkLen: 32 }));
 
     const store = await this.getNullifierStore(eventId);
-    const trie = await Trie.load(store).catch(() => new Trie(store));
+    const trie = await this.loadTrie(store);
 
     try {
       await trie.delete(key);

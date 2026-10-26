@@ -24,6 +24,19 @@ function nullifierToKeyValue(nullifier: bigint): { key: Buffer; value: Buffer } 
   return { key, value };
 }
 
+// F0 fix: Trie.load returns a detached in-memory trie when the saved root is the null hash
+// (i.e. after a rollback empties the trie). Re-attach to the store so inserts reach LevelDB.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function loadTrie(store: Store): Promise<any> {
+  try {
+    const trie = await Trie.load(store);
+    return trie.isEmpty() ? new Trie(store) : trie;
+  } catch (e) {
+    if (/NotFound/.test(String(e))) return new Trie(store);
+    throw e;
+  }
+}
+
 /**
  * Inserts a nullifier into the MPF trie, proving it was not there before.
  *
@@ -45,7 +58,7 @@ export async function insertNullifier(
   // Each voting event gets its own isolated trie, keyed by eventId.
   // If no DB exists yet (first vote), create a fresh empty trie.
   const store = new Store(`nullifiers-db/${eventId}`);
-  const trie = await Trie.load(store).catch(() => new Trie(store));
+  const trie = await loadTrie(store);
 
   const { key, value } = nullifierToKeyValue(nullifier);
 
