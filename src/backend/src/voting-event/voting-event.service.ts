@@ -655,7 +655,7 @@ export class VotingEventService {
   }> {
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
     if (!event) {
-      throw new Error('Voting event not found');
+      throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
     }
 
     // Use the semaphore snapshot if available — ZK proof must verify against the
@@ -664,10 +664,11 @@ export class VotingEventService {
     let participants = JSON.parse(leafSource) as Array<{userId: number, commitment: string}>;
     const index = participants.findIndex(p => p.userId === Number(userId));
     if (index === -1) {
-      throw new Error(
+      throw new HttpException(
         event.semaphoreLeafCommitments
-          ? 'User was not registered when the voting system was set up and cannot vote'
+          ? 'Not part of this vote\'s group (registered after voting started)'
           : 'User is not a participant in this event',
+        event.semaphoreLeafCommitments ? HttpStatus.CONFLICT : HttpStatus.NOT_FOUND,
       );
     }
 
