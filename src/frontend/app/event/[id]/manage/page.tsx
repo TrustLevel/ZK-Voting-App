@@ -269,7 +269,7 @@ export default function EventDashboard() {
               endingDate: eventData.endingDate,
               walletAddress: eventData.walletAddress,
               adminUserId: eventData.adminUserId,
-              adminLink: `${window.location.origin}/event/${eventId}/manage?token=${eventData.adminToken}`,
+              adminLink: `${window.location.origin}/event/${eventId}/manage?token=${adminToken}`,
             });
 
             // Parse options for display
@@ -369,7 +369,7 @@ export default function EventDashboard() {
         startingDate: backendEvent.startingDate,
         endingDate: backendEvent.endingDate,
         adminUserId: backendEvent.adminUserId,
-        adminLink: `${window.location.origin}/event/${eventId}/manage?token=${backendEvent.adminToken}`,
+        adminLink: `${window.location.origin}/event/${eventId}/manage?token=${adminToken}`,
       });
 
       setOptions(optionTexts);

@@ -252,17 +252,24 @@ export class VotingEventService {
     return participants.map(p => p.userId);
   }
 
-  async getAllVotingEvents(): Promise<VotingEvent[]> {
-    return await this.votingEventRepository.find();
+  async getAllVotingEvents(): Promise<Omit<VotingEvent, 'adminToken' | 'invitedParticipants' | 'groupLeafCommitments' | 'nullifierLeafCommitments'>[]> {
+    const events = await this.votingEventRepository.find();
+    return events.map(e => this.toPublic(e));
   }
 
   // Get voting event details
-  async getVotingEvent(eventId: number): Promise<VotingEvent> {
+  async getVotingEvent(eventId: number): Promise<Omit<VotingEvent, 'adminToken' | 'invitedParticipants' | 'groupLeafCommitments' | 'nullifierLeafCommitments'>> {
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
     if (!event) {
       throw new Error('Voting event not found');
     }
-    return event;
+    return this.toPublic(event);
+  }
+
+  private toPublic(event: VotingEvent) {
+    // F1: strip sensitive fields from every public response
+    const { adminToken: _a, invitedParticipants: _i, groupLeafCommitments: _g, nullifierLeafCommitments: _n, ...rest } = event;
+    return rest;
   }
 
   // Update voting event details (dates, options, voting power) - currently not used
