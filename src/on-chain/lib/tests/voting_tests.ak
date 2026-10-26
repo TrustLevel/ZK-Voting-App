@@ -175,8 +175,8 @@ test vote_13() fail {
     simple_vote(options, 999) == [(0,0), (1,0)]
 }
 
-// Test 14: Vote on option with negative existing value
-// Validates voting on option that has negative vote count (-5→-4)
+// Test 14: Vote on option with existing positive count
+// Validates increment on an option already holding a value (5→6)
 test vote_14() {
     let options: Options = [(0,0), (1, 5), (2,0)]
     simple_vote(options, 1) == [(0,0), (1, 6), (2,0)]
@@ -287,11 +287,10 @@ test weighted_vote_9() fail {
     weighted_vote(options, [(1,1)]) == [(0,1), (1,2), (2,0)]
 }
 
-// Test duplicate target options - adds to same option twice (1+1+1=3)
-// TODO: Fix this corner case
-test weighted_vote_10() {
+// Test duplicate target options — duplicate indices are rejected by check_vote_indices
+test weighted_vote_10() fail {
     let options: Options = [(0,1), (1,1), (2,1)]
-    weighted_vote(options, [(1,1),(1,1)]) == [(0,1), (1,3), (2,1)]
+    check_vote_indices(options, [(1,1),(1,1)])
 }
 
 // Check Weight

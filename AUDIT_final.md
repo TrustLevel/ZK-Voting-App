@@ -1054,36 +1054,13 @@ Each finding follows this structure:
 
 ### `semaphore.ak`
 
-**[F-SEM-3] `semaphore.ak` mint: weaker NFT destination check than `group.ak`**
-- **Type:** Improvement
-- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/semaphore.ak:46`
-- **Description:** `semaphore.ak` Condition 2 uses `is_policy_on_value` to confirm the Semaphore NFT reached the script address. This only checks that the policy is *present* in the output value — other tokens can coexist in the same output. `group.ak` uses the stricter `policies(without_lovelace(value)) == [policy_id]`, which asserts the NFT is the *only* non-lovelace asset at that output. Same issue as F-VOTING-3.
-- **Impact:** Medium
-- **Recommendation:** Replace `is_policy_on_value(output_to_script.value, policy_id)` with `assets.policies(assets.without_lovelace(output_to_script.value)) == [policy_id]` to align with `group.ak`.
-- **Status:** Open
 
-**[F-SEM-6] `semaphore.ak`: no test for altered `vkey_ref_input` in output datum**
+**[F-SEM-1] All spending tests use `inputs` instead of `reference_inputs` for the VKey input**
 - **Type:** Note
 - **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
-- **Description:** `spend_datum_not_preserved_1` and `spend_datum_not_preserved_2` confirm that `group_merke_root` and `group_token_policy` are independently enforced. No test alters `vkey_ref_input` in the output datum while keeping the other fields intact. The third equality check in `is_datum_preserved` is structurally enforced but not independently confirmed.
-- **Impact:** Low
-- **Recommendation:** Add a failure test that changes only `vkey_ref_input` in the output datum and asserts rejection.
-- **Status:** Open
-
-**[F-SEM-5] `semaphore.ak`: no test for missing Group NFT in `reference_inputs` on mint**
-- **Type:** Note
-- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
-- **Description:** No test attempts to mint the Semaphore NFT without including the Group NFT as a reference input. `expect [group_reference_input]` fails hard when the filter returns empty, but this is not empirically confirmed.
-- **Impact:** Low
-- **Recommendation:** Add a failure test that omits the Group reference input from `reference_inputs`.
-- **Status:** Open
-
-**[F-SEM-4] `semaphore.ak`: no test for `DatumHash` or wrong-typed datum on mint output**
-- **Type:** Note
-- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
-- **Description:** `mint_no_datum` confirms the `NoDatum` case is rejected, but there is no test for a `DatumHash` datum or a datum that does not match `SemaphoreDatum`. Both are structurally rejected by `expect InlineDatum(...)` and `expect out_semaphore_dat: SemaphoreDatum`, but neither is empirically confirmed.
-- **Impact:** Low
-- **Recommendation:** Add failure tests for a `DatumHash` output and a datum that does not match `SemaphoreDatum`.
+- **Description:** Every spending test builds the transaction with `vkey_input` in the `inputs` field, but the spending validator reads from `reference_inputs` (`find_input(reference_inputs, dat.vkey_ref_input)`). Since `reference_inputs` is never set in these tests, it is always empty, causing `expect Some(snark_vkey_ref_input)` to fail before any of the intended conditions are reached. The happy path test `spend_signal_semaphore_1` fails. All `fail` spending tests (`spend_value_not_sent_back`, `spend_datum_not_preserved_1/2`, `spend_vkey_field_with_incorrect_value`, `spend_incorrect_zk_proof`, `spend_nullifier_already_inserted`, `spend_tampered_message`) pass, but for the wrong reason — each errors at Condition 2 rather than the condition it is intended to test. Confirmed by running `aiken check` in the dependency package.
+- **Impact:** High
+- **Recommendation:** In all spending tests, move `vkey_input` from `inputs` to `reference_inputs` in the transaction construction. Verify that `spend_signal_semaphore_1` then passes and that each `fail` test fails at its intended condition.
 - **Status:** Open
 
 **[F-SEM-2] `semaphore.ak`: no test for minting two tokens with different asset names**
@@ -1094,19 +1071,114 @@ Each finding follows this structure:
 - **Recommendation:** Add a failure test minting two tokens with distinct asset names under the Semaphore policy.
 - **Status:** Open
 
-**[F-SEM-1] All spending tests use `inputs` instead of `reference_inputs` for the VKey input**
+**[F-SEM-3] `semaphore.ak` mint: weaker NFT destination check than `group.ak`**
+- **Type:** Improvement
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/semaphore.ak:46`
+- **Description:** `semaphore.ak` Condition 2 uses `is_policy_on_value` to confirm the Semaphore NFT reached the script address. This only checks that the policy is *present* in the output value — other tokens can coexist in the same output. `group.ak` uses the stricter `policies(without_lovelace(value)) == [policy_id]`, which asserts the NFT is the *only* non-lovelace asset at that output. Same issue as F-VOTING-3.
+- **Impact:** Medium
+- **Recommendation:** Replace `is_policy_on_value(output_to_script.value, policy_id)` with `assets.policies(assets.without_lovelace(output_to_script.value)) == [policy_id]` to align with `group.ak`.
+- **Status:** Open
+
+**[F-SEM-4] `semaphore.ak`: no test for `DatumHash` or wrong-typed datum on mint output**
 - **Type:** Note
 - **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
-- **Description:** Every spending test builds the transaction with `vkey_input` in the `inputs` field, but the spending validator reads from `reference_inputs` (`find_input(reference_inputs, dat.vkey_ref_input)`). Since `reference_inputs` is never set in these tests, it is always empty, causing `expect Some(snark_vkey_ref_input)` to fail before any of the intended conditions are reached. The happy path test `spend_signal_semaphore_1` fails. All `fail` spending tests (`spend_value_not_sent_back`, `spend_datum_not_preserved_1/2`, `spend_vkey_field_with_incorrect_value`, `spend_incorrect_zk_proof`, `spend_nullifier_already_inserted`, `spend_tampered_message`) pass, but for the wrong reason — each errors at Condition 2 rather than the condition it is intended to test. Confirmed by running `aiken check` in the dependency package.
-- **Impact:** High
-- **Recommendation:** In all spending tests, move `vkey_input` from `inputs` to `reference_inputs` in the transaction construction. Verify that `spend_signal_semaphore_1` then passes and that each `fail` test fails at its intended condition.
+- **Description:** `mint_no_datum` confirms the `NoDatum` case is rejected, but there is no test for a `DatumHash` datum or a datum that does not match `SemaphoreDatum`. Both are structurally rejected by `expect InlineDatum(...)` and `expect out_semaphore_dat: SemaphoreDatum`, but neither is empirically confirmed.
+- **Impact:** Low
+- **Recommendation:** Add failure tests for a `DatumHash` output and a datum that does not match `SemaphoreDatum`.
 - **Status:** Open
+
+**[F-SEM-5] `semaphore.ak`: no test for missing Group NFT in `reference_inputs` on mint**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
+- **Description:** No test attempts to mint the Semaphore NFT without including the Group NFT as a reference input. `expect [group_reference_input]` fails hard when the filter returns empty, but this is not empirically confirmed.
+- **Impact:** Low
+- **Recommendation:** Add a failure test that omits the Group reference input from `reference_inputs`.
+- **Status:** Open
+
+**[F-SEM-6] `semaphore.ak`: no test for altered `vkey_ref_input` in output datum**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
+- **Description:** `spend_datum_not_preserved_1` and `spend_datum_not_preserved_2` confirm that `group_merke_root` and `group_token_policy` are independently enforced. No test alters `vkey_ref_input` in the output datum while keeping the other fields intact. The third equality check in `is_datum_preserved` is structurally enforced but not independently confirmed.
+- **Impact:** Low
+- **Recommendation:** Add a failure test that changes only `vkey_ref_input` in the output datum and asserts rejection.
+- **Status:** Open
+
 
 ---
 
 ## Changes Made
 
 > What was fixed or acknowledged in response to findings. Documents the response to each finding and closes the loop.
+
+---
+
+### `group.ak` (modulo-p/cardano-semaphore)
+
+#### [F-GROUP-1] `group.ak` does not validate `GroupDatum` structure
+
+**File:** `validators/group.ak`
+
+Added Condition 3 to the `Create` mint branch: `expect InlineDatum(raw_datum) = output_to_script.datum` followed by `expect _: GroupDatum = raw_datum`. Previously any datum (including `NoDatum`) was accepted at mint time — a malformed datum would permanently brick the Group UTxO since mint is one-shot. The recommendation was to add a comment acknowledging the off-chain trust assumption; the applied fix goes further and enforces the shape on-chain. Execution cost is negligible for a one-time mint.
+
+#### [F-GROUP-2] No test for minting two tokens with different asset names
+
+**File:** `validators/tests/group_test.ak`
+
+Added `mint_two_tokens_different_names` (fail): mints two tokens with distinct asset names (each qty 1) under the Group policy. Confirms `expect [Pair(_, amount)]` rejects a two-element dict.
+
+#### [F-GROUP-3] No test for minting Group NFT alongside an extra token
+
+**File:** `validators/tests/group_test.ak`
+
+Added `mint_extra_token_in_output` (fail): mints one Group NFT plus a foreign-policy token in the script output. Confirms `policies(without_lovelace(value)) == [policy_id]` rejects an output containing more than the Group NFT.
+
+---
+
+### `semaphore.ak` (modulo-p/cardano-semaphore)
+
+#### [F-SEM-1] All spending tests use `inputs` instead of `reference_inputs` for the VKey input
+
+**File:** `validators/tests/semaphore_test.ak`
+
+Moved `vkey_input` from `inputs` to `reference_inputs` in all spending test transactions. The spending validator calls `find_input(reference_inputs, dat.vkey_ref_input)` — placing it in `inputs` caused every spending test to abort at Condition 2 instead of its intended condition. After the fix: `spend_signal_semaphore_1` (happy path) now passes; all `fail` spending tests now fail at their intended conditions.
+
+#### [F-SEM-2] No test for minting two tokens with different asset names
+
+**File:** `validators/tests/semaphore_test.ak`
+
+Added `mint_two_tokens_different_names` (fail): same gap as F-GROUP-2 and F-VOTING-4. Confirms `expect [Pair(_, amount)]` rejects two distinct asset names under the Semaphore policy.
+
+#### [F-SEM-3] Weaker NFT destination check than `group.ak`
+
+**Files:** `validators/semaphore.ak`, `validators/tests/semaphore_test.ak`
+
+Replaced `is_policy_on_value(output_to_script.value, policy_id)` with `assets.policies(assets.without_lovelace(output_to_script.value)) == [policy_id]` in Condition 2 of mint. Brings the Semaphore NFT destination check to parity with `group.ak`, preventing foreign tokens from being locked into the Semaphore UTxO at mint time. Added companion test `mint_extra_token_in_output` (fail) confirming the stricter check.
+
+#### [F-SEM-4] No test for `DatumHash` or wrong-typed datum on mint output
+
+**File:** `validators/tests/semaphore_test.ak`
+
+Added two `fail` tests covering both datum guards in Condition 3 of mint:
+- `mint_datum_hash` — output carries `DatumHash`, rejected by `expect InlineDatum(...)`
+- `mint_wrong_datum_type` — output carries `InlineDatum(42)`, rejected by `expect out_semaphore_dat: SemaphoreDatum`
+
+#### [F-SEM-5] No test for missing Group NFT in `reference_inputs` on mint
+
+**File:** `validators/tests/semaphore_test.ak`
+
+Added `mint_no_group_reference_input` (fail): omits the Group NFT from `reference_inputs`. Confirms `expect [group_reference_input]` aborts when the filter returns `[]`.
+
+#### [F-SEM-6] No test for altered `vkey_ref_input` in output datum
+
+**File:** `validators/tests/semaphore_test.ak`
+
+Added `spend_vkey_ref_input_altered` (fail): spending test that alters only `vkey_ref_input` in the output datum while keeping all other fields and the ZK proof valid. Independently confirms the third equality check in `is_datum_preserved` is enforced.
+
+**Test count after all upstream changes:** group_test 7 → 9, semaphore_test 16 → 22, total 32 → 40. All 40 pass.
+
+---
+
+### `voting.ak`
 
 ### [F-VOTING-7] Weighted vote — invalid option index silently discards weight
 

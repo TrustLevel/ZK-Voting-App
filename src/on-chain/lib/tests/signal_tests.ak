@@ -1,4 +1,5 @@
 use aiken/primitive/bytearray
+use aiken/builtin
 use aiken/fuzz
 use aiken/primitive/int
 use aiken/crypto.{ blake2b_256 }
@@ -88,9 +89,8 @@ test signal_digest() {
 
 test signal_digest_scalar() {
     let signal_bytes = serialise_signal([(2,1)]) |> blake2b_256()
-    expect Some(signal_scalar) = scalar.from_bytearray_big_endian(signal_bytes)
-    let signal_scalar_to_int = scalar.to_int(signal_scalar)
-    25050711957853089676855563252373407134946460892559238457710929576024828641940 == signal_scalar_to_int
+    let signal_hash = builtin.bytearray_to_integer(True, signal_bytes) % scalar.field_prime
+    25050711957853089676855563252373407134946460892559238457710929576024828641940 == signal_hash
 }
 
 test signal_transformation() {

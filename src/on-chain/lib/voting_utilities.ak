@@ -89,9 +89,13 @@ pub fn weighted_vote(options: Options, target_options: Options) -> Options {
     }
 }
 
-// Checks that all indices in vote exist in options.
+// Checks that all indices in vote exist in options and that no index appears more than once.
 pub fn check_vote_indices(options: Options, vote: Options) -> Bool {
-  list.all(vote, fn(v) { list.any(options, fn(o) { o.1st == v.1st }) })
+  let all_valid = list.all(vote, fn(v) { list.any(options, fn(o) { o.1st == v.1st }) })
+  let no_duplicates = list.all(vote, fn(v) {
+    list.length(list.filter(vote, fn(u) { u.1st == v.1st })) == 1
+  })
+  all_valid && no_duplicates
 }
 
 // The weight on the target_options must be equal to the weight allowed by the voting event.
