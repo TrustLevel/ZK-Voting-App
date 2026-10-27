@@ -9,7 +9,7 @@
 | **Project** | ZK-Voting-App |
 | **Date** | 2026-09-29 |
 | **Auditors** | AgustinBadi |
-| **Commit** | |
+| **Commit** | e1181e1 |
 | **Scope** | `src/on-chain/validators/voting.ak`, `src/on-chain/lib/voting_utilities.ak`, critical path of `modulo-p/cardano-semaphore` (ZK proof verification, nullifier uniqueness, signal hash validation) |
 | **Out of scope** | Groth16 verifier implementation, BLS12-381 arithmetic (`ak-381`), Poseidon hash, MPF trie internals (`merkle-patricia-forestry`) |
 
@@ -18,7 +18,16 @@
 
 ## Executive Summary
 
-> TODO: Short paragraph on the overall verdict. Finding counts by severity.
+The audit covers `voting.ak`, `voting_utilities.ak`, and the critical path of `modulo-p/cardano-semaphore` (v0.9.4). **Sixteen findings** were identified: **1 Critical, 4 Medium, 1 Low, and 10 Notes. All sixteen have been resolved.**
+
+The Critical finding (F-SEM-1) was a test infrastructure failure: all spending tests in `semaphore_test.ak` placed the VKey UTxO in `inputs` instead of `reference_inputs`, causing the happy-path test to fail and masking whether four key rejection conditions (invalid proof, duplicate nullifier, tampered signal, wrong VKey datum) were tested at their intended condition. After the fix, the full spending path is confirmed by 22 tests (up from 16).
+
+The four Medium findings were all logic correctness issues in the validators:
+- A missing minimum-options guard at mint (`voting.ak` F-VOTING-1) would have allowed a single-option event to be created — a valid but semantically meaningless vote.
+- A weighted-vote bug (`voting_utilities.ak` F-VOTING-7) silently discarded weight assigned to an out-of-range option index instead of failing the transaction.
+- Weaker NFT destination checks in `voting.ak` (F-VOTING-3) and `semaphore.ak` (F-SEM-3) compared to `group.ak` allowed foreign tokens to be co-locked at the script UTxOs at mint time.
+
+After applying all fixes, the on-chain test suite passes **154 tests** in `src/on-chain/` and **40 tests** (up from 32) in the upstream `modulo-p-cardano-semaphore` package.
 
 ---
 
@@ -1249,24 +1258,22 @@ let are_options_count_valid: Bool =
 
 ## Conclusions
 
-> Overall security posture, known residual risks, and what is trusted to the upstream dependency.
+The overall security posture is **sound**. The contract system's key properties are enforced correctly after the fixes applied in this audit:
 
+1. **Group membership** is proven by Groth16 ZK proof — only an enrolled participant can produce a valid proof for the group's Merkle root.
+2. **Double-vote prevention** is enforced by the MPF nullifier trie — `mpf.insert` fails hard on a duplicate key, and the new root is committed on-chain in the Semaphore datum each vote.
+3. **Voter anonymity** is guaranteed by the ZK proof: the voter proves membership without revealing which member they are.
+4. **Vote integrity** is enforced by the State Thread Token pattern on the Urna NFT — the tally can only advance through the spending validator, which requires a valid Semaphore co-spend in the same transaction.
 
----
+The voting contract delegates ZK proof verification entirely to `semaphore.ak` — it verifies only that the Semaphore NFT was co-spent (Condition 1 of `voting.ak` spend). This design is sound, but it means the entire ZK security rests on `semaphore.ak` behaving correctly. Both contracts must be deployed together; an attacker who could substitute a different Semaphore policy would bypass proof verification entirely.
 
-## Tasks
+**Residual risks (trusted to upstream or off-chain):**
 
-- [ ] Read `voting.ak` mint logic together
-- [ ] Read `voting.ak` spend logic together
-- [ ] Read `voting_utilities.ak` together
-- [ ] Map invariants to enforcement
-- [ ] Deep dive: `is_policy_on_value` (custom function)
-- [ ] Deep dive: `is_entirely_before` / `is_interval_within` (interval conditions)
-- [ ] Adversarial path analysis (mint)
-- [ ] Adversarial path analysis (spend)
-- [ ] Test coverage gap analysis
-- [ ] Write findings and summary
-- [ ] **Before applying any finding fix: verify the change does not break the current running application (vote.trustlevel.io). Re-run on-chain tests (`aiken check`) and end-to-end vote flow after each change.**
+- **Groth16 verifier, BLS12-381 arithmetic, Poseidon hash, MPF trie internals** — explicitly out of scope. Correctness is assumed from the `cardano-semaphore` and `ak-381` library implementations.
+- **Group Merkle tree integrity** — the Group validator enforces that only the event admin can update the Merkle root, but does not verify the root's mathematical correctness. A compromised admin or backend could insert a fraudulent identity commitment and allow a non-participant to vote.
+- **Event parameter immutability** — minting parameters (`event_date`, `options`, `weight`, `semaphore_nft`) are set once and cannot be changed on-chain. Misconfiguration at setup time has no on-chain remedy.
+- **External nullifier binding** — the external nullifier is the Semaphore policy ID derived from the parameterised `oref`. Each event has a unique policy, making cross-event proof replay impossible by construction.
+- **Off-chain nullifier store** — the LevelDB trie backing nullifier proofs (`nullifiers-db/<eventId>/`) is the off-chain source of truth for double-vote prevention. If lost or corrupted, it cannot be reconstructed without replaying the full on-chain vote history (see Known Improvements in CLAUDE.md).
 
 ---
 
