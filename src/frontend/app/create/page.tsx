@@ -26,7 +26,7 @@ import { useRouter } from 'next/navigation';
 // CONSTANTS
 // ============================================================================
 
-const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001';
+const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3000';
 
 // ============================================================================
 // MAIN COMPONENT
