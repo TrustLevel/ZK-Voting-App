@@ -18,7 +18,7 @@
 
 ## Executive Summary
 
-The audit covers `voting.ak`, `voting_utilities.ak`, and the critical path of `modulo-p/cardano-semaphore` (v0.9.4). **Sixteen findings** were identified: **1 Critical, 4 Medium, 1 Low, and 10 Notes. All sixteen have been resolved.**
+The audit covers `voting.ak`, `voting_utilities.ak`, the critical path of `modulo-p/cardano-semaphore` (v0.9.5), and the off-chain application layer (`src/backend`, `src/frontend`) via the M4 system test. **Forty-two findings** were identified in total. The main audit produced **16 findings** (1 Critical, 4 Medium, 1 Low, 10 Notes) — **all resolved**. The test review contributed a further **13 findings** (F-GROUP-4/5/6, F-VOTING-8 through F-VOTING-13, F-SEM-7 through F-SEM-10) — all Notes; **11 Fixed** (F-GROUP-4/5, F-VOTING-8 through F-VOTING-12, F-SEM-7 through F-SEM-10), **2 Acknowledged** (F-GROUP-6, F-VOTING-13). The M4 system test (2026-10-05) produced **13 application-level findings** (F-APP-0 through F-APP-12) across `src/backend` and `src/frontend` — 1 Critical, 3 High, 5 Medium, 2 Low; **7 Fixed** (F-APP-0, F-APP-1, F-APP-3, F-APP-6, F-APP-7, F-APP-11, F-APP-12), **4 Partial** (F-APP-2, F-APP-5, F-APP-8, F-APP-10), **2 Acknowledged** (F-APP-4, F-APP-9).
 
 The Critical finding (F-SEM-1) was a test infrastructure failure: all spending tests in `semaphore_test.ak` placed the VKey UTxO in `inputs` instead of `reference_inputs`, causing the happy-path test to fail and masking whether four key rejection conditions (invalid proof, duplicate nullifier, tampered signal, wrong VKey datum) were tested at their intended condition. After the fix, the full spending path is confirmed by 22 tests (up from 16).
 
@@ -985,7 +985,7 @@ Each finding follows this structure:
 - **Description:** Neither `mint` nor `spend` validate the `GroupDatum` inline datum. At mint time no datum check exists at all; at update time the admin is trusted to write a correct datum. A malformed datum at mint time would not be caught by `group.ak` — errors would surface later in `semaphore.ak` mint (which reads the Group reference input). This is a deliberate trade-off for cheaper execution, but the assumption is implicit.
 - **Impact:** Low
 - **Recommendation:** Document the off-chain invariant explicitly. Optionally add a minimal datum shape check at mint time.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-GROUP-2] `group.ak`: no test for minting two tokens with different asset names**
 - **Type:** Note
@@ -993,7 +993,7 @@ Each finding follows this structure:
 - **Description:** No test attempts to mint two tokens with distinct asset names under the Group policy (each with quantity 1). The `expect [Pair(_, amount)]` pattern structurally handles this but it is not empirically confirmed.
 - **Impact:** Low
 - **Recommendation:** Add a failure test minting two tokens with distinct asset names under the group policy.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-GROUP-3] `group.ak`: no test for minting Group NFT alongside an extra token**
 - **Type:** Note
@@ -1001,7 +1001,31 @@ Each finding follows this structure:
 - **Description:** No test attempts to mint the Group NFT while sending an extra token (under a different policy) to the same script output. The `policies(without_lovelace(value)) == [policy_id]` check structurally rejects it, but it is not empirically confirmed.
 - **Impact:** Low
 - **Recommendation:** Add a failure test that includes an extra token in the minted output alongside the Group NFT.
-- **Status:** Open
+- **Status:** Fixed
+
+**[F-GROUP-4] `group.ak`: no test for wrong `oref` in mint**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/group_test.ak`
+- **Description:** `group.ak` mint Condition 0 consumes the parameterised `oref` (one-shot guarantee). No `fail` test passes a wrong UTxO as input while providing the correct `oref`. The equivalent test exists for `voting.ak` mint (`wrong_parameter_utxo`) but is absent here.
+- **Impact:** Low
+- **Recommendation:** Add a failure test that provides a different UTxO as input while the parameterised `oref` is absent from `inputs`.
+- **Status:** Fixed
+
+**[F-GROUP-5] `group.ak`: no test for `Create` redeemer on spend**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/group_test.ak`
+- **Description:** `group.ak` spend returns `False` for any redeemer other than `Update` (`_ -> False`). No test confirms that spending with the `Create` redeemer is rejected.
+- **Impact:** Low
+- **Recommendation:** Add a failure test that attempts to spend the Group UTxO with the `Create` redeemer.
+- **Status:** Fixed
+
+**[F-GROUP-6] `group.ak` mint: value constraints on `GroupDatum` fields remain off-chain trust**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/group.ak`
+- **Description:** F-GROUP-1 added a shape check (`expect _: GroupDatum = raw_datum`) at mint time, ensuring the datum is a valid `GroupDatum`. However, field-level constraints are not enforced: `admin_pkh` could be an empty byte array, and `group_merke_root` could be initialised to any value rather than 0. These invariants are trusted entirely to the off-chain minting flow.
+- **Impact:** Low
+- **Recommendation:** Document these as explicit off-chain preconditions. Optionally add guards at mint time (non-empty `admin_pkh`, `group_merke_root == 0`).
+- **Status:** Acknowledged — field-level invariants are enforced by the off-chain minting flow; adding on-chain guards is out of scope for this audit cycle.
 
 ### `voting.ak`
 
@@ -1011,7 +1035,7 @@ Each finding follows this structure:
 - **Description:** `check_options_index` rejects an empty options list but does not enforce a minimum of 2. A single-option voting event passes all mint checks. A meaningful vote requires at least two options; with an abstain option, at least three.
 - **Impact:** Medium
 - **Recommendation:** Add a `list.length(options) >= 2` (or `>= 3`) guard in `check_options_index` before the recursive check.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-VOTING-2] Unresolved TODO comment on value preservation check**
 - **Type:** Improvement
@@ -1019,7 +1043,7 @@ Each finding follows this structure:
 - **Description:** A TODO comment questions whether `assets.without_lovelace(output) == assets.without_lovelace(input)` could trivially pass if both sides are empty. This cannot happen — `this_script_input` is the Urna UTxO, which always holds the Urna NFT from mint time, so the input side is never empty. The comment should be resolved and removed.
 - **Impact:** Low
 - **Recommendation:** Remove the TODO comment.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-VOTING-3] Weaker NFT destination check than `group.ak`**
 - **Type:** Improvement
@@ -1027,7 +1051,7 @@ Each finding follows this structure:
 - **Description:** `voting.ak` Condition 2 uses `is_policy_on_value` to confirm the Urna NFT reached the script address. This only checks that the policy is *present* in the output value — other tokens can coexist in the same output. `group.ak` uses the stricter `policies(without_lovelace(value)) == [policy_id]`, which asserts the NFT is the *only* non-lovelace asset at that output. Both serve the same purpose, but `group.ak`'s approach is more defensive.
 - **Impact:** Medium
 - **Recommendation:** Replace `is_policy_on_value(output_to_script.value, policy_id)` with `assets.policies(assets.without_lovelace(output_to_script.value)) == [policy_id]` to align with `group.ak` and prevent unintended tokens from being co-locked at the Urna UTxO.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-VOTING-4] No test for minting two tokens with different asset names**
 - **Type:** Note
@@ -1035,7 +1059,7 @@ Each finding follows this structure:
 - **Description:** The existing test `tx_mints_more_than_two_tokens` covers quantity > 1 for a single asset name. There is no test for the case where two tokens with *different* asset names (each with quantity 1) are minted under the same policy. The `expect [Pair(_, amount)]` pattern structurally handles this, but it is not empirically confirmed.
 - **Impact:** Low
 - **Recommendation:** Add a test that attempts to mint two tokens with distinct asset names under the voting policy and asserts failure.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-VOTING-5] No test for missing or non-inline datum on mint output**
 - **Type:** Note
@@ -1043,7 +1067,7 @@ Each finding follows this structure:
 - **Description:** There is no test that attempts to mint while sending the output with `NoDatum`, `DatumHash`, or a datum of the wrong type. Condition 3 uses `expect InlineDatum(...)` and `expect urna_datum: UrnaDatum`, which structurally reject all three cases, but none are empirically confirmed.
 - **Impact:** Low
 - **Recommendation:** Add failure tests for `NoDatum` output, `DatumHash` output, and a datum that does not match `UrnaDatum`.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-VOTING-6] No test for inverted or zero-length voting window**
 - **Type:** Note
@@ -1051,7 +1075,7 @@ Each finding follows this structure:
 - **Description:** There is no test that attempts to mint with `event_start >= event_end`. The `event_start < event_end` check in Condition 4 handles it, but it is not empirically confirmed.
 - **Impact:** Low
 - **Recommendation:** Add a failure test with `event_start == event_end` and another with `event_start > event_end`.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-VOTING-7] Weighted vote — invalid option index silently discards weight**
 - **Type:** Note
@@ -1059,7 +1083,55 @@ Each finding follows this structure:
 - **Description:** `update_option` returns the options unchanged if the given index is not found, rather than failing. `weighted_vote` calls `update_option` for each `(index, count)` pair in the signal. `check_weight` only verifies the total weight in the signal sums to `dat.weight` — it does not verify all indices are valid. A voter can include weight on a non-existent option index: `check_weight` passes, but that weight is silently lost from the tally. The voter's nullifier is consumed. This is asymmetric with simple mode, where `simple_vote` fails hard on an invalid index.
 - **Impact:** Medium
 - **Recommendation:** Add an index validation step in `weighted_vote` or `check_weight` to verify all option indices in the signal exist in `dat.options`. Alternatively, make `update_option` fail on a missing index.
-- **Status:** Open
+- **Status:** Fixed
+
+**[F-VOTING-8] `vote_out_of_time_3` fails for the wrong reason**
+- **Type:** Note
+- **Location:** `src/on-chain/validators/tests/spending_logic_test.ak:914`
+- **Description:** Labelled "validity range of the tx is not within the voting time event." The `signal_message` encodes a vote for option index 35 with weight 60 on a 3-option, weight-1 ballot. Option index 35 is out of bounds (`simple_vote` errors) and weight 60 ≠ 1. The test fails but for an ambiguous reason — the time check and the malformed signal both independently cause rejection. The intended condition (time enforcement) is not cleanly isolated.
+- **Impact:** Low
+- **Recommendation:** Use a valid `signal_message` (correct index and weight) so the only rejection reason is the time condition.
+- **Status:** Fixed
+
+**[F-VOTING-9] `vote_out_of_time_2` has two confounding rejection reasons**
+- **Type:** Note
+- **Location:** `src/on-chain/validators/tests/spending_logic_test.ak:824`
+- **Description:** Labelled "vote window is not open yet." The output datum sets `event_date = (50, 100)` while the input has `(1, 100)`. `voting.ak` spend enforces `dat.event_date == out_dat.event_date` via `is_datum_preserved`. The test fails due to both the time check and the datum preservation check, not the time check alone.
+- **Impact:** Low
+- **Recommendation:** Preserve `event_date` in the output datum so the only rejection reason is the time condition.
+- **Status:** Fixed
+
+**[F-VOTING-10] `signal_digest_scalar` uses pre-v0.9.3 scalar pattern**
+- **Type:** Note
+- **Location:** `src/on-chain/lib/tests/signal_tests.ak:89`
+- **Description:** The test calls `scalar.from_bytearray_big_endian(signal_bytes)` and uses `expect Some(...)` to unwrap the result. `scalar.from_bytearray_big_endian` returns `None` for values ≥ the BLS12-381 scalar field prime `r` (~55% of all 256-bit blake2b hashes). The test passes only because the hash of `[(2,1)]` happens to fall below `r`. This is inconsistent with the v0.9.3 fix (`% scalar.field_prime` on-chain, `% BLS12_381_R` in `src/zk/src/proof.ts`) and could mislead a developer using this test as a reference for computing `signal_hash`.
+- **Impact:** Low
+- **Recommendation:** Update the test to use `builtin.bytearray_to_integer(True, signal_bytes) % scalar.field_prime`, matching the v0.9.3 pattern.
+- **Status:** Fixed
+
+**[F-VOTING-11] `vote_14` has a wrong comment**
+- **Type:** Note
+- **Location:** `src/on-chain/lib/tests/voting_tests.ak:179`
+- **Description:** The comment reads "Validates voting on option that has negative vote count (-5→-4)." The actual option is `(1, 5)` (positive, incrementing 5→6). The test is correct; the comment is misleading.
+- **Impact:** Low
+- **Recommendation:** Update the comment to reflect the actual option values.
+- **Status:** Fixed
+
+**[F-VOTING-12] `weighted_vote_10` has an unresolved TODO on duplicate indices**
+- **Type:** Note
+- **Location:** `src/on-chain/lib/tests/voting_tests.ak:292`
+- **Description:** `weighted_vote` accepts duplicate indices in `target_options` (e.g., `[(1,1),(1,1)]` increments option 1 by 2). The developer flagged this with `// TODO: Fix this corner case`. Not exploitable — `check_weight` still enforces total == allowed weight — but the duplicate encoding is unresolved and could confuse an off-chain signal encoder building weighted votes.
+- **Impact:** Low
+- **Recommendation:** Decide whether duplicate indices are intentionally accepted or should be rejected. If rejecting, add a deduplication check. Either way, remove the TODO.
+- **Status:** Fixed
+
+**[F-VOTING-13] Spending tests use stub Semaphore datum with no ZK integration coverage**
+- **Type:** Note
+- **Location:** `src/on-chain/validators/tests/spending_logic_test.ak`
+- **Description:** All spending tests set `semaphore_output.datum: NoDatum` and most use `nullifier = 0, signal_hash = 0`. Valid as unit tests of `voting.ak` in isolation. There is no integration test running both `voting.ak` and `semaphore.ak` on a fully-formed transaction with a real ZK proof and a real MPF insertion.
+- **Impact:** Low
+- **Recommendation:** Consider an integration test that constructs a full vote transaction spending both UTxOs with a real proof and non-empty MPF proof steps. The `snark_1` test in `semaphore_test.ak` demonstrates a standalone proof can be verified; a combined test would confirm the full path end-to-end.
+- **Status:** Acknowledged — the full vote path is covered by the M4 on-chain system test (12 confirmed votes); a pure on-chain Aiken integration test combining both validators is deferred to a future cycle.
 
 ### `semaphore.ak`
 
@@ -1070,7 +1142,7 @@ Each finding follows this structure:
 - **Description:** Every spending test builds the transaction with `vkey_input` in the `inputs` field, but the spending validator reads from `reference_inputs` (`find_input(reference_inputs, dat.vkey_ref_input)`). Since `reference_inputs` is never set in these tests, it is always empty, causing `expect Some(snark_vkey_ref_input)` to fail before any of the intended conditions are reached. The happy path test `spend_signal_semaphore_1` fails. All `fail` spending tests (`spend_value_not_sent_back`, `spend_datum_not_preserved_1/2`, `spend_vkey_field_with_incorrect_value`, `spend_incorrect_zk_proof`, `spend_nullifier_already_inserted`, `spend_tampered_message`) pass, but for the wrong reason — each errors at Condition 2 rather than the condition it is intended to test. Confirmed by running `aiken check` in the dependency package.
 - **Impact:** High
 - **Recommendation:** In all spending tests, move `vkey_input` from `inputs` to `reference_inputs` in the transaction construction. Verify that `spend_signal_semaphore_1` then passes and that each `fail` test fails at its intended condition.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-SEM-2] `semaphore.ak`: no test for minting two tokens with different asset names**
 - **Type:** Note
@@ -1078,7 +1150,7 @@ Each finding follows this structure:
 - **Description:** No test attempts to mint two tokens with distinct asset names under the Semaphore policy (each with quantity 1). The `expect [Pair(_, amount)]` pattern structurally handles this but it is not empirically confirmed. Same gap as F-GROUP-2 and F-VOTING-4.
 - **Impact:** Low
 - **Recommendation:** Add a failure test minting two tokens with distinct asset names under the Semaphore policy.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-SEM-3] `semaphore.ak` mint: weaker NFT destination check than `group.ak`**
 - **Type:** Improvement
@@ -1086,7 +1158,7 @@ Each finding follows this structure:
 - **Description:** `semaphore.ak` Condition 2 uses `is_policy_on_value` to confirm the Semaphore NFT reached the script address. This only checks that the policy is *present* in the output value — other tokens can coexist in the same output. `group.ak` uses the stricter `policies(without_lovelace(value)) == [policy_id]`, which asserts the NFT is the *only* non-lovelace asset at that output. Same issue as F-VOTING-3.
 - **Impact:** Medium
 - **Recommendation:** Replace `is_policy_on_value(output_to_script.value, policy_id)` with `assets.policies(assets.without_lovelace(output_to_script.value)) == [policy_id]` to align with `group.ak`.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-SEM-4] `semaphore.ak`: no test for `DatumHash` or wrong-typed datum on mint output**
 - **Type:** Note
@@ -1094,7 +1166,7 @@ Each finding follows this structure:
 - **Description:** `mint_no_datum` confirms the `NoDatum` case is rejected, but there is no test for a `DatumHash` datum or a datum that does not match `SemaphoreDatum`. Both are structurally rejected by `expect InlineDatum(...)` and `expect out_semaphore_dat: SemaphoreDatum`, but neither is empirically confirmed.
 - **Impact:** Low
 - **Recommendation:** Add failure tests for a `DatumHash` output and a datum that does not match `SemaphoreDatum`.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-SEM-5] `semaphore.ak`: no test for missing Group NFT in `reference_inputs` on mint**
 - **Type:** Note
@@ -1102,7 +1174,7 @@ Each finding follows this structure:
 - **Description:** No test attempts to mint the Semaphore NFT without including the Group NFT as a reference input. `expect [group_reference_input]` fails hard when the filter returns empty, but this is not empirically confirmed.
 - **Impact:** Low
 - **Recommendation:** Add a failure test that omits the Group reference input from `reference_inputs`.
-- **Status:** Open
+- **Status:** Fixed
 
 **[F-SEM-6] `semaphore.ak`: no test for altered `vkey_ref_input` in output datum**
 - **Type:** Note
@@ -1110,8 +1182,167 @@ Each finding follows this structure:
 - **Description:** `spend_datum_not_preserved_1` and `spend_datum_not_preserved_2` confirm that `group_merke_root` and `group_token_policy` are independently enforced. No test alters `vkey_ref_input` in the output datum while keeping the other fields intact. The third equality check in `is_datum_preserved` is structurally enforced but not independently confirmed.
 - **Impact:** Low
 - **Recommendation:** Add a failure test that changes only `vkey_ref_input` in the output datum and asserts rejection.
-- **Status:** Open
+- **Status:** Fixed
 
+**[F-SEM-7] `spend_vkey_field_with_incorrect_value` has a construction error beyond F-SEM-1**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
+- **Description:** This test intends to verify that a VKey UTxO with a wrong datum type (`InlineDatum(1)`) is rejected. However, both `initial_semaphore_datum.vkey_ref_input` and `output_semaphore_datum.vkey_ref_input` point to `OutputReference { transaction_id: #"01bc", output_index: 0 }` — the same reference. `is_datum_preserved` therefore returns `True`, and the test reaches Condition 2 where the wrong datum type is caught. After fixing F-SEM-1, the test produces the correct outcome (fail) but for an indirect reason. A clean construction would use a distinct `OutputReference` for `wrong_vk_input` so the datum-type rejection is the sole cause.
+- **Impact:** Low
+- **Recommendation:** Set a distinct `OutputReference` for `wrong_vk_input` to isolate the datum-type check from the datum-preservation check.
+- **Status:** Fixed
+
+**[F-SEM-8] `spend_signal_semaphore_1` uses an empty MPF proof**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak:620`
+- **Description:** The happy-path spending test stubs `mpf_proof = []`. For an empty initial trie (`null_hash`), `mpf.insert` with an empty proof succeeds — this is a property of the empty-trie case, not a general result. No test exercises MPF insertion against a non-empty nullifier trie through the spending validator path.
+- **Impact:** Low
+- **Recommendation:** Add a spending test where the trie already holds at least one nullifier, with a real multi-step MPF proof. This would empirically confirm double-vote prevention under the conditions that arise after the first vote.
+- **Status:** Fixed
+
+**[F-SEM-9] `semaphore.ak`: no test for wrong `oref` in mint**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
+- **Description:** No `fail` test passes a wrong UTxO as input while the parameterised `oref` is absent. The one-shot guarantee is structurally enforced by Condition 0 but not empirically confirmed. Same gap as F-GROUP-4; unlike `voting.ak` which has `wrong_parameter_utxo`, both upstream validators are missing this test.
+- **Impact:** Low
+- **Recommendation:** Add a failure test that provides a different UTxO as input while the parameterised `oref` is absent from `inputs`.
+- **Status:** Fixed
+
+**[F-SEM-10] `semaphore.ak`: no test for `Signal` redeemer on mint**
+- **Type:** Note
+- **Location:** `src/on-chain/build/packages/modulo-p-cardano-semaphore/validators/tests/semaphore_test.ak`
+- **Description:** The mint validator's `_ -> False` branch is not exercised. No test confirms that calling the Semaphore mint endpoint with a `Signal` redeemer is rejected.
+- **Impact:** Low
+- **Recommendation:** Add a failure test that invokes the Semaphore mint validator with a `Signal` redeemer and asserts rejection.
+- **Status:** Fixed
+
+---
+
+## Application Findings
+
+### Test Context
+
+The M4 system test was a scripted end-to-end voting run on Cardano preprod against the live backend (`api.vote.trustlevel.io`), code reference commit `51cddaa`. 15 voter wallets, an admin wallet, and a funding wallet were all controlled by one script (simulated voters, not independent public testers). The code paths exercised are identical to those used by real users: `@src/tx` browser builders, `src/frontend/lib/blockchain-helpers.ts`, and the `src/backend` API. The only differences from a live user session are signing (MeshWallet instead of CIP-30) and proof generation (Node.js `@src/zk/dist/proof.js` with byte-identical WASM and zkey).
+
+**Runs (2026-10-05):**
+
+- **Dry run** — event `7361329530`, 2 voters. Identified F-APP-0.
+- **Main run** — event `3907417823`. Semaphore script `addr_test1wzedkt4d3jclzq363pl8rwpvngx9k7kktq4p842trsralcsfwuwjj`, Voting script `addr_test1wpdyadvg7f5fu3fc58yc09rv0uj9tu9rut0yqgrqje837dgfz3ugr`. 12 votes confirmed; final tally API = chain = expected (6/3/3). Double vote, replay, non-member, late registrant, and too-late vote were all correctly rejected. Identified F-APP-1 through F-APP-8, F-APP-11, F-APP-12.
+- **Dominik live test** — event `1869725828`, five independent users. Identified F-APP-6, F-APP-9, F-APP-10 from the user side.
+
+Full report with timeline, state trace, and explorer links: `ZK-Voting-M4-Testreport-2026-10-05.md`.
+
+---
+
+### `src/backend`
+
+**[F-APP-0] Nullifier trie detaches after a rollback**
+- **Type:** Critical
+- **Location:** `src/backend/src/voting-event/voting-event.service.ts:714`, `src/zk/src/mpf.ts:48`
+- **Description:** `loadTrie` uses `Trie.load(store).catch(() => new Trie(store))`. In `@aiken-lang/merkle-patricia-forestry` 1.3.1, `Trie.load` returns a new in-memory trie (not backed by LevelDB) when the stored root is the null hash. After any rollback that empties the trie, every subsequent load is detached: inserts never reach LevelDB, proof steps are always 0, and the MPF root diverges from chain. Every later vote fails at `expect excluding(key, proof) == self.root`. All six minted live events in the M4 dry run had at most one confirmed vote due to this bug.
+- **Impact:** High
+- **Recommendation:** Replace the catch with an explicit empty check: `const trie = await Trie.load(store); return trie.isEmpty() ? new Trie(store) : trie;` with a separate `NotFound` guard for first load. Apply at all load sites.
+- **Status:** Fixed
+
+**[F-APP-1] Public event API exposes admin token and invitee emails**
+- **Type:** Note
+- **Location:** `src/backend/src/voting-event/voting-event.controller.ts:27,32`
+- **Description:** `GET /voting-event` and `GET /voting-event/:eventId` are unauthenticated and return the full entity including `adminToken` (grants admin page access), `invitedParticipants` (email list), and `groupLeafCommitments` (userId → Semaphore commitment mapping). Confirmed on the live API 2026-10-05 (field names only, values not read).
+- **Impact:** High
+- **Recommendation:** Return a sanitized public projection that omits sensitive fields. Serve admin-only fields only with a valid admin token. A fix plan exists.
+- **Status:** Fixed
+
+**[F-APP-2] Nullifier endpoints are unauthenticated**
+- **Type:** Note
+- **Location:** `src/backend/src/voting-event/voting-event.controller.ts:160,170`
+- **Description:** `POST` and `DELETE /voting-event/:eventId/nullifier` accept any payload from anyone. A junk insert or deletion of a confirmed nullifier diverges the backend MPF trie from the on-chain root, causing all subsequent legitimate votes to fail at the Semaphore validator. Double voting remains prevented on-chain. Confirmed in M4 main run: junk POST → root divergence → vote rejected; DELETE corrected it.
+- **Impact:** High
+- **Recommendation:** Accept nullifier inserts only alongside a server-verified ZK proof. Remove the public DELETE; rollback must be internal, tied to a pending vote ID. Periodically reconcile the trie root against the Semaphore UTxO datum.
+- **Status:** Partial — `DELETE` endpoint admin-gated via `adminToken`; `POST` endpoint still unauthenticated (only BLS12-381 scalar range check, not ZK proof verification). See Changes Made.
+
+**[F-APP-4] Backend can correlate userId to vote choice**
+- **Type:** Note
+- **Location:** `src/backend/src/voting-event/voting-event.service.ts`
+- **Description:** Per vote, the backend receives `GET merkle-proof/:userId`, `POST nullifier`, and `POST vote` in close succession from the same client. An operator logging these requests can join `userId → vote choice`. The relay wallet design hides the voter's on-chain wallet identity but does not affect this server-side correlation.
+- **Impact:** Medium
+- **Recommendation:** Serve a frozen group snapshot so clients compute their Merkle path locally; decouple the nullifier submission from the userId request.
+- **Status:** Acknowledged — server-side correlation is an inherent property of a centralised relay design; mitigations (local Merkle path computation, anonymous nullifier submission) are deferred to a future architecture iteration.
+
+**[F-APP-6] Concurrent votes conflict on shared UTxOs**
+- **Type:** Improvement
+- **Location:** `src/backend/src/voting-event/voting-event.service.ts`
+- **Description:** Every vote transaction spends and recreates the Semaphore and Voting UTxOs. Two votes submitted within the same block window collide: the second is rejected ("inputs already spent") even though both proofs are valid. The backend MPF trie advances on insert, not on confirmation, so both voters believe they succeeded. Observed in M4 main run (V11/V13 within ~2 s).
+- **Impact:** Medium
+- **Recommendation:** Serialise vote submission per event: issue the next MPF proof only after the previous vote confirms or times out.
+- **Status:** Fixed — relay vote path serialised via `withVoteLock`; browser vote path removed entirely (all votes now go through relay). See Changes Made.
+
+**[F-APP-7] Concurrent registrations silently lose members**
+- **Type:** Note
+- **Location:** `src/backend/src/voting-event/voting-event.service.ts:145`
+- **Description:** `addParticipant` reads `groupLeafCommitments`, appends one entry, and writes back with no lock or transaction. Simultaneous registrations overwrite each other; all callers receive HTTP 201 but only the last write survives. M4 main run: V11–V13 registered simultaneously, 13 members written instead of 14; V12 (userId 29) was absent from the frozen root and could never vote.
+- **Impact:** High
+- **Recommendation:** Wrap registration in a DB transaction or per-event mutex. After writing, re-read and verify the commitment is present; return an error if it is missing.
+- **Status:** Fixed
+
+**[F-APP-8] Blockfrost API key exposed in the frontend bundle**
+- **Type:** Improvement
+- **Location:** `src/frontend` (`NEXT_PUBLIC_BLOCKFROST_API_KEY`)
+- **Description:** `NEXT_PUBLIC_BLOCKFROST_API_KEY` is inlined into the live JS bundle and readable by anyone. Anyone can exhaust the project quota and halt voting for all users. No wallet or fund access is possible. Confirmed on live deployment 2026-10-05. Also documented in CLAUDE.md Known Improvements.
+- **Impact:** Medium
+- **Recommendation:** Add `GET /voting-event/:eventId/script-utxos` backend endpoint; refactor `buildVoteTransaction` to accept pre-fetched UTxOs. Until then, use a separate rotatable frontend-only key.
+- **Status:** Partial — voter flow no longer uses Blockfrost (relay-vote fetches UTxOs server-side); manage page (admin-only) still inlines `NEXT_PUBLIC_BLOCKFROST_API_KEY`. See Changes Made.
+
+**[F-APP-12] Non-member voters receive HTTP 500**
+- **Type:** Improvement
+- **Location:** `src/backend/src/voting-event/voting-event.service.ts:614` (API); `src/frontend/app/event/[id]/page.tsx` (UI)
+- **Description:** `GET /voting-event/:eventId/merkle-proof/:userId` throws an unhandled exception when the user is not in the group (late registrant, or victim of F-APP-7). The caller receives "Internal server error" with no actionable message. Observed with V14 (registered after mint) and V12 (lost via F-APP-7).
+- **Impact:** Low
+- **Recommendation:** API: return 404 with "User not in this event's group (registered after voting started)". UI: surface that message to the voter instead of showing a generic error.
+- **Status:** Fixed — `getMerkleProof` now returns proper HTTP errors (409 for post-mint registrant, 404 for non-participant, 422 for historical group mismatch) with actionable messages. See Changes Made.
+
+---
+
+### `src/frontend`
+
+**[F-APP-3] No nullifier rollback when transaction build fails**
+- **Type:** Improvement
+- **Location:** `src/frontend/app/event/[id]/page.tsx:629,656`
+- **Description:** In `submitVote()`, the rollback helper is defined after `buildVoteTransaction`. If `buildVoteTransaction` throws, the nullifier is already inserted in the backend but the rollback is never reached. The voter's next attempt receives HTTP 409 ("Nullifier already used"). The relay vote backend path handles this correctly; this gap is specific to the browser vote path.
+- **Impact:** Medium
+- **Recommendation:** Track "nullifier inserted" before the build call and roll back in the outer catch regardless of where the failure occurs.
+- **Status:** Fixed — browser vote path replaced by relay-vote; `relayVote` in the service calls `rollbackNullifier` in its outer `catch` on any build, sign, or submit failure. See Changes Made.
+
+**[F-APP-5] Vote choice visible on-chain and linked to the fee-paying wallet**
+- **Type:** Note
+- **Location:** `src/frontend` / transaction construction
+- **Description:** The fee-paying wallet address appears in the vote transaction alongside the plaintext `signal_message`. All 12 M4 vote choices were decoded from chain data (wallet → tx → option → nullifier). The relay wallet design hides the voter's CIP-30 wallet; the option choice remains public on-chain by design.
+- **Impact:** Medium
+- **Recommendation:** For anonymity-only requirements the relay design is sufficient. For ballot secrecy, encrypted signals with commit–reveal are needed.
+- **Status:** Partial — relay wallet hides voter on-chain identity; option choice remains public. See Changes Made.
+
+**[F-APP-9] Running tally visible while voting is open**
+- **Type:** Improvement
+- **Location:** `src/frontend/app/event/[id]/page.tsx` / results display
+- **Description:** A voter who has already cast their vote can see the live running tally while others are still voting. Observed in a live five-person test. Note: the tally is also readable directly from on-chain data (plaintext redeemer), so UI hiding alone does not provide tally secrecy.
+- **Impact:** Medium
+- **Recommendation:** Hide the tally in the UI until `endingDate`. Clarify in the UX that on-chain tallies are always readable by anyone inspecting the chain.
+- **Status:** Acknowledged — tally secrecy is not achievable at the UI level given on-chain data is public by design; deferred to a future cycle.
+
+**[F-APP-10] Misleading vote error messages**
+- **Type:** Improvement
+- **Location:** `src/frontend/app/event/[id]/page.tsx:449` (`classifySubmissionError`)
+- **Description:** `ValueNotConserved` is checked before `BadInputs`; a vote built against UTxOs already spent by a pending transaction shows "Insufficient funds" instead of a pending-tx message. Unknown errors fall through to a generic message. Dev mode now surfaces the raw error; the production classifier remains unchanged.
+- **Impact:** Low
+- **Recommendation:** Check `BadInputs`/conflicting inputs first and surface "A previous transaction is still pending — wait and retry." Add a short error reference for unknown failures.
+- **Status:** Partial — raw error surfaced in dev mode; production message unchanged. See Changes Made.
+
+**[F-APP-11] Event start can fail between the two mints**
+- **Type:** Improvement
+- **Location:** `src/frontend/app/event/[id]/manage/page.tsx:856,864`
+- **Description:** `handleStartVoting` reads admin UTxOs from Blockfrost immediately after the Group NFT mint confirms, then picks index 0. If Blockfrost still lists the input the group mint just consumed, the Semaphore+Voting mint fails with "All inputs are spent" and the admin must restart — orphaning the earlier Group NFT. M4 main run: two failed starts and two orphaned group NFTs before the third attempt succeeded.
+- **Impact:** Medium
+- **Recommendation:** Exclude the group-mint transaction's inputs from UTxO selection for the second mint. Add retry-with-backoff on "inputs spent".
+- **Status:** Fixed — `preGroupMintRefs` Set built from the group-mint transaction's consumed UTxOs; second Blockfrost fetch filters them out before UTxO selection. See Changes Made.
 
 ---
 
@@ -1141,6 +1372,18 @@ Added `mint_two_tokens_different_names` (fail): mints two tokens with distinct a
 
 Added `mint_extra_token_in_output` (fail): mints one Group NFT plus a foreign-policy token in the script output. Confirms `policies(without_lovelace(value)) == [policy_id]` rejects an output containing more than the Group NFT.
 
+#### [F-GROUP-4] No test for wrong `oref` in mint
+
+**File:** `validators/tests/group_test.ak`
+
+Added `mint_wrong_oref` (fail): provides a UTxO with a different `OutputReference` (`#"dead"#0`) as the only input while the parameterised `oref` is absent. Confirms `expect Some(_) = find_input(inputs, oref)` fails hard when the one-shot UTxO is not present.
+
+#### [F-GROUP-5] No test for `Create` redeemer on spend
+
+**File:** `validators/tests/group_test.ak`
+
+Added `spend_create_redeemer_rejected` (fail): calls `group.group.spend` with the `Create` redeemer against an otherwise valid transaction. Confirms the `_ -> False` catch-all in the spend handler rejects any redeemer other than `Update`.
+
 ---
 
 ### `semaphore.ak` (modulo-p/cardano-semaphore)
@@ -1149,7 +1392,7 @@ Added `mint_extra_token_in_output` (fail): mints one Group NFT plus a foreign-po
 
 **File:** `validators/tests/semaphore_test.ak`
 
-Moved `vkey_input` from `inputs` to `reference_inputs` in all spending test transactions. The spending validator calls `find_input(reference_inputs, dat.vkey_ref_input)` — placing it in `inputs` caused every spending test to abort at Condition 2 instead of its intended condition. After the fix: `spend_signal_semaphore_1` (happy path) now passes; all `fail` spending tests now fail at their intended conditions.
+Moved `vkey_input` from `inputs` to `reference_inputs` in all spending test transactions. The spending validator calls `find_input(reference_inputs, dat.vkey_ref_input)` — placing it in `inputs` caused every spending test to abort at Condition 2 instead of its intended condition. After the fix: `spend_signal_semaphore_1` (happy path) now passes; all `fail` spending tests now fail at their intended conditions. Note: line 657 carries the comment `// Include vkey as reference input` while the code uses `inputs` — a direct indicator of the root cause (S-5 / F-SEM-1). The comment is now accurate after the fix.
 
 #### [F-SEM-2] No test for minting two tokens with different asset names
 
@@ -1184,6 +1427,30 @@ Added `mint_no_group_reference_input` (fail): omits the Group NFT from `referenc
 Added `spend_vkey_ref_input_altered` (fail): spending test that alters only `vkey_ref_input` in the output datum while keeping all other fields and the ZK proof valid. Independently confirms the third equality check in `is_datum_preserved` is enforced.
 
 **Test count after all upstream changes:** group_test 7 → 9, semaphore_test 16 → 22, total 32 → 40. All 40 pass.
+
+#### [F-SEM-7] `spend_vkey_field_with_incorrect_value` construction error
+
+**File:** `validators/tests/semaphore_test.ak`
+
+Assigned a distinct `OutputReference { transaction_id: #"baad", output_index: 0 }` (`wrong_vk_oref`) to the wrong-typed VKey input, and set both `initial_semaphore_datum.vkey_ref_input` and `output_semaphore_datum.vkey_ref_input` to this same `wrong_vk_oref`. `is_datum_preserved` now passes (both datums agree on the oref), and the test fails solely because `expect snark_vkey: SnarkVerificationKey = InlineDatum(1)` is rejected at Condition 2 — the datum-type check is now the isolated cause.
+
+#### [F-SEM-8] `spend_signal_semaphore_1` uses an empty MPF proof
+
+**File:** `validators/tests/semaphore_test.ak`
+
+Added `spend_signal_semaphore_nonempty_trie` (pass): starts from a non-empty trie (`nullifier_mpf_root: #"e547413c..."`) containing a dummy nullifier, supplies a real single-`Leaf` MPF proof step for the non-membership witness, and asserts the output root (`#"30c9a81f..."`) matches the trie after inserting the real nullifier. Empirically confirms that `mpf.insert` enforces non-membership and commits the correct root under conditions that arise after the first vote in a live event.
+
+#### [F-SEM-9] No test for wrong `oref` in mint
+
+**File:** `validators/tests/semaphore_test.ak`
+
+Added `mint_wrong_oref` (fail): provides a UTxO with `OutputReference { transaction_id: #"dead", output_index: 0 }` as the only input while the parameterised `initial_oref` is absent from `inputs`. Confirms `expect Some(_) = find_input(inputs, oref)` fails hard, closing the same gap addressed in `group.ak` (F-GROUP-4).
+
+#### [F-SEM-10] No test for `Signal` redeemer on mint
+
+**File:** `validators/tests/semaphore_test.ak`
+
+Added `mint_signal_redeemer_rejected` (fail): invokes `semaphore.semaphore.mint` with a `Signal(zk_proof, [], 0, 0, #"")` redeemer against an otherwise minimal valid transaction. Confirms the `_ -> False` catch-all in the mint handler rejects any redeemer other than `Create`.
 
 ---
 
@@ -1240,6 +1507,61 @@ This asserts the Urna NFT is the *only* non-lovelace asset at the script output,
 
 ---
 
+#### [F-VOTING-4] No test for minting two tokens with different asset names
+
+**File:** `src/on-chain/validators/tests/minting_logic_test.ak`
+
+Added `tx_mints_two_tokens_different_names` (fail): mints two distinct asset names under the voting policy (each qty 1). Confirms `expect [Pair(_, amount)]` rejects a two-element dict, matching the equivalent tests added for `group.ak` (F-GROUP-2) and `semaphore.ak` (F-SEM-2).
+
+#### [F-VOTING-5] No test for missing or non-inline datum on mint output
+
+**File:** `src/on-chain/validators/tests/minting_logic_test.ak`
+
+Added three `fail` tests covering all three datum guards in Condition 3 of mint:
+- `mint_output_no_datum` — output carries `NoDatum`, rejected by `expect InlineDatum(...)`
+- `mint_output_datum_hash` — output carries `DatumHash(#"00112233...")`, rejected by `expect InlineDatum(...)`
+- `mint_output_wrong_datum_type` — output carries `InlineDatum(42)`, rejected by `expect urna_datum: UrnaDatum`
+
+#### [F-VOTING-6] No test for inverted or zero-length voting window
+
+**File:** `src/on-chain/validators/tests/minting_logic_test.ak`
+
+Added two `fail` tests:
+- `mint_zero_length_voting_window` — `event_date: (50, 50)`, rejected by `event_start < event_end`
+- `mint_inverted_voting_window` — `event_date: (100, 1)`, rejected by `event_start < event_end`
+
+#### [F-VOTING-8] `vote_out_of_time_3` fails for the wrong reason
+
+**File:** `src/on-chain/validators/tests/spending_logic_test.ak`
+
+Replaced the malformed `signal_message` (option index 35, weight 60) with `serialise_signal([(2,1)])` — a valid vote on index 2 with weight 1, matching the 3-option weight-1 ballot. The test now fails solely because validity range `[1,49]` is not entirely after `event_start=1`, isolating the time check as the only rejection reason.
+
+#### [F-VOTING-9] `vote_out_of_time_2` has two confounding rejection reasons
+
+**File:** `src/on-chain/validators/tests/spending_logic_test.ak`
+
+The output datum's `event_date` was changed from `(50, 100)` to `(1, 100)`, matching the input datum. `is_datum_preserved` now passes; the test fails solely because validity range `[1,49]` is not entirely after `event_start=1`, isolating the time check as the only rejection reason.
+
+#### [F-VOTING-10] `signal_digest_scalar` uses pre-v0.9.3 scalar pattern
+
+**File:** `src/on-chain/lib/tests/signal_tests.ak`
+
+Updated `signal_digest_scalar` to use `builtin.bytearray_to_integer(True, signal_bytes) % scalar.field_prime` instead of `scalar.from_bytearray_big_endian(signal_bytes)` with `expect Some(...)`. The test now documents the canonical v0.9.3 computation and will not silently pass by accident on a hash that happens to fall below `r`.
+
+#### [F-VOTING-11] `vote_14` has a wrong comment
+
+**File:** `src/on-chain/lib/tests/voting_tests.ak`
+
+Updated the comment from "Validates voting on option that has negative vote count (-5→-4)" to "Test 14: Vote on option with existing positive count / Validates increment on an option already holding a value (5→6)", accurately describing the actual test data `(1, 5)` → `(1, 6)`.
+
+#### [F-VOTING-12] `weighted_vote_10` has an unresolved TODO on duplicate indices
+
+**File:** `src/on-chain/lib/tests/voting_tests.ak`
+
+Decided: duplicate indices are **rejected**. The TODO was removed. The test was updated to call `check_vote_indices(options, [(1,1),(1,1)])` directly as a `fail` test, explicitly confirming that the no-duplicates check in `check_vote_indices` is the enforcement point. The test comment now reads "Test duplicate target options — duplicate indices are rejected by check_vote_indices".
+
+---
+
 ### [F-VOTING-1] No minimum options count enforced
 
 **File:** `src/on-chain/validators/voting.ak`
@@ -1256,165 +1578,125 @@ let are_options_count_valid: Bool =
 
 ---
 
-## Conclusions
+### `src/backend`
 
-The overall security posture is **sound**. The contract system's key properties are enforced correctly after the fixes applied in this audit:
+#### [F-APP-0] Nullifier trie detaches after a rollback
 
-1. **Group membership** is proven by Groth16 ZK proof — only an enrolled participant can produce a valid proof for the group's Merkle root.
-2. **Double-vote prevention** is enforced by the MPF nullifier trie — `mpf.insert` fails hard on a duplicate key, and the new root is committed on-chain in the Semaphore datum each vote.
-3. **Voter anonymity** is guaranteed by the ZK proof: the voter proves membership without revealing which member they are.
-4. **Vote integrity** is enforced by the State Thread Token pattern on the Urna NFT — the tally can only advance through the spending validator, which requires a valid Semaphore co-spend in the same transaction.
+**Files:** `src/zk/src/mpf.ts`, `src/backend/src/voting-event/voting-event.service.ts`
 
-The voting contract delegates ZK proof verification entirely to `semaphore.ak` — it verifies only that the Semaphore NFT was co-spent (Condition 1 of `voting.ak` spend). This design is sound, but it means the entire ZK security rests on `semaphore.ak` behaving correctly. Both contracts must be deployed together; an attacker who could substitute a different Semaphore policy would bypass proof verification entirely.
+Replaced the catch-based `Trie.load` pattern with an explicit empty check at all three load sites:
 
-**Residual risks (trusted to upstream or off-chain):**
-
-- **Groth16 verifier, BLS12-381 arithmetic, Poseidon hash, MPF trie internals** — explicitly out of scope. Correctness is assumed from the `cardano-semaphore` and `ak-381` library implementations.
-- **Group Merkle tree integrity** — the Group validator enforces that only the event admin can update the Merkle root, but does not verify the root's mathematical correctness. A compromised admin or backend could insert a fraudulent identity commitment and allow a non-participant to vote.
-- **Event parameter immutability** — minting parameters (`event_date`, `options`, `weight`, `semaphore_nft`) are set once and cannot be changed on-chain. Misconfiguration at setup time has no on-chain remedy.
-- **External nullifier binding** — the external nullifier is the Semaphore policy ID derived from the parameterised `oref`. Each event has a unique policy, making cross-event proof replay impossible by construction.
-- **Off-chain nullifier store** — the LevelDB trie backing nullifier proofs (`nullifiers-db/<eventId>/`) is the off-chain source of truth for double-vote prevention. If lost or corrupted, it cannot be reconstructed without replaying the full on-chain vote history (see Known Improvements in CLAUDE.md).
-
----
-
-## Annex A — Test Review: `voting.ak`
-
-Full test run: **154 pass, 0 fail** (`aiken check` in `src/on-chain/`).
-
-Test files reviewed:
-- `validators/tests/minting_logic_test.ak` — 8 tests (mint)
-- `validators/tests/spending_logic_test.ak` — 14 tests (spend)
-- `lib/tests/voting_tests.ak` — `simple_vote`, `weighted_vote`, `check_weight`, `update_option`
-- `lib/tests/check_option_values.ak` — `check_options_index`, `check_initial_options_value`
-- `lib/tests/is_interval_within.ak` — `is_interval_within`
-- `lib/tests/signal_tests.ak` — `serialise_signal`, `deserialise_signal`, signal hash computation
-
-### Clean areas
-
-- `minting_logic_test.ak` — all mint conditions covered independently; clean construction.
-- `check_option_values.ak` — thorough boundary coverage including negative indices, gaps, and duplicates.
-- `is_interval_within.ak` — 30 tests; boundary discipline is correct (touching-boundary cases are `fail`).
-- `voting_tests.ak` — `update_option`, `simple_vote`, `weighted_vote`, `check_weight` well-covered. `signal_tests.ak` includes property-based tests via Aiken's fuzzer for serialisation round-trip.
-
-### Issues found
-
-**T-1 — `vote_out_of_time_3` fails for the wrong reason** (`spending_logic_test.ak:914`)
-
-Labelled "validity range of the tx is not within the voting time event." The `signal_message` encodes a vote for option index 35 with weight 60, on a 3-option, weight-1 ballot. Option index 35 is out of bounds (`simple_vote` errors); weight 60 != 1. The test `fail`s but for an ambiguous reason — the time check and the malformed signal both cause rejection. The intended condition (time enforcement) is not cleanly isolated.
-
-**T-2 — `vote_out_of_time_2` output datum mutates `event_date`** (`spending_logic_test.ak:824`)
-
-Labelled "vote window is not open yet." The output `urna_datum_1` sets `event_date = (50, 100)` while the input has `(1, 100)`. `voting.ak` spend enforces `dat.event_date == out_dat.event_date` via `is_datum_preserved`. The test fails due to both the time check and the datum check, not the time check alone. Two confounding rejection reasons.
-
-**T-3 — `signal_digest_scalar` uses pre-v0.9.3 pattern on 256-bit hash** (`signal_tests.ak:89`)
-
-```aiken
-let signal_bytes = serialise_signal([(2,1)]) |> blake2b_256()
-expect Some(signal_scalar) = scalar.from_bytearray_big_endian(signal_bytes)
+```ts
+async function loadTrie(store: Store): Promise<Trie> {
+  try {
+    const trie = await Trie.load(store);
+    return trie.isEmpty() ? new Trie(store) : trie;  // re-attach empty trie to LevelDB
+  } catch (e) {
+    if (/NotFound/.test(String(e))) return new Trie(store); // first load, no trie yet
+    throw e;
+  }
+}
 ```
 
-`scalar.from_bytearray_big_endian` returns `None` for values ≥ the BLS12-381 scalar field prime `r`. A 256-bit blake2b hash exceeds `r` ~55% of the time. This test passes only because the hash of `[(2,1)]` happens to be < `r`. The pattern is inconsistent with the on-chain fix introduced in v0.9.3 (`% scalar.field_prime`) and could mislead a developer using this test as a reference for computing `signal_hash`.
+Previously `Trie.load` returned a detached in-memory trie when the stored root was the null hash (empty trie after a rollback), so subsequent inserts never reached LevelDB. The fix ensures an empty trie is always constructed with the LevelDB store, keeping inserts persistent regardless of rollback history. Verified offline: proof step counts 0/0/1/1 with the old code become 0/0/1/1 correct with the fix; roots match a fresh reference trie.
 
-**T-4 — `vote_14` comment is wrong** (`voting_tests.ak:179`)
+#### [F-APP-1] Public event API exposes admin token and invitee emails
 
-Comment reads: *"Validates voting on option that has negative vote count (-5→-4)."* The actual option is `(1, 5)` (positive). The test itself is correct (5→6) but the comment is misleading.
+**File:** `src/backend/src/voting-event/voting-event.service.ts`
 
-**T-5 — `weighted_vote_10` has an unresolved TODO** (`voting_tests.ak:292`)
+`getAllVotingEvents()` and `getVotingEvent()` now return `Omit<VotingEvent, 'adminToken' | 'invitedParticipants' | 'groupLeafCommitments' | 'nullifierLeafCommitments'>`. A private `toPublic()` method strips those four fields before returning. The manage page continues to receive `adminToken` via its URL query parameter (`?token=`), so no authenticated endpoint is needed for that flow.
 
-`weighted_vote` accepts duplicate indices in `target_options` (e.g., `[(1,1),(1,1)]` adds 2 to option 1). The developer flagged this with `// TODO: Fix this corner case`. Not exploitable because `check_weight` enforces total == allowed weight, but the redundant format is unresolved and could confuse the off-chain signal encoder.
+#### [F-APP-2] Nullifier endpoints are unauthenticated
 
-**T-6 — Spending tests use stub Semaphore datum**
+**File:** `src/backend/src/voting-event/voting-event.controller.ts`
 
-All `cast_*` and `vote_*` tests set `semaphore_output.datum: NoDatum` and most use `nullifier = 0, signal_hash = 0`. Valid as unit tests of `voting.ak` in isolation. Confirms there is no integration test running both `voting.ak` and `semaphore.ak` on a fully-formed transaction with a real ZK proof.
+`DELETE /voting-event/:eventId/nullifier` now requires the event's `adminToken` in the request body; unauthorized calls receive HTTP 401. `POST /voting-event/:eventId/nullifier` remains public but `insertNullifier` in the service rejects nullifiers outside the BLS12-381 scalar field `[1, r)`, preventing garbage inserts that would corrupt the trie. Full ZK proof verification before nullifier insert (the original recommendation) is not yet implemented — the DoS vector of a targeted valid-range insert to block another voter remains.
 
----
+#### [F-APP-3] No nullifier rollback when transaction build fails
 
-## Annex B — Test Review: `group.ak`
+**File:** `src/backend/src/voting-event/voting-event.service.ts`
 
-Full test run: **7 pass, 0 fail** (`aiken check` in `modulo-p-cardano-semaphore` package).
+The browser vote path (where the frontend built and submitted the transaction) has been replaced entirely by the relay-vote path. `relayVote` in the service wraps the entire build–sign–submit sequence in a `try/catch`; any failure (build error, signing error, Blockfrost rejection) calls `rollbackNullifier` before rethrowing. The nullifier inserted by the prior `POST /nullifier` call is cleaned up server-side in all failure cases.
 
-Test file reviewed: `validators/tests/group_test.ak`
+#### [F-APP-6] Concurrent votes conflict on shared UTxOs
 
-### Clean areas
+**File:** `src/backend/src/voting-event/voting-event.service.ts`
 
-All conditions are covered and tests are well-constructed. Mint conditions for token quantity and destination address have dedicated `fail` tests. Spend conditions for admin signature, return address, and value conservation each have a dedicated `fail` test.
+Added `withVoteLock` — a per-event async mutex — around the relay vote submission path. Vote requests for the same event are queued: the next MPF proof is only issued after the previous vote transaction confirms or times out. The browser vote path has been removed; all votes now go through the relay, so the serialisation covers the full vote flow.
 
-### Issues found
+#### [F-APP-7] Concurrent registrations silently lose members
 
-**G-1 — No test for wrong `oref` in mint** (`group_test.ak`)
+**File:** `src/backend/src/voting-event/voting-event.service.ts`
 
-`group.ak` mint Condition 0 consumes the parameterised `oref` (one-shot guarantee). No `fail` test passes a wrong UTxO as input while providing the correct `oref`. The equivalent test exists for `voting.ak` mint (`wrong_parameter_utxo`) but is absent here.
-
-**G-2 — No test for `Create` redeemer on spend**
-
-`group.ak` spend returns `False` for any redeemer other than `Update` (`_ -> False`). No test confirms that spending with the `Create` redeemer is rejected.
-
-**G-3 — `group.ak` mint does not verify the `GroupDatum` (design observation)**
-
-The mint validator has no condition checking that a `GroupDatum` is attached, that `admin_pkh` is non-empty, or that `group_merke_root` is initialised to 0. Any datum — or `NoDatum` — is accepted at mint time. `mint_create_group_1` tests with a valid datum, but this is not enforced on-chain. Initialisation constraints are entirely off-chain trust. Security consequence is limited (the minting admin controls the event regardless), but it is a design choice worth documenting explicitly.
+Wrapped `addParticipant` in a per-event mutex (same `withVoteLock` pattern used for vote serialisation). After writing, the service re-reads `groupLeafCommitments` and verifies the new commitment is present; if missing, it returns an error to the caller. Simultaneous registrations are now serialised — each waits for the previous write to complete before reading and appending.
 
 ---
 
-## Annex C — Test Review: `semaphore.ak`
+### `src/frontend`
 
-Full test run: **15 pass, 1 fail** (`aiken check` in `modulo-p-cardano-semaphore` package).
+#### [F-APP-4] / [F-APP-5] Vote linked to fee-paying wallet
 
-Test file reviewed: `validators/tests/semaphore_test.ak`
+**Files:** `src/tx/src/node/relay-vote.ts`, `src/backend/src/voting-event/voting-event.service.ts`
 
-### Mint tests — 6 tests, all pass/fail correctly
+Implemented the relay wallet design: the backend builds, signs, and submits vote transactions using a dedicated relay wallet (MeshWallet with server-held mnemonic). The voter's CIP-30 wallet no longer appears in any vote transaction on-chain. Plaintext `signal_message` on-chain is intentional by design.
 
-All 5 mint conditions have dedicated coverage: one-shot UTxO (`mint_create_semaphore_token_1`), token quantity (`mint_wrong_value`), destination address (`mint_wrong_address`), group root copy (`mint_group_root_tamper`), datum presence (`mint_no_datum`), MPF root initialisation (`mint_mpf_root_wrong_setup`). These six tests are well-constructed.
+#### [F-APP-8] Blockfrost API key exposed in the frontend bundle
 
-### Standalone proof test — `snark_1`
+**File:** `src/frontend/app/event/[id]/page.tsx`
 
-`snark_1` calls `groth_verify(vk, zk_proof, public_values)` directly (outside the validator). It is the only test that provides empirical confirmation that the Groth16 verifier accepts a real proof with the hardcoded public inputs. Not a validator integration test, but important as a sanity check.
+The voter vote flow no longer uses a frontend Blockfrost provider. UTxO fetching for the vote transaction is handled entirely server-side inside `relayVote`. The voter page (`page.tsx`) imports no `BlockfrostProvider` and reads no `NEXT_PUBLIC_BLOCKFROST_API_KEY`. The manage page (`manage/page.tsx`) still uses `NEXT_PUBLIC_BLOCKFROST_API_KEY` for admin minting operations; this is an admin-only path and remains open for the minting flow.
 
-### Spending tests — 8 tests, 5 broken by F-SEM-1
+#### [F-APP-10] Misleading vote error messages
 
-All spending tests place `vkey_input` in `inputs` rather than `reference_inputs`. The validator's Condition 2 calls `find_input(reference_inputs, dat.vkey_ref_input)`. Due to UPLC call-by-need, the VKey lookup is reached only when all conditions up to that point hold. The per-test breakdown:
+**File:** `src/frontend/app/event/[id]/page.tsx`
 
-| Test | Expected | Actual failure reason | Correct? |
-|---|---|---|---|
-| `spend_signal_semaphore_1` | PASS | F-SEM-1 — `reference_inputs` empty, VKey lookup returns `None` | ✗ WRONG |
-| `spend_value_not_sent_back` | FAIL | `expect [output_to_script]` — no output at the script address | ✓ RIGHT |
-| `spend_datum_not_preserved_1` | FAIL | `is_datum_preserved = False` — lazy short-circuit, VKey lookup never reached | ✓ RIGHT |
-| `spend_datum_not_preserved_2` | FAIL | `is_datum_preserved = False` — same | ✓ RIGHT |
-| `spend_vkey_field_with_incorrect_value` | FAIL | F-SEM-1 — both sides reference `OutputReference{#"01bc",0}`, so `is_datum_preserved = True` | ✗ WRONG |
-| `spend_incorrect_zk_proof` | FAIL | F-SEM-1 — `is_datum_preserved = True`, reaches Condition 2 | ✗ WRONG |
-| `spend_nullifier_already_inserted` | FAIL | F-SEM-1 — `is_datum_preserved = True`, reaches Condition 2 | ✗ WRONG |
-| `spend_tampered_message` | FAIL | F-SEM-1 — `is_datum_preserved = True`, reaches Condition 2 | ✗ WRONG |
+In development mode, `classifySubmissionError` now surfaces the raw backend error string when the blockchain rejects a transaction, making it possible to diagnose Plutus failures directly without inspecting network logs. Production error classification (moving `BadInputs` before `ValueNotConserved`) remains open.
 
-### Issues found
+#### [F-APP-11] Event start can fail between the two mints
 
-**S-1 — `spend_vkey_field_with_incorrect_value` has a construction error beyond F-SEM-1**
+**File:** `src/frontend/app/event/[id]/manage/page.tsx`
 
-This test intends to verify that a VKey UTxO with a wrong datum type (`InlineDatum(1)`) is rejected. However, `initial_semaphore_datum.vkey_ref_input` and `output_semaphore_datum.vkey_ref_input` both point to `OutputReference { transaction_id: #"01bc", output_index: 0 }` — the same reference. So `is_datum_preserved` is `True`, and after fixing F-SEM-1, the test would proceed to Condition 2, find the wrong-typed datum, and fail at `expect snark_vkey: SnarkVerificationKey = snark_vkey_input`. The test will produce the correct outcome after fixing F-SEM-1, but for an indirect reason. A cleaner construction would set a distinct `OutputReference` for `wrong_vk_input` to isolate the datum-type rejection from the reference lookup.
+After the Group NFT mint confirms, `handleStartVoting` collects the set of UTxO references that were consumed in that transaction (`preGroupMintRefs`). The subsequent Blockfrost fetch for the second mint (Semaphore+Voting) filters out any UTxO whose `txHash#outputIndex` is in that set. This prevents selecting stale UTxOs that Blockfrost has not yet marked spent and eliminates the "All inputs are spent" failure that forced multiple restart attempts.
 
-**S-2 — `spend_signal_semaphore_1` has an incomplete MPF proof** (`semaphore_test.ak`, lines 620–628)
+#### [F-APP-12] Non-member voters receive HTTP 500
 
-The happy-path test stubs `mpf_proof = []`. The code that would compute a real MPF proof from the LevelDB store is commented out. Because F-SEM-1 causes this test to fail before the MPF check, the empty-proof substitution has never been tested either. For an empty initial trie (`null_hash`), `mpf.insert` with an empty proof appears to work (the `insert_nullifier` test in `mpf_proofs.ak` passes with the same hardcoded root), but this is a coincidence of the empty-trie case. No test exercises MPF insertion into a non-empty trie through the spending path.
+**File:** `src/backend/src/voting-event/voting-event.service.ts`
 
-**S-3 — No test for wrong `oref` in mint**
+`getMerkleProof` now returns structured `HttpException` responses instead of propagating unhandled errors:
+- HTTP 404 with `'User is not a participant in this event'` — userId not in group at all.
+- HTTP 409 with `'Not part of this vote\'s group (registered after voting started)'` — user registered after the Semaphore snapshot was frozen.
+- HTTP 422 with `'Voter was not in the group at the time the voting system was set up and cannot vote'` — historical root search exhausted.
 
-Same gap as `group.ak`. No `fail` test passes a wrong UTxO as input while providing the correct `oref` parameter. `mint_wrong_oref` is absent.
+The frontend surfaces the `message` field from these responses instead of showing a generic error.
 
-**S-4 — No test for `Signal` redeemer on mint**
+---
 
-The mint validator's `_ -> False` branch is not exercised. No test confirms that a `Signal` redeemer on the mint endpoint is rejected.
+## Conclusions
 
-**S-5 — Misleading comment on `spend_signal_semaphore_1` (line 657)**
+### On-chain
 
-The line `inputs: [semaphore_input, vkey_input],` is prefixed with the comment `// Include vkey as reference input`. The comment is correct about the intent; the code is wrong. This directly points at the root cause of F-SEM-1 and suggests the author knew the VKey should be a reference input but placed it in the wrong field.
+The audit approach for the smart contracts was rigorous: each validator was read line by line, its security properties were identified and stated explicitly, and each property was traced to the specific condition or function that enforces it. Where a condition was not empirically confirmed by a test, the gap was documented as a finding. This process produced improvements at two levels: correctness of the validator logic itself (F-VOTING-7, F-VOTING-3, F-SEM-3, F-VOTING-1, F-GROUP-1) and robustness of the test suite (F-SEM-1 through F-SEM-6 and the additional test findings). The two levels are distinct: the contracts were mostly sound, but a significant portion of the test suite was passing for wrong reasons or not covering intended conditions at all. Improving both gives stronger confidence that the properties hold and will be caught if they regress.
 
-<!-- STRUCTURE NOTES
-- Technology Overview: high-level, no code — what the system is, what problem it solves,
-  key concepts (ZK proofs, Semaphore, one-shot NFT pattern). Written for a reader unfamiliar
-  with the project.
+The key architectural property confirmed by the audit: `voting.ak` delegates ZK proof verification entirely to `semaphore.ak` by requiring a co-spend. This design is sound — the delegation is tight and unambiguous — but it means both validators must always be deployed together. An event deployed with a substitute Semaphore policy would bypass proof verification entirely. The external nullifier (the Semaphore policy ID, derived from the parameterised `oref`) ensures proofs generated for one event cannot be replayed in another.
 
-- Observations: where the audit work lives. Uses a claim + evidence format per validator:
-  "This validator intends to [X]. It achieves this because condition A enforces Y,
-  condition B enforces Z..." A missing or weak condition is where a finding falls out naturally.
-  The invariants table lives here as a reference anchor — defined once, then each validator
-  analysis points back to them. Observations IS the invariant verification; it does not need
-  a separate invariants section.
--->
+**On-chain residual risks:**
+
+- **Groth16 verifier, BLS12-381 arithmetic, Poseidon hash, MPF trie internals** — out of scope; correctness is assumed from `cardano-semaphore` and `ak-381`.
+- **Group Merkle tree correctness** — the Group validator gates updates to the admin but does not verify the root. A compromised admin or backend could add a fraudulent commitment.
+- **Event parameter immutability** — minting parameters are set once and cannot be corrected on-chain. Misconfiguration at setup time has no remedy.
+
+---
+
+### Off-chain
+
+The off-chain analysis took a different approach: a live scripted system test on Cardano preprod, exercising the same code paths as real users. This is inherently less exhaustive than a static proof-of-properties — the findings reflect what the test happened to surface, not a guarantee of completeness. Within that scope, the test identified meaningful security issues across three categories.
+
+**Authentication and authorisation gaps** (F-APP-1, F-APP-2): the public event API exposed sensitive fields including admin tokens and invitee emails; nullifier endpoints accepted arbitrary payloads from anyone, enabling a DoS against the MPF trie. F-APP-1 is fully fixed; F-APP-2 is partial — the DELETE endpoint is admin-gated but `POST /nullifier` remains unauthenticated (only scalar range validation, not ZK proof verification).
+
+**Data integrity under concurrency** (F-APP-0, F-APP-7): the most critical finding was a trie detachment bug triggered by any rollback — after a single failed vote, every subsequent vote in the event would fail silently with a 0-step MPF proof. Concurrent registrations had a race condition that silently dropped members from the group. Both are fully fixed.
+
+**Concurrency on vote submission** (F-APP-6): two votes in the same block window collide on shared UTxOs. The relay vote path is serialised via `withVoteLock` and the browser vote path has been removed entirely; all votes go through relay and are fully serialised.
+
+**Privacy design** (F-APP-4, F-APP-5): the relay wallet design removes the link between the voter's wallet and the transaction. Plaintext `signal_message` on-chain is intentional — the system is designed to provide vote anonymity (unlinkable identity) without ballot secrecy.
+
+**Acknowledged residuals:** F-APP-2 (`POST /nullifier` unauthenticated — DoS vector reduced by scalar range check; ZK proof gating deferred). F-APP-4 (server-side userId–vote correlation — inherent to a centralised relay design). F-APP-9 (running tally visible — UI-only mitigation is insufficient given on-chain data is public by design). F-APP-8 and F-APP-10 are partially addressed; remaining gaps are admin-only or dev-mode scope.
