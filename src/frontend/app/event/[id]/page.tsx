@@ -442,6 +442,10 @@ export default function EventPage() {
     if (raw.includes('BadInputs') || raw.includes('UtxoFailure')) {
       return 'One or more transaction inputs are no longer available on-chain. Please try again.';
     }
+    // Surface the raw backend message in dev so we can diagnose blockchain rejections.
+    if (process.env.NODE_ENV === 'development') {
+      return `Blockchain rejection — raw error: ${raw}`;
+    }
     return 'The transaction was rejected by the blockchain. Please try again or contact the event organizer.';
   };
 
