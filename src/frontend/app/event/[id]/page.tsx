@@ -26,10 +26,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Identity } from 'modp-semaphore-bls12381/packages/typescript/src/identity';
 import { useWallet } from '@meshsdk/react';
-import { BlockfrostProvider, deserializeAddress } from '@meshsdk/core';
-import { encodeVoteSignal, generateVoteProof, buildVoteTransaction, applyOrefParamToScript } from '@/lib/vote-helpers';
-import { VALIDATORS, fetchOnChainGroupMerkleRoot } from '@src/tx/browser';
-import { createOutputReference } from '@/lib/blockchain-helpers';
+import { encodeVoteSignal, generateVoteProof } from '@/lib/vote-helpers';
 
 // ============================================================================
 // CONSTANTS
@@ -481,10 +478,6 @@ export default function EventPage() {
       if (!event.semaphoreAddress) {
         throw new Error('Voting not yet available — the event organizer has not completed the blockchain setup.');
       }
-      if (!connected || !wallet) {
-        throw new Error('Wallet not connected. Please connect your wallet before voting.');
-      }
-
       // Load stored identity
       const storedIdentityStr = localStorage.getItem(`identity_${eventId}_${validatedToken}`);
       if (!storedIdentityStr) {
@@ -492,23 +485,18 @@ export default function EventPage() {
       }
       const storedIdentity: StoredIdentity = JSON.parse(storedIdentityStr);
 
-      // Create provider early — needed for on-chain root fetch and TX building.
-      const provider = new BlockfrostProvider(
-        process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY!
-      );
-
-      // Fetch the on-chain Semaphore UTxO's group_merke_root before generating the ZK proof.
+      // Fetch the on-chain Semaphore UTxO's group_merke_root via the backend (F8: no frontend Blockfrost key).
       // This value is frozen at SV mint time; the backend's groupMerkleRootHash can drift
       // if participants register after minting. The ZK proof and output datum must both use
       // the on-chain root, not the backend's current root.
       let onChainGroupMerkleRoot: bigint | null = null;
       try {
-        onChainGroupMerkleRoot = await fetchOnChainGroupMerkleRoot(
-          provider,
-          event.semaphoreAddress,
-          event.semaphoreNft!,
-        );
-        console.log('  onChainGroupMerkleRoot:', onChainGroupMerkleRoot.toString());
+        const rootRes = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/on-chain-group-root`);
+        if (rootRes.ok) {
+          const rootData = await rootRes.json();
+          onChainGroupMerkleRoot = BigInt(rootData.groupMerkleRoot);
+          console.log('  onChainGroupMerkleRoot:', onChainGroupMerkleRoot.toString());
+        }
       } catch (rootErr: any) {
         console.warn('⚠️ Could not fetch on-chain Semaphore root (will use backend root):', rootErr?.message);
       }
@@ -593,89 +581,29 @@ export default function EventPage() {
       console.log('  mpfNewRoot         :', mpfNewRoot);
       console.log('  mpfProofSteps      :', JSON.stringify(mpfProofSteps));
 
-      // Step 6: Build vote transaction
-      setVoteStep('Building transaction...');
-
-      const walletAddress = await wallet.getChangeAddress();
-      const walletUtxos = await wallet.getUtxos();
-      const { pubKeyHash: paymentKeyHash } = deserializeAddress(walletAddress);
-
-      // ── COLLATERAL DIAGNOSTICS ───────────────────────────────────────────────
-      console.log('💰 Wallet UTxOs (' + walletUtxos.length + ' total):');
-      walletUtxos.forEach((u, i) => {
-        const units = u.output.amount.map(a => a.unit === 'lovelace' ? (parseInt(a.quantity)/1_000_000).toFixed(2) + ' ADA' : a.unit.slice(0,16) + '…');
-        const isPureAda = u.output.amount.length === 1 && u.output.amount[0].unit === 'lovelace';
-        const lovelace = u.output.amount.find(a => a.unit === 'lovelace')?.quantity ?? '0';
-        console.log(`  [${i}] ${u.input.txHash.slice(0,12)}…#${u.input.outputIndex} pureADA=${isPureAda} lovelace=${lovelace} assets=[${units.join(', ')}]`);
-      });
-      const pureAdaUtxos = walletUtxos.filter(u => u.output.amount.length === 1 && u.output.amount[0].unit === 'lovelace');
-      console.log('  Pure-ADA UTxOs (collateral candidates):', pureAdaUtxos.length);
-      // ────────────────────────────────────────────────────────────────────────
-
-      const mintingOref = createOutputReference(
-        event.mintingOrefTxHash!,
-        event.mintingOrefIndex!
-      );
-      const semaphoreValidatorCbor = await applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
-      const votingValidatorCbor = await applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
-
-      const collateralUtxo = walletUtxos.find(u =>
-        u.output.amount.length === 1 &&
-        u.output.amount[0].unit === 'lovelace' &&
-        parseInt(u.output.amount[0].quantity) >= 5000000
-      );
-      if (!collateralUtxo) throw new Error('No suitable collateral UTxO found. Please ensure you have a UTxO with at least 5 ADA containing only ADA (no other tokens).');
-
-      const unsignedTx = await buildVoteTransaction({
-        provider,
-        semaphoreScriptAddress: event.semaphoreAddress,
-        votingScriptAddress: event.votingValidatorAddress!,
-        semaphoreNftPolicyId: event.semaphoreNft!,
-        votingNftPolicyId: event.votingNft!,
-        groupNftPolicyId: event.groupNft!,
-        semaphoreValidatorCbor,
-        votingValidatorCbor,
-        walletUtxos,
-        walletAddress,
-        paymentKeyHash,
-        zkProof,
-        nullifierHash,
-        signalHash,
-        signalMessage,
-        mpfProofSteps,
-        mpfNewRoot,
-        voteSignal,
-        collateralUtxo,
-        // weight in UrnaDatum is 0 for simple voting (votingPower===1), votingPower for weighted.
-        weight: event.votingPower > 1 ? event.votingPower : 0,
-        eventStart: event.startingDate! * 1000,
-        eventEnd: event.endingDate! * 1000,
-      });
-
-      // Step 7: Sign transaction
-      setVoteStep('Waiting for wallet signature...');
-      let signedTx: string;
-      try {
-        signedTx = await wallet.signTx(unsignedTx, true);
-      } catch (signErr: any) {
-        const msg = signErr?.message ?? String(signErr);
-        if (msg.toLowerCase().includes('user declined') || msg.toLowerCase().includes('declined sign')) {
-          throw new Error('Wallet signature declined. Your vote was not submitted. To retry, contact the event organizer to reset your voting session.');
-        }
-        throw new Error('Signing failed: ' + msg);
-      }
-
-      // Step 8: Submit to blockchain via backend
-      setVoteStep('Submitting to blockchain...');
-      const submitResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/vote`, {
+      // Step 6: Relay to backend — backend builds, signs, and submits the tx.
+      // The voter's wallet never touches the transaction (anonymity preserved).
+      setVoteStep('Submitting vote...');
+      const submitResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/relay-vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signedTx, nullifier: nullifierHash.toString() }),
+        body: JSON.stringify({
+          piA: zkProof.pi_a,
+          piB: zkProof.pi_b,
+          piC: zkProof.pi_c,
+          nullifierHash: nullifierHash.toString(),
+          signalHash: signalHash.toString(),
+          signalMessage,
+          mpfProofSteps,
+          mpfNewRoot,
+          voteSignal,
+          nullifier: nullifierHash.toString(),
+        }),
       });
       if (!submitResponse.ok) {
-        // Rollback is handled server-side when nullifier is passed with the submit request.
+        // Rollback is handled server-side (nullifier is passed in the request body).
         const errData = await submitResponse.json().catch(() => ({}));
-        console.error('Submission error (full):', JSON.stringify(errData, null, 2));
+        console.error('Relay vote error (full):', JSON.stringify(errData, null, 2));
         throw new Error(classifySubmissionError(errData));
       }
       const submitResult = await submitResponse.json();

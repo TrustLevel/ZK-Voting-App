@@ -167,6 +167,26 @@ export interface BuildVoteTransactionParams {
   collateralUtxo: UTxO; // caller selects a pure-ADA UTxO ≥ 5 ADA
 }
 
+export interface BuildRelayVoteTransactionParams extends Omit<BuildVoteTransactionParams, 'walletUtxos' | 'walletAddress' | 'paymentKeyHash' | 'collateralUtxo'> {
+  relayWalletUtxos: UTxO[];
+  relayWalletAddress: string;
+  relayPaymentKeyHash: string;
+}
+
+export async function buildRelayVoteTransaction(params: BuildRelayVoteTransactionParams): Promise<string> {
+  const { relayWalletUtxos, relayWalletAddress, relayPaymentKeyHash, ...rest } = params;
+  const { selectUtxoForCollateral } = await import('./utils-browser.js');
+  const collateralUtxo = selectUtxoForCollateral(relayWalletUtxos);
+  if (!collateralUtxo) throw new Error('Relay wallet has no suitable collateral UTxO (need pure ADA ≥5 ADA)');
+  return buildVoteTransaction({
+    ...rest,
+    walletUtxos: relayWalletUtxos,
+    walletAddress: relayWalletAddress,
+    paymentKeyHash: relayPaymentKeyHash,
+    collateralUtxo,
+  });
+}
+
 export async function buildVoteTransaction(params: BuildVoteTransactionParams): Promise<string> {
   const {
     provider,
