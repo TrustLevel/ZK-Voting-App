@@ -657,7 +657,7 @@ export class VotingEventService {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { BlockfrostProvider, MeshWallet } = require('@meshsdk/core');
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { buildRelayVoteTransaction, applyOrefParamToScript, VALIDATORS, parseMnemonic, extractPaymentKeyHash } = require('@src/tx');
+        const { buildRelayVoteTransaction, applyOrefParamToScriptNode, createOutputReference, VALIDATORS, parseMnemonic, extractPaymentKeyHash } = await import('@src/tx');
 
         const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
         const secretKey = this.configService.get<string>('SECRET_KEY') ?? '';
@@ -674,9 +674,9 @@ export class VotingEventService {
         const relayWalletAddress: string = await relayWallet.getChangeAddress();
         const relayPaymentKeyHash: string = extractPaymentKeyHash(relayWalletAddress);
 
-        const mintingOref = { txHash: event.mintingOrefTxHash, outputIndex: event.mintingOrefIndex };
-        const semaphoreValidatorCbor: string = applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
-        const votingValidatorCbor: string = applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
+        const mintingOref = createOutputReference(event.mintingOrefTxHash, event.mintingOrefIndex);
+        const semaphoreValidatorCbor: string = applyOrefParamToScriptNode(VALIDATORS.semaphore.mint, mintingOref);
+        const votingValidatorCbor: string = applyOrefParamToScriptNode(VALIDATORS.voting.mint, mintingOref);
 
         const unsignedTx = await buildRelayVoteTransaction({
           provider,
@@ -712,6 +712,7 @@ export class VotingEventService {
           try { await this.rollbackNullifier(eventId, payload.nullifier); } catch { /* ignore */ }
         }
         if (err instanceof HttpException) throw err;
+        console.error('[relayVote] error:', err?.message, '\nStack:', err?.stack);
         throw new HttpException(`Relay vote failed: ${err?.message ?? err}`, HttpStatus.INTERNAL_SERVER_ERROR);
       }
     });
@@ -1121,7 +1122,7 @@ export class VotingEventService {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { BlockfrostProvider } = require('@meshsdk/core');
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { buildUpdateGroupTransaction } = require('@src/tx');
+    const { buildUpdateGroupTransaction } = await import('@src/tx');
 
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
     const provider = new BlockfrostProvider(apiKey);
