@@ -853,11 +853,22 @@ export default function EventDashboard() {
       // MeshTxBuilder's internal fetchUTxOs() call to 404. Since the UTxO poll above
       // already confirmed the Group NFT TX is indexed (visible at the script address),
       // all of the wallet's UTxOs at walletAddress are also indexed and safe to use.
-      const walletUtxos2 = await provider.fetchAddressUTxOs(walletAddress);
+      //
+      // F11: Blockfrost's UTXO index can lag behind even after tx confirmation, so UTxOs
+      // that were spent by the Group NFT mint may still appear in the listing. Exclude any
+      // UTxO that existed before the Group NFT mint — those are spent or stale. Only the
+      // change output(s) of the Group NFT mint (txHash === groupResult.txHash) are safe.
+      const fetchedUtxos2 = await provider.fetchAddressUTxOs(walletAddress);
+      const preGroupMintRefs = new Set(
+        walletUtxos.map(u => `${u.input.txHash}#${u.input.outputIndex}`)
+      );
+      const walletUtxos2 = fetchedUtxos2.filter(
+        u => !preGroupMintRefs.has(`${u.input.txHash}#${u.input.outputIndex}`)
+      );
       if (walletUtxos2.length === 0) {
         throw new Error('No UTxOs found at wallet address via Blockfrost. Please wait for transactions to confirm.');
       }
-      console.log('Available wallet UTxOs (Blockfrost, confirmed):', walletUtxos2.length);
+      console.log('Available wallet UTxOs (Blockfrost, confirmed):', walletUtxos2.length, '(pre-mint UTxOs excluded:', fetchedUtxos2.length - walletUtxos2.length, ')');
 
       // Select different UTxO for Semaphore + Voting NFT minting
       const { selectedUtxo: votingUtxo } =
