@@ -710,7 +710,7 @@ export class VotingEventService {
         throw new HttpException(`Failed to build vote transaction: ${buildErr?.message ?? buildErr}`, HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
-      const signedTx: string = relayWallet.signTx(unsignedTx, false);
+      const signedTx: string = await relayWallet.signTx(unsignedTx, false);
       return this._submitVote(signedTx, eventId, payload.nullifier);
     });
   }
