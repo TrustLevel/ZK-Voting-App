@@ -55,6 +55,18 @@ export class VotingEventService {
     return result;
   }
 
+  // F6: per-event promise chain that serialises vote submissions.
+  // All vote txs for the same event spend the same Semaphore and Voting UTxOs — two concurrent
+  // submissions would both reference stale UTxO hashes and one would be rejected by the node.
+  private readonly voteLocks = new Map<number, Promise<any>>();
+
+  private withVoteLock<T>(eventId: number, fn: () => Promise<T>): Promise<T> {
+    const prev = this.voteLocks.get(eventId) ?? Promise.resolve();
+    const result = prev.catch(() => {}).then(fn);
+    this.voteLocks.set(eventId, result.catch(() => {}));
+    return result;
+  }
+
   constructor(
     @InjectRepository(VotingEvent)
     private votingEventRepository: Repository<VotingEvent>,
@@ -535,6 +547,15 @@ export class VotingEventService {
     if (!signedTx) {
       throw new HttpException('Missing signedTx in request body', HttpStatus.BAD_REQUEST);
     }
+    const run = () => this._submitVote(signedTx, eventId, nullifier);
+    return eventId !== undefined ? this.withVoteLock(eventId, run) : run();
+  }
+
+  private async _submitVote(
+    signedTx: string,
+    eventId?: number,
+    nullifier?: string,
+  ): Promise<{ txHash: string }> {
 
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
     const txBytes = Buffer.from(signedTx, 'hex');
@@ -607,6 +628,91 @@ export class VotingEventService {
     }
 
     return { txHash: body.replace(/"/g, '') };
+  }
+
+  // Relay vote: backend builds, signs, and submits the vote tx using the relay wallet.
+  // The voter's CIP-30 wallet is never involved — only ZK proof data is sent to the server.
+  async relayVote(
+    eventId: number,
+    payload: {
+      zkProof: { pi_a: string; pi_b: string; pi_c: string };
+      nullifierHash: bigint;
+      signalHash: bigint;
+      signalMessage: string;
+      mpfProofSteps: Array<object>;
+      mpfNewRoot: string;
+      voteSignal: Array<[number, number]>;
+      nullifier?: string;
+    },
+  ): Promise<{ txHash: string }> {
+    return this.withVoteLock(eventId, async () => {
+      const event = await this.votingEventRepository.findOne({ where: { eventId } });
+      if (!event) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
+      if (!event.semaphoreAddress || !event.votingValidatorAddress || !event.semaphoreNft || !event.votingNft || !event.groupNft)
+        throw new HttpException('Event blockchain setup incomplete', HttpStatus.BAD_REQUEST);
+      if (!event.mintingOrefTxHash || event.mintingOrefIndex === null)
+        throw new HttpException('Minting output reference not set on event', HttpStatus.BAD_REQUEST);
+
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { BlockfrostProvider, MeshWallet } = require('@meshsdk/core');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { buildRelayVoteTransaction, applyOrefParamToScript, VALIDATORS, parseMnemonic, extractPaymentKeyHash } = require('@src/tx');
+
+      const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+      const secretKey = this.configService.get<string>('SECRET_KEY') ?? '';
+      const provider = new BlockfrostProvider(apiKey);
+
+      const mnemonic: string[] = parseMnemonic(secretKey);
+      const relayWallet = new MeshWallet({
+        networkId: 0,
+        fetcher: provider,
+        key: { type: 'mnemonic', words: mnemonic },
+      });
+
+      const relayWalletUtxos = await relayWallet.getUtxos();
+      const relayWalletAddress: string = await relayWallet.getChangeAddress();
+      const relayPaymentKeyHash: string = extractPaymentKeyHash(relayWalletAddress);
+
+      const mintingOref = { txHash: event.mintingOrefTxHash, outputIndex: event.mintingOrefIndex };
+      const semaphoreValidatorCbor: string = applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
+      const votingValidatorCbor: string = applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
+
+      let unsignedTx: string;
+      try {
+        unsignedTx = await buildRelayVoteTransaction({
+          provider,
+          semaphoreScriptAddress: event.semaphoreAddress,
+          votingScriptAddress: event.votingValidatorAddress,
+          semaphoreNftPolicyId: event.semaphoreNft,
+          votingNftPolicyId: event.votingNft,
+          groupNftPolicyId: event.groupNft,
+          semaphoreValidatorCbor,
+          votingValidatorCbor,
+          relayWalletUtxos,
+          relayWalletAddress,
+          relayPaymentKeyHash,
+          zkProof: payload.zkProof,
+          nullifierHash: payload.nullifierHash,
+          signalHash: payload.signalHash,
+          signalMessage: payload.signalMessage,
+          mpfProofSteps: payload.mpfProofSteps,
+          mpfNewRoot: payload.mpfNewRoot,
+          voteSignal: payload.voteSignal,
+          weight: (event.votingPower ?? 0) > 1 ? event.votingPower! : 0,
+          eventStart: event.startingDate! * 1000,
+          eventEnd: event.endingDate! * 1000,
+        });
+      } catch (buildErr: any) {
+        // TX build failed — nullifier was already inserted; roll it back so voter can retry
+        if (payload.nullifier) {
+          try { await this.rollbackNullifier(eventId, payload.nullifier); } catch { /* ignore */ }
+        }
+        throw new HttpException(`Failed to build vote transaction: ${buildErr?.message ?? buildErr}`, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      const signedTx: string = relayWallet.signTx(unsignedTx, false);
+      return this._submitVote(signedTx, eventId, payload.nullifier);
+    });
   }
 
   // Check admin token for /manage access
@@ -838,6 +944,43 @@ export class VotingEventService {
 
   // Fetch live vote tallies from the on-chain UrnaDatum via Blockfrost.
   // Returns { options: [{ index, text, votes }] } — text from DB, votes from chain (zeros if not deployed or Blockfrost unreachable).
+  // Returns the group_merke_root currently stored in the on-chain SemaphoreDatum.
+  // Used by the frontend instead of calling Blockfrost directly (F8).
+  async getOnChainGroupRoot(eventId: number): Promise<{ groupMerkleRoot: string }> {
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
+    if (!event.semaphoreAddress || !event.semaphoreNft)
+      throw new HttpException('Event blockchain setup incomplete', HttpStatus.BAD_REQUEST);
+
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const network = this.configService.get<string>('BLOCKFROST_NETWORK') ?? 'preprod';
+    const baseUrl = `https://cardano-${network}.blockfrost.io/api/v0`;
+
+    const response = await fetch(`${baseUrl}/addresses/${event.semaphoreAddress}/utxos`, {
+      headers: { 'project_id': apiKey },
+    });
+    if (!response.ok) {
+      throw new HttpException(`Blockfrost error fetching Semaphore UTxOs (${response.status})`, HttpStatus.BAD_GATEWAY);
+    }
+
+    const utxos: any[] = await response.json();
+    const semaphoreUtxo = utxos.find((u: any) =>
+      Array.isArray(u.amount) && u.amount.some((a: any) => a.unit.startsWith(event.semaphoreNft!))
+    );
+    if (!semaphoreUtxo) throw new HttpException('Semaphore UTxO not found on-chain', HttpStatus.NOT_FOUND);
+
+    const datumCbor: string | null = semaphoreUtxo.inline_datum;
+    if (!datumCbor) throw new HttpException('Semaphore UTxO has no inline datum', HttpStatus.INTERNAL_SERVER_ERROR);
+
+    const datum = deserializeDatum(datumCbor);
+    // SemaphoreDatum = Constr 0 [groupNftPolicyId, groupMerkleRoot, nullifierMpfRoot, vkeyRef]
+    const groupMerkleRoot: string = String(datum?.fields?.[1]?.int ?? datum?.fields?.[1]);
+    if (!groupMerkleRoot || groupMerkleRoot === 'undefined')
+      throw new HttpException('Could not decode groupMerkleRoot from Semaphore datum', HttpStatus.INTERNAL_SERVER_ERROR);
+
+    return { groupMerkleRoot };
+  }
+
   async getResults(eventId: number): Promise<{ options: Array<{ index: number; text: string; votes: number }> }> {
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
     if (!event) throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);

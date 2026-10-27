@@ -120,6 +120,32 @@ export class VotingEventController {
    * }
    * ============================================================================
    */
+  @Post(':eventId/relay-vote')
+  async relayVote(
+    @Param('eventId') eventId: number,
+    @Body('piA') piA: string,
+    @Body('piB') piB: string,
+    @Body('piC') piC: string,
+    @Body('nullifierHash') nullifierHash: string,
+    @Body('signalHash') signalHash: string,
+    @Body('signalMessage') signalMessage: string,
+    @Body('mpfProofSteps') mpfProofSteps: Array<object>,
+    @Body('mpfNewRoot') mpfNewRoot: string,
+    @Body('voteSignal') voteSignal: Array<[number, number]>,
+    @Body('nullifier') nullifier?: string,
+  ) {
+    return this.votingEventService.relayVote(eventId, {
+      zkProof: { pi_a: piA, pi_b: piB, pi_c: piC },
+      nullifierHash: BigInt(nullifierHash),
+      signalHash: BigInt(signalHash),
+      signalMessage,
+      mpfProofSteps,
+      mpfNewRoot,
+      voteSignal,
+      nullifier,
+    });
+  }
+
   @Post(':eventId/vote')
   async submitVote(
     @Param('eventId') eventId: number,
@@ -164,6 +190,11 @@ export class VotingEventController {
     @Body('nullifier') nullifier: string,
   ) {
     return await this.votingEventService.insertNullifier(eventId, nullifier);
+  }
+
+  @Get(':eventId/on-chain-group-root')
+  async getOnChainGroupRoot(@Param('eventId') eventId: number) {
+    return await this.votingEventService.getOnChainGroupRoot(eventId);
   }
 
   @Get(':eventId/results')
