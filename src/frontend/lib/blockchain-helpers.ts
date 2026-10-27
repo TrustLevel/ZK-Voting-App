@@ -143,11 +143,13 @@ export async function buildAndSubmitSemaphoreVotingMintTx(params: {
   ]);
 
   const weight = votingPower > 1 ? votingPower : 0;
+  // startingDate/endingDate from the backend are POSIX seconds; the on-chain
+  // validity_range is POSIX milliseconds, so multiply before storing in the datum.
   const urnaDatum = createUrnaDatum({
     weight,
     options: generateInitialOptions(options.length),
-    eventStart: startingDate,
-    eventEnd: endingDate,
+    eventStart: startingDate * 1000,
+    eventEnd: endingDate * 1000,
     semaphoreNftPolicyId: semaphorePolicyId,
   });
 
