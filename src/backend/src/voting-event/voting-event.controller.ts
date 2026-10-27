@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Patch, Body, Param, Query } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Patch, Body, Param, Query, HttpException, HttpStatus } from '@nestjs/common';
 import { VotingEventService } from './voting-event.service';
 
 @Controller('voting-event')
@@ -179,6 +179,22 @@ export class VotingEventController {
     @Query('targetRoot') targetRoot?: string,
   ) {
     return await this.votingEventService.getMerkleProof(eventId, userId, targetRoot);
+  }
+
+  // Admin-only: removes a specific nullifier from the MPF trie.
+  // Use to unblock a voter whose nullifier is stuck from a failed previous attempt.
+  // Requires the event's adminToken in the request body.
+  @Delete(':eventId/nullifier')
+  async adminRollbackNullifier(
+    @Param('eventId') eventId: number,
+    @Body('nullifier') nullifier: string,
+    @Body('adminToken') adminToken: string,
+  ) {
+    const validation = await this.votingEventService.validateAdminToken(eventId, adminToken);
+    if (!validation.valid) {
+      throw new HttpException(validation.error ?? 'Unauthorized', HttpStatus.UNAUTHORIZED);
+    }
+    return await this.votingEventService.rollbackNullifier(eventId, nullifier);
   }
 
   // Inserts a nullifier into the MPF trie and returns the proof.

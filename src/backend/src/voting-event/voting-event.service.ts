@@ -653,33 +653,32 @@ export class VotingEventService {
       if (!event.mintingOrefTxHash || event.mintingOrefIndex === null)
         throw new HttpException('Minting output reference not set on event', HttpStatus.BAD_REQUEST);
 
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { BlockfrostProvider, MeshWallet } = require('@meshsdk/core');
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { buildRelayVoteTransaction, applyOrefParamToScript, VALIDATORS, parseMnemonic, extractPaymentKeyHash } = require('@src/tx');
-
-      const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
-      const secretKey = this.configService.get<string>('SECRET_KEY') ?? '';
-      const provider = new BlockfrostProvider(apiKey);
-
-      const mnemonic: string[] = parseMnemonic(secretKey);
-      const relayWallet = new MeshWallet({
-        networkId: 0,
-        fetcher: provider,
-        key: { type: 'mnemonic', words: mnemonic },
-      });
-
-      const relayWalletUtxos = await relayWallet.getUtxos();
-      const relayWalletAddress: string = await relayWallet.getChangeAddress();
-      const relayPaymentKeyHash: string = extractPaymentKeyHash(relayWalletAddress);
-
-      const mintingOref = { txHash: event.mintingOrefTxHash, outputIndex: event.mintingOrefIndex };
-      const semaphoreValidatorCbor: string = applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
-      const votingValidatorCbor: string = applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
-
-      let unsignedTx: string;
       try {
-        unsignedTx = await buildRelayVoteTransaction({
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { BlockfrostProvider, MeshWallet } = require('@meshsdk/core');
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { buildRelayVoteTransaction, applyOrefParamToScript, VALIDATORS, parseMnemonic, extractPaymentKeyHash } = require('@src/tx');
+
+        const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+        const secretKey = this.configService.get<string>('SECRET_KEY') ?? '';
+        const provider = new BlockfrostProvider(apiKey);
+
+        const mnemonic: string[] = parseMnemonic(secretKey);
+        const relayWallet = new MeshWallet({
+          networkId: 0,
+          fetcher: provider,
+          key: { type: 'mnemonic', words: mnemonic },
+        });
+
+        const relayWalletUtxos = await relayWallet.getUtxos();
+        const relayWalletAddress: string = await relayWallet.getChangeAddress();
+        const relayPaymentKeyHash: string = extractPaymentKeyHash(relayWalletAddress);
+
+        const mintingOref = { txHash: event.mintingOrefTxHash, outputIndex: event.mintingOrefIndex };
+        const semaphoreValidatorCbor: string = applyOrefParamToScript(VALIDATORS.semaphore.mint, mintingOref);
+        const votingValidatorCbor: string = applyOrefParamToScript(VALIDATORS.voting.mint, mintingOref);
+
+        const unsignedTx = await buildRelayVoteTransaction({
           provider,
           semaphoreScriptAddress: event.semaphoreAddress,
           votingScriptAddress: event.votingValidatorAddress,
@@ -702,16 +701,19 @@ export class VotingEventService {
           eventStart: event.startingDate! * 1000,
           eventEnd: event.endingDate! * 1000,
         });
-      } catch (buildErr: any) {
-        // TX build failed — nullifier was already inserted; roll it back so voter can retry
+
+        const signedTx: string = await relayWallet.signTx(unsignedTx, false);
+        return await this._submitVote(signedTx, eventId, payload.nullifier);
+      } catch (err: any) {
+        // Roll back the nullifier on ANY failure (build, sign, or submit).
+        // _submitVote already rolls back on Blockfrost failure — the second
+        // attempt here is a no-op if it was already removed (safe to ignore).
         if (payload.nullifier) {
           try { await this.rollbackNullifier(eventId, payload.nullifier); } catch { /* ignore */ }
         }
-        throw new HttpException(`Failed to build vote transaction: ${buildErr?.message ?? buildErr}`, HttpStatus.INTERNAL_SERVER_ERROR);
+        if (err instanceof HttpException) throw err;
+        throw new HttpException(`Relay vote failed: ${err?.message ?? err}`, HttpStatus.INTERNAL_SERVER_ERROR);
       }
-
-      const signedTx: string = await relayWallet.signTx(unsignedTx, false);
-      return this._submitVote(signedTx, eventId, payload.nullifier);
     });
   }
 
