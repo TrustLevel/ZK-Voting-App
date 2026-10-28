@@ -45,7 +45,7 @@ npm run build:force
 | Package | Version | Purpose |
 |---|---|---|
 | `aiken-lang/stdlib` | v2.2.0 | Standard library |
-| `modulo-p/cardano-semaphore` | v0.9.4 | Semaphore + Group validators, ZK verifier |
+| `modulo-p/cardano-semaphore` | v0.9.5 | Semaphore + Group validators, ZK verifier |
 | `aiken-lang/merkle-patricia-forestry` | v2.1.0 | MPF trie proof verification |
 | `modulo-p/ak-381` | v0.1.1 | BLS12-381 field arithmetic and Groth16 verifier |
 

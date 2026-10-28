@@ -118,7 +118,7 @@ Frontend (Next.js)
 
 **Dependencies** (aiken.toml):
 - `aiken-lang/stdlib v2.2.0`
-- `modulo-p/cardano-semaphore v0.9.4`
+- `modulo-p/cardano-semaphore v0.9.5`
 - `aiken-lang/merkle-patricia-forestry v2.1.0`
 - `modulo-p/ak-381 v0.1.1`
 
@@ -144,9 +144,16 @@ The `VotingEvent` entity (`voting-event.entity.ts`) is the central DB record. It
 - `GET /` — list all events
 - `GET /:eventId` — get single event
 - `GET /:eventId/merkle-proof/:userId` — Semaphore group Merkle proof for ZK circuit witness
-- `POST /:eventId/nullifier` — insert nullifier into MPF trie, returns proof steps + new root
-- `POST /:eventId/vote` — submit signed tx hex to Blockfrost, returns `{ txHash }`
-- `GET /current-slot` — current blockchain slot (via Blockfrost), used for tx validity windows
+- `GET /:eventId/on-chain-group-root` — group Merkle root from the on-chain Semaphore datum
+- `POST /:eventId/relay-vote` — body `{ piA, piB, piC, publicSignals, signalMessage }`; the backend
+  verifies the Groth16 proof against the on-chain group root, inserts the nullifier into the MPF
+  trie, builds/signs/submits the vote tx with the relay wallet (`RELAY_WALLET_MNEMONIC`), rolls
+  back on failure; returns `{ txHash }` (409 if the nullifier was already used)
+- `GET /:eventId/results` — status, turnout, registered voters; per-option counts only after `endingDate`
+- `DELETE /:eventId/nullifier` — admin-only rollback (header `x-admin-token`)
+- All organiser endpoints (PATCH event, invite/invited/send-invitations, remove participant,
+  save-blockchain-data, group update) require the event's admin token in the `x-admin-token` header
+  (`AdminTokenGuard`). There is no public nullifier insert and no raw signed-tx submit endpoint.
 
 **Dependencies:** `@aiken-lang/merkle-patricia-forestry` (MPF trie), `@noble/hashes` (blake2b)
 
@@ -202,11 +209,13 @@ MPF trie data is stored in `nullifiers-db/<eventId>/` (LevelDB) per voting event
 ```
 PORT=3000
 BLOCKFROST_API_KEY=
-BLOCKFROST_NETWORK=preview
+BLOCKFROST_NETWORK=preprod
 DATABASE_PATH=db/voting-app.db
 JWT_SECRET=
 CORS_ORIGIN=http://localhost:3002
+RELAY_WALLET_MNEMONIC=   # 24 words; pays vote tx fees/collateral (relay design)
 ```
+(The Docker deploy in `deploy/` runs the backend on port 3001 and sets these from `deploy/.env`.)
 
 **TX module** (`src/tx/.env`):
 ```

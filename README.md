@@ -119,29 +119,29 @@ There are two roles: an **organiser** who sets up and manages the voting event, 
 ### The Organiser's Journey
 
 **1. Create the event**
-Connect a Cardano wallet and fill in the event details: a name, the list of options voters can choose from, the voting mode (simple — one vote per person — or weighted — each person distributes a fixed number of points across options), and the voting date (must bei at least 15min in the future).
+Connect a Cardano wallet (Preprod, with a little test ADA — the organiser pays for the two publishing transactions) and fill in the event details: a name, the list of options voters can choose from, the voting mode (simple — one vote per person — or weighted — each person distributes a fixed number of points across options), and the voting date (must be at least 15 min in the future).
 
 **2. Invite participants**
-Add participants by wallet address or email. Each invited person receives a unique private link. Only invited participants can vote — the group is closed.
+Add participants by email. Each invited person receives a unique private link that is valid for seven days. Only invited participants can vote — the group is closed.
 
 **3. Wait for participants to register**
-Each invitee visits their link, connects their wallet, and registers. Their browser generates a cryptographic identity and adds a public commitment to the group. No personal data is stored or transmitted — only the commitment.
+Each invitee visits their link and registers — no wallet needed. Their browser generates a random cryptographic identity and adds only a public commitment to the group. The *Before you publish* panel shows who has registered and who is still pending.
 
 **4. Deploy the event on-chain**
-Once the participant list is final, set the voting start and end dates and deploy. Two transactions are submitted to the Cardano blockchain, anchoring the voting contracts permanently. From this point the event is live — options, dates, and group membership are immutable.
+Once the participant list is final, set the voting start and end dates and publish. Your wallet signs two transactions that anchor the voting contracts on the Cardano blockchain. From this point the event is live — options, dates, and group membership are immutable; participants who have not registered by then cannot vote.
 
 **5. Results**
-Once the voting window closes, the final tally is readable on-chain by anyone. The organiser cannot see who voted for what — only the totals are public.
+While voting is open you see the turnout only. Once the voting window closes, the final tally is readable on-chain by anyone. The organiser cannot see who voted for what — only the totals are public.
 
 ---
 
 ### The Participant's Journey
 
 **1. Receive an invitation**
-The organiser sends a link with a unique invitation token. Open it in a browser with a Cardano wallet extension installed (Eternl, Lace, or Yoroi).
+The organiser sends a link with a unique invitation token, valid for seven days. Open it in any browser — voters need no wallet, no ADA and never sign anything.
 
 **2. Register**
-Connect your wallet and confirm your registration. Your browser generates a Semaphore identity — two secret values that stay on your device and are never sent to the server. A public commitment derived from those secrets is added to the group on the backend.
+Click *Generate Identity*. Your browser generates a random Semaphore identity — two secret values that stay on your device and are never sent to the server — and downloads it as `semaphore-identity-event-<id>.json`. Keep that file: it is your only way to vote from another browser or device. Then click *Register Commitment*; only the public commitment derived from the secrets is added to the group on the backend.
 
 **3. Wait for the voting window**
 The event has a fixed start and end time enforced by the blockchain. You can check the event page to see when voting opens.
@@ -150,12 +150,12 @@ The event has a fixed start and end time enforced by the blockchain. You can che
 During the voting window, open the event and select your choice. Before submitting, your browser silently:
 - Generates a zero-knowledge proof that you are a registered group member — without revealing *which* member you are.
 - Computes a one-time nullifier that prevents voting twice.
-- Builds a transaction and submits it to the Cardano blockchain.
+- Sends proof, nullifier and your choice to the voting service, which verifies the proof and submits the vote transaction to Cardano with its own wallet — no signature and no fee from you.
 
-No one — not the organiser, not the server, not the blockchain — can link your vote back to you.
+No one — not the organiser, not the server, not the blockchain — can link your vote back to you. The known limits of this guarantee are listed in [docs/M4_USER_FEEDBACK.md](docs/M4_USER_FEEDBACK.md), section 5.
 
 **5. View results**
-Once the event ends, the vote tally is publicly visible on-chain. Results are final and cannot be altered by anyone.
+While voting is open the page shows the turnout only. Once the event ends, the vote tally is publicly visible on-chain. Results are final and cannot be altered by anyone.
 
 ---
 
