@@ -712,7 +712,8 @@ export class VotingEventService {
         const { buildRelayVoteTransaction, applyOrefParamToScriptNode, createOutputReference, VALIDATORS, parseMnemonic, extractPaymentKeyHash } = await import('@src/tx');
 
         const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
-        const secretKey = this.configService.get<string>('SECRET_KEY') ?? '';
+        const secretKey = this.configService.get<string>('RELAY_WALLET_MNEMONIC') ?? '';
+        if (!secretKey) throw new HttpException('Relay wallet not configured', HttpStatus.SERVICE_UNAVAILABLE);
         const provider = new BlockfrostProvider(apiKey);
 
         const mnemonic: string[] = parseMnemonic(secretKey);

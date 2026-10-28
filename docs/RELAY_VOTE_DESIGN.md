@@ -34,7 +34,7 @@ Frontend:
   3. POST /relay-vote { proofData } — new endpoint; sends only proof data, no wallet involved
 
 Backend:
-  4. Load relay wallet from SECRET_KEY
+  4. Load relay wallet from RELAY_WALLET_MNEMONIC
   5. Re-derive validator CBORs via applyOrefParamToScript()
   6. Fetch current vote tallies from on-chain Voting UTxO datum
   7. buildVoteTransaction() with relay wallet UTxOs
@@ -118,7 +118,7 @@ const provider = new BlockfrostProvider(process.env.API_KEY);
 const wallet = new MeshWallet({
   networkId: 0,  // testnet
   fetcher: provider,
-  key: { type: 'mnemonic', words: parseMnemonic(process.env.SECRET_KEY) },
+  key: { type: 'mnemonic', words: parseMnemonic(process.env.RELAY_WALLET_MNEMONIC) },
 });
 const relayWalletUtxos = await wallet.getUtxos();
 const relayWalletAddress = await wallet.getChangeAddress();
@@ -235,9 +235,9 @@ const { txHash } = await response.json();
 
 ### Step 5 — Environment
 
-No new env vars needed. The relay wallet already uses `SECRET_KEY` and `API_KEY` from `src/tx/.env`. The backend service reads these via `dotenv` (already done for minting).
+The backend reads the relay wallet mnemonic from `RELAY_WALLET_MNEMONIC` and uses its own `BLOCKFROST_API_KEY` (both in `src/backend/.env`, or `deploy/.env` in the Docker deploy).
 
-Ensure the relay wallet (the wallet whose mnemonic is in `SECRET_KEY`) has:
+Ensure the relay wallet (the wallet whose mnemonic is in `RELAY_WALLET_MNEMONIC`) has:
 - Enough ADA to cover fees for each vote transaction (~0.2–0.5 ADA per tx).
 - A suitable collateral UTxO (pure ADA, ≥2 ADA).
 
