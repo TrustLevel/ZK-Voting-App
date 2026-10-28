@@ -117,11 +117,20 @@ export default function EventPage() {
   const [hasVoted, setHasVoted] = useState(false);
   const [votedOptionIndex, setVotedOptionIndex] = useState<number | null>(null);
   const [voteStep, setVoteStep] = useState<string | null>(null);
+  // What is happening behind each step — testers asked for this during the waits.
+  const voteStepHint = (step: string): string => {
+    if (step.startsWith('Fetching Merkle proof')) return 'Loading your membership path in the voter group.';
+    if (step.startsWith('Encoding')) return 'Preparing your choice as the message the proof will commit to.';
+    if (step.startsWith('Generating ZK proof')) return 'Your browser is proving that you are a registered voter without revealing who you are. Your identity never leaves this device.';
+    if (step.startsWith('Submitting')) return 'The voting service records your vote on the Cardano blockchain. No wallet or signature is needed from you.';
+    return '';
+  };
   const [voteTxHash, setVoteTxHash] = useState<string | null>(null);
   const [voteError, setVoteError] = useState<string | null>(null);
 
   // Results State
   const [results, setResults] = useState<VotingOption[] | null>(null);
+  const [resultsMeta, setResultsMeta] = useState<{ status: string; totalVotes: number; registeredVoters: number; resultsAvailable: boolean } | null>(null);
   const [loadingResults, setLoadingResults] = useState(false);
 
   // File Upload State
@@ -428,25 +437,34 @@ export default function EventPage() {
    * Convert a raw Blockfrost/backend submission error into a short user-facing message.
    * The full error is always logged to the console for debugging.
    */
-  const classifySubmissionError = (errData: any): string => {
+  // Turns a relay-vote error into something a voter can act on. Order matters: a tx built
+  // on inputs that a pending vote already spent shows up as BadInputs/ValueNotConserved,
+  // which must not be reported as "insufficient funds" (F10).
+  const classifySubmissionError = (status: number, errData: any): string => {
     const raw = typeof errData?.message === 'string' ? errData.message : JSON.stringify(errData);
-    if (raw.includes('PlutusFailure') || raw.includes('ValidationTagMismatch')) {
-      return 'The transaction was rejected by the on-chain validator. This may happen if the voting period has ended or if the ZK proof was invalid. Please contact the event organizer.';
+    if (status === 400 && raw.startsWith('Invalid vote proof')) {
+      return 'Your vote could not be verified for this event. Please reload the page and try again; if it keeps failing, contact the event organizer.';
+    }
+    if (status === 503) {
+      return 'The voting service is temporarily unavailable. Please try again in a few minutes.';
+    }
+    if (raw.includes('BadInputs') || raw.includes('UtxoFailure') || raw.includes('All inputs are spent')) {
+      return 'Another vote is still being confirmed on the blockchain. Please wait about a minute and try again — your vote was not counted yet.';
     }
     if (raw.includes('OutsideValidityInterval') || raw.includes('ValidityInterval')) {
-      return 'The transaction expired before it was submitted. Please try voting again.';
+      return 'The voting period is not open right now (it has either not started or already ended).';
     }
-    if (raw.includes('InsufficientFunds') || raw.includes('ValueNotConserved') || raw.includes('FeeTooSmall')) {
-      return 'Insufficient funds to pay the transaction fee. Please ensure your wallet has enough ADA.';
+    if (raw.includes('PlutusFailure') || raw.includes('ValidationTagMismatch')) {
+      return 'The vote was rejected by the on-chain validator. This happens when the voting period is closed or the proof does not match the current voter group. Please contact the event organizer.';
     }
-    if (raw.includes('BadInputs') || raw.includes('UtxoFailure')) {
-      return 'One or more transaction inputs are no longer available on-chain. Please try again.';
+    if (raw.includes('ValueNotConserved') || raw.includes('FeeTooSmall') || raw.includes('InsufficientFunds')) {
+      return 'The voting service could not pay the transaction fee. Please contact the event organizer — nothing is required from your wallet.';
     }
     // Surface the raw backend message in dev so we can diagnose blockchain rejections.
     if (process.env.NODE_ENV === 'development') {
       return `Blockchain rejection — raw error: ${raw}`;
     }
-    return 'The transaction was rejected by the blockchain. Please try again or contact the event organizer.';
+    return 'The vote was rejected by the blockchain. Please try again or contact the event organizer.';
   };
 
   /**
@@ -568,7 +586,7 @@ export default function EventPage() {
         // The backend rolls the nullifier back itself if building or submitting fails.
         const errData = await submitResponse.json().catch(() => ({}));
         console.error('Relay vote error (full):', JSON.stringify(errData, null, 2));
-        throw new Error(classifySubmissionError(errData));
+        throw new Error(classifySubmissionError(submitResponse.status, errData));
       }
       const submitResult = await submitResponse.json();
       const txHash: string = submitResult.txHash;
@@ -864,9 +882,11 @@ export default function EventPage() {
       if (!response.ok) throw new Error('Failed to load results');
       const data = await response.json();
       setResults(data.options);
+      setResultsMeta({ status: data.status, totalVotes: data.totalVotes ?? 0, registeredVoters: data.registeredVoters ?? 0, resultsAvailable: !!data.resultsAvailable });
     } catch (err) {
       console.error('Failed to load results:', err);
       setResults(null);
+      setResultsMeta(null);
     } finally {
       setLoadingResults(false);
     }
@@ -1562,7 +1582,10 @@ export default function EventPage() {
                       )}
                     </button>
                     {voteStep && (
-                      <p className="mt-3 text-sm text-gray-600 text-center">{voteStep}</p>
+                      <div className="mt-3 text-center">
+                        <p className="text-sm text-gray-900 font-medium">{voteStep}</p>
+                        <p className="text-xs text-gray-500 mt-1">{voteStepHint(voteStep)}</p>
+                      </div>
                     )}
 
                     {voteError && (
@@ -1662,6 +1685,15 @@ export default function EventPage() {
                   ) : results === null ? (
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
                       <p className="text-sm text-gray-600">Results could not be loaded from the blockchain.</p>
+                    </div>
+                  ) : resultsMeta && !resultsMeta.resultsAvailable ? (
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
+                      <p className="text-gray-900 font-semibold mb-1">
+                        {resultsMeta.totalVotes} of {resultsMeta.registeredVoters} registered voters have voted so far.
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        The results per option are revealed once the voting period ends, so that nobody is influenced by interim counts.
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-3">

@@ -14,10 +14,13 @@ interface ResultOption {
 }
 
 interface ResultsData {
-  status: 'not_deployed' | 'live' | 'ended';
+  status: 'not_deployed' | 'upcoming' | 'live' | 'ended';
   eventName: string;
   startingDate: number | null;
   endingDate: number | null;
+  registeredVoters: number;
+  totalVotes: number;
+  resultsAvailable: boolean; // per-option counts are only revealed after the end
   options: ResultOption[];
 }
 
@@ -58,12 +61,12 @@ export default function ResultsPage() {
 
   // Auto-refresh every 30s while voting is live
   useEffect(() => {
-    if (data?.status !== 'live') return;
+    if (data?.status !== 'live' && data?.status !== 'upcoming') return;
     const id = setInterval(() => fetchResults(), AUTO_REFRESH_INTERVAL_MS);
     return () => clearInterval(id);
   }, [data?.status, fetchResults]);
 
-  const totalVotes = data?.options.reduce((sum, o) => sum + o.votes, 0) ?? 0;
+  const totalVotes = data?.totalVotes ?? 0;
   const sorted = data ? [...data.options].sort((a, b) => b.votes - a.votes) : [];
 
   if (loading) {
@@ -115,6 +118,15 @@ export default function ResultsPage() {
           <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4 mb-6">
             <p className="text-yellow-800 font-semibold text-sm">Voting not started yet</p>
             <p className="text-yellow-700 text-sm mt-1">The event has not been deployed to the blockchain. Results will appear once voting begins.</p>
+          </div>
+        )}
+
+        {data?.status === 'upcoming' && (
+          <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4 mb-6">
+            <p className="text-yellow-800 font-semibold text-sm">Voting not started yet</p>
+            {data.startingDate && (
+              <p className="text-yellow-700 text-sm mt-1">Starts {new Date(data.startingDate * 1000).toLocaleString()}</p>
+            )}
           </div>
         )}
 
@@ -176,6 +188,11 @@ export default function ResultsPage() {
 
           {data?.status === 'not_deployed' ? (
             <p className="text-sm text-gray-400 text-center py-8">No data yet</p>
+          ) : data && !data.resultsAvailable ? (
+            <div className="text-center py-8">
+              <p className="text-gray-900 font-semibold">{totalVotes} of {data.registeredVoters} registered voters have voted so far.</p>
+              <p className="text-sm text-gray-500 mt-1">Results per option are revealed when the voting period ends.</p>
+            </div>
           ) : (
             <div className="space-y-4">
               {sorted.map((opt, rank) => {

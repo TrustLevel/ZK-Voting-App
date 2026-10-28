@@ -1037,56 +1037,76 @@ export class VotingEventService {
     return { groupMerkleRoot };
   }
 
-  async getResults(eventId: number): Promise<{ options: Array<{ index: number; text: string; votes: number }> }> {
+  // Results as the public may see them. Per-option counts are only revealed once the
+  // voting period has ended (F9); while it is open, only the turnout is reported so that
+  // interim results cannot influence later voters. (The tally is public on-chain anyway —
+  // this is the application's behaviour, not a cryptographic guarantee.)
+  async getResults(eventId: number): Promise<{
+    status: 'not_deployed' | 'upcoming' | 'live' | 'ended';
+    eventName: string;
+    startingDate: number | null;
+    endingDate: number | null;
+    registeredVoters: number;
+    totalVotes: number;
+    resultsAvailable: boolean;
+    options: Array<{ index: number; text: string; votes: number }>;
+  }> {
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
     if (!event) throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
 
     const dbOptions: Array<{ index: number; text: string }> = JSON.parse(event.options ?? '[]');
     const emptyOptions = dbOptions.map(o => ({ ...o, votes: 0 }));
+    const registeredVoters = (JSON.parse(event.groupLeafCommitments || '[]') as unknown[]).length;
+    const now = Math.floor(Date.now() / 1000);
+    const deployed = !!(event.votingValidatorAddress && event.votingNft);
+    const status = !deployed ? 'not_deployed'
+      : event.startingDate && now < event.startingDate ? 'upcoming'
+      : event.endingDate && now < event.endingDate ? 'live'
+      : 'ended';
+    const base = { status, eventName: event.eventName, startingDate: event.startingDate, endingDate: event.endingDate, registeredVoters } as const;
 
-    if (!event.votingValidatorAddress || !event.votingNft) {
-      return { options: emptyOptions };
+    if (!deployed) return { ...base, totalVotes: 0, resultsAvailable: false, options: emptyOptions };
+
+    const onChain = await this.fetchOnChainTally(event);
+    const merged = dbOptions.map(opt => {
+      const hit = onChain?.find(([idx]) => idx === opt.index);
+      return { index: opt.index, text: opt.text, votes: hit ? hit[1] : 0 };
+    });
+    const totalVotes = merged.reduce((sum, o) => sum + o.votes, 0);
+    if (status !== 'ended') {
+      return { ...base, totalVotes, resultsAvailable: false, options: emptyOptions };
     }
+    return { ...base, totalVotes, resultsAvailable: onChain !== null, options: merged };
+  }
 
+  // Reads the UrnaDatum tally from the Voting UTxO; null when it cannot be read.
+  private async fetchOnChainTally(event: VotingEvent): Promise<Array<[number, number]> | null> {
     const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
     const network = this.configService.get<string>('BLOCKFROST_NETWORK') ?? 'preprod';
-
     try {
       const response = await fetch(
         `https://cardano-${network}.blockfrost.io/api/v0/addresses/${event.votingValidatorAddress}/utxos`,
         { headers: { project_id: apiKey } },
       );
-
-      // 404 = address has no UTxO history yet — return zeros
-      if (!response.ok) return { options: emptyOptions };
+      // 404 = address has no UTxO history yet
+      if (!response.ok) return null;
 
       const utxos: any[] = await response.json();
       const votingUtxo = utxos.find(u =>
         Array.isArray(u.amount) && u.amount.some((a: any) => a.unit.startsWith(event.votingNft))
       );
-      if (!votingUtxo) return { options: emptyOptions };
+      if (!votingUtxo) return null;
 
       // inline_datum from Blockfrost is raw CBOR hex — decode to Plutus data JSON
       const datumCbor: string | null = votingUtxo.inline_datum;
-      if (!datumCbor) return { options: emptyOptions };
+      if (!datumCbor) return null;
       const datum = deserializeDatum(datumCbor);
-      if (!datum?.fields?.[1]) return { options: emptyOptions };
+      if (!datum?.fields?.[1]) return null;
 
       // UrnaDatum fields[1] = List<(Int, Int)> — each item is a 2-element list [index, votes]
-      const onChainOptions: Array<[number, number]> = datum.fields[1].list.map((item: any) => [
-        Number(item.list[0].int),
-        Number(item.list[1].int),
-      ]);
-
-      const merged = dbOptions.map(opt => {
-        const onChain = onChainOptions.find(([idx]) => idx === opt.index);
-        return { index: opt.index, text: opt.text, votes: onChain ? onChain[1] : 0 };
-      });
-
-      return { options: merged };
+      return datum.fields[1].list.map((item: any) => [Number(item.list[0].int), Number(item.list[1].int)]);
     } catch {
-      // Blockfrost unreachable — return zeros so the page still renders
-      return { options: emptyOptions };
+      return null;
     }
   }
 

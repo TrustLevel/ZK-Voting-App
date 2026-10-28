@@ -162,6 +162,7 @@ export default function EventDashboard() {
 
   // Results State
   const [results, setResults] = useState<Array<{ index: number; text: string; votes: number }> | null>(null);
+  const [resultsMeta, setResultsMeta] = useState<{ status: string; totalVotes: number; registeredVoters: number; resultsAvailable: boolean } | null>(null);
   const [loadingResults, setLoadingResults] = useState(false);
 
   // --------------------------------------------------------------------------
@@ -331,7 +332,8 @@ export default function EventDashboard() {
    * Backend: GET /voting-event/:eventId/invited and /voting-event/:eventId/participants
    */
   useEffect(() => {
-    if (activeTab === 'participants' && createdEvent) {
+    // The Start Voting tab shows the readiness checklist, so it needs the list too.
+    if ((activeTab === 'participants' || activeTab === 'start') && createdEvent) {
       loadParticipants();
     }
   }, [activeTab, createdEvent?.eventId]);
@@ -461,9 +463,11 @@ export default function EventDashboard() {
       if (!response.ok) throw new Error('Failed to load results');
       const data = await response.json();
       setResults(data.options);
+      setResultsMeta({ status: data.status, totalVotes: data.totalVotes ?? 0, registeredVoters: data.registeredVoters ?? 0, resultsAvailable: !!data.resultsAvailable });
     } catch (err) {
       console.error('Failed to load results:', err);
       setResults(null);
+      setResultsMeta(null);
     } finally {
       setLoadingResults(false);
     }
@@ -1815,6 +1819,53 @@ export default function EventDashboard() {
                   </div>
                 )}
 
+                {/* Readiness checklist — testers asked to see who is still missing before publishing */}
+                {(() => {
+                  const registered = participants.filter(p => p.status === 'registered');
+                  const pending = participants.filter(p => p.status !== 'registered');
+                  return (
+                    <div className={`border-2 rounded-xl p-5 mb-6 ${registered.length === 0 ? 'bg-red-50 border-red-200' : pending.length > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-bold text-gray-900">Before you publish</h3>
+                        <button
+                          type="button"
+                          onClick={loadParticipants}
+                          className="text-xs font-medium text-gray-700 underline hover:text-gray-900"
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                      <div className="flex gap-4 text-sm mb-3">
+                        <span className="px-2 py-1 bg-white rounded-lg border border-gray-200 text-gray-800"><strong>{participants.length}</strong> invited</span>
+                        <span className="px-2 py-1 bg-white rounded-lg border border-gray-200 text-gray-800"><strong>{registered.length}</strong> registered</span>
+                        <span className="px-2 py-1 bg-white rounded-lg border border-gray-200 text-gray-800"><strong>{pending.length}</strong> still pending</span>
+                      </div>
+                      <p className="text-sm text-gray-800 mb-2">
+                        Publishing freezes the voter group on-chain. <strong>Only participants who have registered by now can vote</strong> — anyone still pending will not be able to vote, even if they register later.
+                      </p>
+                      {registered.length === 0 && (
+                        <p className="text-sm text-red-800 font-semibold">No participant has registered yet. Send the invitations and wait until at least one participant has registered.</p>
+                      )}
+                      {pending.length > 0 && (
+                        <details className="text-sm text-gray-800 mt-2">
+                          <summary className="cursor-pointer font-medium">Who is still pending ({pending.length})</summary>
+                          <ul className="list-disc ml-5 mt-1 space-y-0.5">
+                            {pending.map(p => <li key={p.userId}>{p.email ?? `Participant #${p.userId}`}</li>)}
+                          </ul>
+                        </details>
+                      )}
+                      <div className="mt-4 pt-3 border-t border-gray-200 text-sm text-gray-700">
+                        <p className="font-semibold text-gray-900 mb-1">What happens when you click Publish</p>
+                        <ol className="list-decimal ml-5 space-y-0.5">
+                          <li>Your wallet asks you to sign transaction 1 of 2: the <strong>Group NFT</strong> that carries the registered voter list.</li>
+                          <li>After about a minute it asks you to sign transaction 2 of 2: the <strong>Semaphore + Voting NFTs</strong> that hold the ballot.</li>
+                          <li>Both need to confirm on-chain (1–2 minutes each). Keep this window open; the page shows each step.</li>
+                        </ol>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Wallet Connection Status */}
                 {connected && walletAddress ? (
                   <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4 mb-6">
@@ -1864,7 +1915,7 @@ export default function EventDashboard() {
                 {/* Start Button */}
                 <button
                   onClick={handleStartVoting}
-                  disabled={isStarting || !startDate || !endDate || !connected || !walletAddress}
+                  disabled={isStarting || !startDate || !endDate || !connected || !walletAddress || participants.filter(p => p.status === 'registered').length === 0}
                   className="w-full bg-gray-900 text-white py-4 px-6 rounded-xl hover:bg-gray-800 transition-all font-semibold flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                   {isStarting ? (
@@ -1903,8 +1954,18 @@ export default function EventDashboard() {
                       <div className="flex-1">
                         <h3 className="font-bold text-yellow-900 mb-1">Voting in Progress</h3>
                         <p className="text-sm text-yellow-800">
-                          Results will be displayed once the voting period ends on {new Date(createdEvent.endingDate * 1000).toLocaleString()}.
+                          Results per option will be displayed once the voting period ends on {new Date(createdEvent.endingDate * 1000).toLocaleString()}.
                         </p>
+                        <p className="text-sm text-yellow-900 font-semibold mt-3">
+                          Turnout so far: {resultsMeta ? `${resultsMeta.totalVotes} of ${resultsMeta.registeredVoters} registered voters` : '—'}
+                        </p>
+                        <button
+                          onClick={loadResults}
+                          disabled={loadingResults}
+                          className="mt-2 px-3 py-1.5 bg-white border border-yellow-300 text-yellow-900 rounded-lg hover:bg-yellow-100 transition text-xs font-medium disabled:opacity-50"
+                        >
+                          {loadingResults ? 'Refreshing...' : 'Refresh turnout'}
+                        </button>
                       </div>
                     </div>
                   </div>

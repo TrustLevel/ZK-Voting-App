@@ -113,6 +113,46 @@ describe('VotingEventService', () => {
     });
   });
 
+  describe('getResults (F9)', () => {
+    const base = {
+      eventId: 1, eventName: 'E', options: JSON.stringify([{ index: 0, text: 'a' }, { index: 1, text: 'b' }]),
+      groupLeafCommitments: JSON.stringify([{ userId: 1, commitment: '1' }, { userId: 2, commitment: '2' }]),
+      votingValidatorAddress: 'addr_test1', votingNft: 'policy',
+    };
+    const tally: Array<[number, number]> = [[0, 3], [1, 1]];
+
+    beforeEach(() => {
+      jest.spyOn(service as any, 'fetchOnChainTally').mockResolvedValue(tally);
+    });
+
+    it('reports only the turnout while voting is open', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      votingEventRepo.findOne.mockResolvedValue({ ...base, startingDate: now - 100, endingDate: now + 1000 } as unknown as VotingEvent);
+      const r = await service.getResults(1);
+      expect(r.status).toBe('live');
+      expect(r.totalVotes).toBe(4);
+      expect(r.registeredVoters).toBe(2);
+      expect(r.resultsAvailable).toBe(false);
+      expect(r.options.map(o => o.votes)).toEqual([0, 0]);
+    });
+
+    it('reveals per-option results after the end', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      votingEventRepo.findOne.mockResolvedValue({ ...base, startingDate: now - 1000, endingDate: now - 10 } as unknown as VotingEvent);
+      const r = await service.getResults(1);
+      expect(r.status).toBe('ended');
+      expect(r.resultsAvailable).toBe(true);
+      expect(r.options.map(o => o.votes)).toEqual([3, 1]);
+    });
+
+    it('marks an event without contracts as not deployed', async () => {
+      votingEventRepo.findOne.mockResolvedValue({ ...base, votingNft: null, votingValidatorAddress: null } as unknown as VotingEvent);
+      const r = await service.getResults(1);
+      expect(r.status).toBe('not_deployed');
+      expect(r.totalVotes).toBe(0);
+    });
+  });
+
   describe('validateAdminToken', () => {
     it('accepts the event admin token', async () => {
       votingEventRepo.findOne.mockResolvedValue({ eventId: 1, adminToken: 'tok-123' } as VotingEvent);
