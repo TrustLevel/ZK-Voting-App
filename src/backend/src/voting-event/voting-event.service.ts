@@ -9,6 +9,7 @@ import { Group } from 'modp-semaphore-bls12381/packages/typescript/lib/group';
 import { UsersService } from '../users/users.service';
 import { EmailService } from './email.service';
 import { v4 as uuidv4 } from 'uuid';
+import { timingSafeEqual } from 'crypto';
 import { deserializeDatum } from '@meshsdk/core';
 
 interface CreateVotingEventDto {
@@ -630,19 +631,64 @@ export class VotingEventService {
     return { txHash: body.replace(/"/g, '') };
   }
 
+  // Checks a relay-vote request before anything is written: the public signals must belong
+  // to this event (on-chain group root, external nullifier = Semaphore NFT policy) and to the
+  // submitted signal, and the Groth16 proof must verify against the ceremony verification key.
+  async verifyRelayVoteProof(
+    event: VotingEvent,
+    payload: { zkProof: { pi_a: string; pi_b: string; pi_c: string }; publicSignals: string[]; signalMessage: string },
+  ): Promise<{ nullifierHash: bigint; signalHash: bigint; voteSignal: Array<[number, number]> }> {
+    const { zkProof, publicSignals, signalMessage } = payload;
+    const invalid = (reason: string) => new HttpException(`Invalid vote proof: ${reason}`, HttpStatus.BAD_REQUEST);
+
+    if (!zkProof?.pi_a || !zkProof?.pi_b || !zkProof?.pi_c) throw invalid('missing proof points');
+    if (!Array.isArray(publicSignals) || publicSignals.length !== 4 || !publicSignals.every(v => /^\d+$/.test(String(v))))
+      throw invalid('expected 4 public signals');
+    if (typeof signalMessage !== 'string' || !/^([0-9a-f]{2})+$/i.test(signalMessage)) throw invalid('bad signal message');
+
+    // publicSignals = [merkleRoot, nullifierHash, signalHash, externalNullifier]
+    const [merkleRoot, nullifierHashStr, signalHashStr, externalNullifier] = publicSignals.map(String);
+
+    if (externalNullifier !== BigInt('0x' + event.semaphoreNft).toString())
+      throw invalid('proof is for a different event');
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { blake2b } = require('@noble/hashes/blake2b');
+    const BLS12_381_R = BigInt('52435875175126190479447740508185965837690552500527637822603658699938581184513');
+    const digest = Buffer.from(blake2b(Buffer.from(signalMessage, 'hex'), { dkLen: 32 })).toString('hex');
+    if ((BigInt('0x' + digest) % BLS12_381_R).toString() !== signalHashStr)
+      throw invalid('signal hash does not match the signal message');
+
+    const { groupMerkleRoot } = await this.getOnChainGroupRoot(event.eventId);
+    if (merkleRoot !== groupMerkleRoot)
+      throw invalid('proof is not for this event\'s voter group');
+
+    const { verifyVoteProof, decodeVoteSignal } = await import('@src/zk');
+    let voteSignal: Array<[number, number]>;
+    try {
+      voteSignal = await decodeVoteSignal(signalMessage);
+    } catch {
+      throw invalid('signal message is not a vote');
+    }
+    let valid = false;
+    try {
+      valid = await verifyVoteProof(zkProof, publicSignals.map(String));
+    } catch {
+      valid = false;
+    }
+    if (!valid) throw invalid('ZK proof does not verify');
+
+    return { nullifierHash: BigInt(nullifierHashStr), signalHash: BigInt(signalHashStr), voteSignal };
+  }
+
   // Relay vote: backend builds, signs, and submits the vote tx using the relay wallet.
   // The voter's CIP-30 wallet is never involved — only ZK proof data is sent to the server.
   async relayVote(
     eventId: number,
     payload: {
       zkProof: { pi_a: string; pi_b: string; pi_c: string };
-      nullifierHash: bigint;
-      signalHash: bigint;
+      publicSignals: string[];
       signalMessage: string;
-      mpfProofSteps: Array<object>;
-      mpfNewRoot: string;
-      voteSignal: Array<[number, number]>;
-      nullifier?: string;
     },
   ): Promise<{ txHash: string }> {
     return this.withVoteLock(eventId, async () => {
@@ -652,6 +698,12 @@ export class VotingEventService {
         throw new HttpException('Event blockchain setup incomplete', HttpStatus.BAD_REQUEST);
       if (!event.mintingOrefTxHash || event.mintingOrefIndex === null)
         throw new HttpException('Minting output reference not set on event', HttpStatus.BAD_REQUEST);
+
+      // F2: a nullifier only enters the trie after the ZK proof was verified against
+      // this event's on-chain group root, so nobody can block the trie with junk.
+      const { nullifierHash, signalHash, voteSignal } = await this.verifyRelayVoteProof(event, payload);
+      const nullifier = nullifierHash.toString();
+      const { newRoot: mpfNewRoot, proofSteps: mpfProofSteps } = await this.insertNullifier(eventId, nullifier);
 
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -691,26 +743,24 @@ export class VotingEventService {
           relayWalletAddress,
           relayPaymentKeyHash,
           zkProof: payload.zkProof,
-          nullifierHash: payload.nullifierHash,
-          signalHash: payload.signalHash,
+          nullifierHash,
+          signalHash,
           signalMessage: payload.signalMessage,
-          mpfProofSteps: payload.mpfProofSteps,
-          mpfNewRoot: payload.mpfNewRoot,
-          voteSignal: payload.voteSignal,
+          mpfProofSteps,
+          mpfNewRoot,
+          voteSignal,
           weight: (event.votingPower ?? 0) > 1 ? event.votingPower! : 0,
           eventStart: event.startingDate! * 1000,
           eventEnd: event.endingDate! * 1000,
         });
 
         const signedTx: string = await relayWallet.signTx(unsignedTx, false);
-        return await this._submitVote(signedTx, eventId, payload.nullifier);
+        return await this._submitVote(signedTx, eventId, nullifier);
       } catch (err: any) {
         // Roll back the nullifier on ANY failure (build, sign, or submit).
         // _submitVote already rolls back on Blockfrost failure — the second
         // attempt here is a no-op if it was already removed (safe to ignore).
-        if (payload.nullifier) {
-          try { await this.rollbackNullifier(eventId, payload.nullifier); } catch { /* ignore */ }
-        }
+        try { await this.rollbackNullifier(eventId, nullifier); } catch { /* ignore */ }
         if (err instanceof HttpException) throw err;
         console.error('[relayVote] error:', err?.message, '\nStack:', err?.stack);
         throw new HttpException(`Relay vote failed: ${err?.message ?? err}`, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -732,7 +782,9 @@ export class VotingEventService {
         return { valid: false, error: 'Event has no admin token' };
       }
 
-      if (event.adminToken === token) {
+      const expected = Buffer.from(event.adminToken);
+      const given = Buffer.from(String(token ?? ''));
+      if (expected.length === given.length && timingSafeEqual(expected, given)) {
         return { valid: true };
       }
 

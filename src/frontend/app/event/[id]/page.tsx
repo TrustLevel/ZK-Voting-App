@@ -544,34 +544,8 @@ export default function EventPage() {
       }
       // ────────────────────────────────────────────────────────────────────────────
 
-      // Step 5: Insert nullifier
-      setVoteStep('Inserting nullifier...');
-      const nullifierResponse = await fetch(
-        `${BACKEND_API_URL}/voting-event/${eventId}/nullifier`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nullifier: nullifierHash.toString() }),
-        }
-      );
-      if (!nullifierResponse.ok) {
-        const errData = await nullifierResponse.json().catch(() => ({}));
-        if (nullifierResponse.status === 409) {
-          throw new Error(
-            'Your vote identity has already been used in a previous attempt. ' +
-            'If that transaction was never confirmed on-chain, please contact the event organizer.'
-          );
-        }
-        throw new Error(errData.message || 'Nullifier insertion failed.');
-      }
-      const nullifierResult = await nullifierResponse.json();
-      const mpfNewRoot: string = nullifierResult.newRoot;
-      const mpfProofSteps: Array<object> = nullifierResult.proofSteps;
-      console.log('  mpfNewRoot         :', mpfNewRoot);
-      console.log('  mpfProofSteps      :', JSON.stringify(mpfProofSteps));
-
-      // Step 6: Relay to backend — backend builds, signs, and submits the tx.
-      // The voter's wallet never touches the transaction (anonymity preserved).
+      // Step 5: Relay to backend — backend verifies the proof, records the nullifier,
+      // then builds, signs, and submits the tx. The voter's wallet never touches the tx.
       setVoteStep('Submitting vote...');
       const submitResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/relay-vote`, {
         method: 'POST',
@@ -580,17 +554,18 @@ export default function EventPage() {
           piA: zkProof.pi_a,
           piB: zkProof.pi_b,
           piC: zkProof.pi_c,
-          nullifierHash: nullifierHash.toString(),
-          signalHash: signalHash.toString(),
+          publicSignals: publicSignals.map(String),
           signalMessage,
-          mpfProofSteps,
-          mpfNewRoot,
-          voteSignal,
-          nullifier: nullifierHash.toString(),
         }),
       });
+      if (submitResponse.status === 409) {
+        throw new Error(
+          'Your vote identity has already been used in a previous attempt. ' +
+          'If that transaction was never confirmed on-chain, please contact the event organizer.'
+        );
+      }
       if (!submitResponse.ok) {
-        // Rollback is handled server-side (nullifier is passed in the request body).
+        // The backend rolls the nullifier back itself if building or submitting fails.
         const errData = await submitResponse.json().catch(() => ({}));
         console.error('Relay vote error (full):', JSON.stringify(errData, null, 2));
         throw new Error(classifySubmissionError(errData));

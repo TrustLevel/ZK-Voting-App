@@ -42,6 +42,8 @@ RUN cd src/backend && npm run build
 #############################################
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production
+# @src/tx's relay-vote builder and @src/zk load WASM modules (same flag as the npm start scripts).
+ENV NODE_OPTIONS=--experimental-wasm-modules
 WORKDIR /app
 
 # Copy the fully-built tree: node_modules (incl. compiled native .node files —

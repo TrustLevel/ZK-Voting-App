@@ -16,7 +16,9 @@
     "baseUrl": "./",
     "paths": {
       "@src/tx": ["../tx/dist"],
-      "@src/tx/*": ["../tx/dist/*"]
+      "@src/tx/*": ["../tx/dist/*"],
+      "@src/zk": ["../zk/dist"],
+      "@src/zk/*": ["../zk/dist/*"]
     },
     "incremental": true,
     "skipLibCheck": true,

@@ -1,5 +1,6 @@
-import { Controller, Post, Get, Delete, Patch, Body, Param, Query, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { VotingEventService } from './voting-event.service';
+import { AdminTokenGuard } from './admin-token.guard';
 
 @Controller('voting-event')
 export class VotingEventController {
@@ -35,6 +36,7 @@ export class VotingEventController {
   }
 
   @Patch(':eventId')
+  @UseGuards(AdminTokenGuard)
   async updateVotingEvent(
     @Param('eventId') eventId: number,
     @Body('votingPower') votingPower?: number,
@@ -60,6 +62,7 @@ export class VotingEventController {
   }
 
   @Delete(':eventId/participants/:userId')
+  @UseGuards(AdminTokenGuard)
   async removeParticipant(
     @Param('eventId') eventId: number,
     @Param('userId') userId: number,
@@ -73,6 +76,7 @@ export class VotingEventController {
   }
 
   @Post(':eventId/invite')
+  @UseGuards(AdminTokenGuard)
   async inviteParticipant(
     @Param('eventId') eventId: number,
     @Body('email') email: string,
@@ -81,11 +85,13 @@ export class VotingEventController {
   }
 
   @Get(':eventId/invited')
+  @UseGuards(AdminTokenGuard)
   async getInvitedParticipants(@Param('eventId') eventId: number) {
     return await this.votingEventService.getInvitedParticipants(eventId);
   }
 
   @Post(':eventId/send-invitations')
+  @UseGuards(AdminTokenGuard)
   async sendInvitations(
     @Param('eventId') eventId: number,
     @Body('emails') emails: string[],
@@ -104,55 +110,23 @@ export class VotingEventController {
     return { success: true };
   }
 
-  /**
-   * ============================================================================
-   * ⚠️ TEMPORARY ENDPOINT - NEEDS ZK-PROOF INTEGRATION
-   * ============================================================================
-   *
-   * CURRENT (FAKE - NOT ANONYMOUS):
-   * Body: { userId: number, selectedOption: number }
-   *
-   * REQUIRED FOR ZK IMPLEMENTATION:
-   * Body: {
-   *   proof: ZKProof,      // ZK-proof object
-   *   nullifier: string,   // Computed nullifier
-   *   signal: string       // The vote (selectedOption)
-   * }
-   * ============================================================================
-   */
+  // Relay vote: the voter sends only the ZK proof and the signal message. The backend
+  // verifies the proof, inserts the nullifier, then builds, signs and submits the tx
+  // with the relay wallet. The voter's wallet never appears on-chain.
   @Post(':eventId/relay-vote')
   async relayVote(
     @Param('eventId') eventId: number,
     @Body('piA') piA: string,
     @Body('piB') piB: string,
     @Body('piC') piC: string,
-    @Body('nullifierHash') nullifierHash: string,
-    @Body('signalHash') signalHash: string,
+    @Body('publicSignals') publicSignals: string[],
     @Body('signalMessage') signalMessage: string,
-    @Body('mpfProofSteps') mpfProofSteps: Array<object>,
-    @Body('mpfNewRoot') mpfNewRoot: string,
-    @Body('voteSignal') voteSignal: Array<[number, number]>,
-    @Body('nullifier') nullifier?: string,
   ) {
     return this.votingEventService.relayVote(eventId, {
       zkProof: { pi_a: piA, pi_b: piB, pi_c: piC },
-      nullifierHash: BigInt(nullifierHash),
-      signalHash: BigInt(signalHash),
+      publicSignals,
       signalMessage,
-      mpfProofSteps,
-      mpfNewRoot,
-      voteSignal,
-      nullifier,
     });
-  }
-
-  @Post(':eventId/vote')
-  async submitVote(
-    @Param('eventId') eventId: number,
-    @Body('signedTx') signedTx: string,
-    @Body('nullifier') nullifier?: string,
-  ) {
-    return await this.votingEventService.submitVote(signedTx, eventId, nullifier);
   }
 
   @Post(':eventId/validate-admin-token')
@@ -164,6 +138,7 @@ export class VotingEventController {
   }
 
   @Post(':eventId/mark-invitations-sent')
+  @UseGuards(AdminTokenGuard)
   async markInvitationsSent(
     @Param('eventId') eventId: number,
   ) {
@@ -183,29 +158,14 @@ export class VotingEventController {
 
   // Admin-only: removes a specific nullifier from the MPF trie.
   // Use to unblock a voter whose nullifier is stuck from a failed previous attempt.
-  // Requires the event's adminToken in the request body.
+  // Nullifiers are only ever inserted by relay-vote, after the ZK proof was verified.
   @Delete(':eventId/nullifier')
+  @UseGuards(AdminTokenGuard)
   async adminRollbackNullifier(
     @Param('eventId') eventId: number,
     @Body('nullifier') nullifier: string,
-    @Body('adminToken') adminToken: string,
   ) {
-    const validation = await this.votingEventService.validateAdminToken(eventId, adminToken);
-    if (!validation.valid) {
-      throw new HttpException(validation.error ?? 'Unauthorized', HttpStatus.UNAUTHORIZED);
-    }
     return await this.votingEventService.rollbackNullifier(eventId, nullifier);
-  }
-
-  // Inserts a nullifier into the MPF trie and returns the proof.
-  // Must be called before building the vote transaction (proof is needed as tx input).
-  // Throws 409 if the nullifier was already used (double-vote attempt).
-  @Post(':eventId/nullifier')
-  async insertNullifier(
-    @Param('eventId') eventId: number,
-    @Body('nullifier') nullifier: string,
-  ) {
-    return await this.votingEventService.insertNullifier(eventId, nullifier);
   }
 
   @Get(':eventId/on-chain-group-root')
@@ -219,6 +179,7 @@ export class VotingEventController {
   }
 
   @Post(':eventId/save-blockchain-data')
+  @UseGuards(AdminTokenGuard)
   async saveBlockchainData(
     @Param('eventId') eventId: number,
     @Body('blockchainData') blockchainData: any,
@@ -228,6 +189,7 @@ export class VotingEventController {
 
   // Updates groupMerkleRootHash in DB after the group-update TX is confirmed on-chain.
   @Post(':eventId/confirm-group-update')
+  @UseGuards(AdminTokenGuard)
   async confirmGroupUpdate(
     @Param('eventId') eventId: number,
     @Body('newMerkleRoot') newMerkleRoot: string,
@@ -239,6 +201,7 @@ export class VotingEventController {
   // Returns an unsigned TX hex for the admin to sign via CIP-30.
   // Body: { newMerkleRoot, walletUtxos, walletAddress, paymentKeyHash, collateralUtxo }
   @Post(':eventId/build-update-group-tx')
+  @UseGuards(AdminTokenGuard)
   async buildUpdateGroupTx(
     @Param('eventId') eventId: number,
     @Body() body: {

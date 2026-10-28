@@ -93,6 +93,8 @@ export default function EventDashboard() {
   const searchParams = useSearchParams();
   const eventId = params.id as string;
   const adminToken = searchParams.get('token');
+  // Admin-only backend endpoints check this header against the event's admin token.
+  const adminHeaders = { 'Content-Type': 'application/json', 'x-admin-token': adminToken ?? '' };
   const { connect, connected, wallet, disconnect } = useWallet();
 
   // --------------------------------------------------------------------------
@@ -406,7 +408,8 @@ export default function EventDashboard() {
     try {
       // 1. Load INVITED participants
       const invitedResponse = await fetch(
-        `${BACKEND_API_URL}/voting-event/${eventId}/invited`
+        `${BACKEND_API_URL}/voting-event/${eventId}/invited`,
+        { headers: adminHeaders }
       );
 
       if (!invitedResponse.ok) {
@@ -525,7 +528,7 @@ export default function EventDashboard() {
         `${BACKEND_API_URL}/voting-event/${eventId}/invite`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: adminHeaders,
           body: JSON.stringify({ email: newParticipantEmail.trim() })
         }
       );
@@ -555,6 +558,7 @@ export default function EventDashboard() {
         `${BACKEND_API_URL}/voting-event/${eventId}/participants/${userId}`,
         {
           method: 'DELETE',
+          headers: adminHeaders,
         }
       );
 
@@ -598,7 +602,7 @@ export default function EventDashboard() {
         `${BACKEND_API_URL}/voting-event/${eventId}/send-invitations`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: adminHeaders,
           body: JSON.stringify({ emails })
         }
       );
@@ -616,7 +620,7 @@ export default function EventDashboard() {
       try {
         await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/mark-invitations-sent`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
+          headers: adminHeaders
         });
       } catch (err) {
         console.error('Failed to mark invitations as sent in backend:', err);
@@ -959,7 +963,7 @@ export default function EventDashboard() {
       // Update event dates
       const dateResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders,
         body: JSON.stringify({
           startingDate,
           endingDate,
@@ -1003,7 +1007,7 @@ export default function EventDashboard() {
 
       await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/save-blockchain-data`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders,
         body: JSON.stringify({ blockchainData })
       });
 
