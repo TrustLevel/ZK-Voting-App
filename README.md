@@ -81,6 +81,16 @@ links each component to its source tree and documentation. The live deployment i
 
 Phase 1 design references: [SMART_CONTRACT_SPECIFICATION.md](design/SMART_CONTRACT_SPECIFICATION.md), [SYSTEM_DESIGN.md](design/SYSTEM_DESIGN.md).
 
+### Milestone 4 evidence (testing and advanced development)
+
+| Document | Where |
+|---|---|
+| Submission (acceptance criteria → evidence) | [MILESTONE4_SUBMISSION.md](MILESTONE4_SUBMISSION.md) |
+| Smart-contract audit report | [AUDIT_final.md](AUDIT_final.md) · [Upstream Semaphore changes](design/implementation/UPSTREAM_SEMAPHORE_CHANGES.md) |
+| User feedback and resulting changes | [docs/M4_USER_FEEDBACK.md](docs/M4_USER_FEEDBACK.md) · questionnaires in [docs/Interviews](docs/Interviews) |
+| Test report (scripted system tests 2026-10-05 and 2026-10-28, live group test) | [docs/M4_TEST_REPORT.md](docs/M4_TEST_REPORT.md) |
+| Relay vote design (voters need no wallet) | [docs/RELAY_VOTE_DESIGN.md](docs/RELAY_VOTE_DESIGN.md) |
+
 ---
 
 ## The Semaphore Protocol
@@ -88,6 +98,17 @@ Phase 1 design references: [SMART_CONTRACT_SPECIFICATION.md](design/SMART_CONTRA
 This application uses a BLS12-381 variant of [Semaphore](https://semaphore.appliedzkp.org/) — a zero-knowledge protocol for anonymous group signalling. Each voter holds a secret identity and proves group membership with a Groth16 ZK proof, without revealing who they are. A one-time nullifier prevents double voting. The proof is verified entirely on-chain by the Semaphore smart contract.
 
 For the full protocol description and cryptographic details see [`src/zk/DOCS.md`](src/zk/DOCS.md).
+
+---
+
+## User Guides
+
+Step-by-step guides against the hosted application, with the labels and messages you see on screen:
+
+- [Organiser guide](docs/guides/ORGANISER_GUIDE.md) — create an event, invite participants, publish it to the blockchain, read the results. Needs a Preprod wallet with test ADA.
+- [Voter guide](docs/guides/VOTER_GUIDE.md) — register, keep your identity file, cast a vote, check the result. No wallet and no ADA needed.
+
+Project close-out material for Catalyst Milestone 5 is in [`docs/CLOSEOUT_REPORT.md`](docs/CLOSEOUT_REPORT.md) and [`docs/community/`](docs/community/).
 
 ---
 
