@@ -30,6 +30,7 @@ import { AlertIcon, CalendarIcon, PlusIcon, SlidersIcon, TrashIcon, WalletIcon }
 import { InfoButton } from '@/components/InfoButton';
 import { INFO } from '@/components/infoTexts';
 import { WalletModal } from '@/components/WalletModal';
+import { formatLocalDateTime } from '@/lib/format';
 
 // ============================================================================
 // CONSTANTS
@@ -548,7 +549,15 @@ export default function CreateEventForm() {
               />
             </div>
           </div>
-          <p className="mt-2 text-xs text-muted">Times are in your local time.</p>
+          <p className="mt-2 text-xs text-muted">
+            Times are in your local time.
+            {(startDate || endDate) && (
+              <>
+                {' '}Voting runs {startDate ? <strong className="font-semibold text-ink">{formatLocalDateTime(new Date(startDate))}</strong> : '…'}
+                {' '}to {endDate ? <strong className="font-semibold text-ink">{formatLocalDateTime(new Date(endDate))}</strong> : '…'}.
+              </>
+            )}
+          </p>
         </section>
 
         {/* Wallet + Submit: the wallet comes last because it should match the network chosen above */}

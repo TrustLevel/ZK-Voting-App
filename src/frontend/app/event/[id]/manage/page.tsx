@@ -51,6 +51,7 @@ import {
   lovelaceToAda,
 } from '@/lib/network';
 import { NetworkBadge } from '@/components/NetworkBadge';
+import { LinkBox } from '@/components/LinkBox';
 import { formatLocalDateTime } from '@/lib/format';
 import { AppShell, PageIntro } from '@/components/AppShell';
 import { Button, LinkButton } from '@/components/Button';
@@ -1064,23 +1065,16 @@ export default function EventDashboard() {
       />
 
       {/* Admin Link */}
-      <Notice tone="neutral" icon={<KeyIcon size={18} />} className="mb-6">
-        <div className="flex min-h-9 items-center gap-x-1">
-          <span className="font-semibold">Your admin link</span>
-          <InfoButton text={INFO.adminLink} />
-        </div>
-        <p className="text-xs text-muted">
-          Use this link to access your event dashboard. Keep it secure.
-        </p>
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-          <p className="min-w-0 flex-1 truncate font-mono text-xs text-gray-700">
-            {createdEvent.adminLink}
-          </p>
-          <Button variant="outline" size="sm" onClick={() => createdEvent.adminLink && copyToClipboard(createdEvent.adminLink)} className="sm:flex-none">
-            {copiedAdmin ? 'Copied!' : 'Copy'}
-          </Button>
-        </div>
-      </Notice>
+      <LinkBox
+        className="mb-6"
+        icon={<KeyIcon size={18} />}
+        title="Your admin link"
+        info={<InfoButton text={INFO.adminLink} />}
+        hint="Use this link to access your event dashboard. Keep it secure."
+        url={createdEvent.adminLink ?? ''}
+        copied={copiedAdmin}
+        onCopy={() => createdEvent.adminLink && copyToClipboard(createdEvent.adminLink)}
+      />
 
       {/* Setup Steps */}
       <div className="mb-6 rounded-2xl border border-line bg-[#fafafa] px-3 py-3 sm:px-6">
@@ -1315,29 +1309,6 @@ export default function EventDashboard() {
         {/* Start Voting Tab */}
         {activeTab === 'start' && (
           <div>
-            {/* Blockchain Minting Status - Show during minting */}
-            {isStarting && mintingStep !== 'idle' && (
-              <Notice
-                tone="progress"
-                className="mb-6"
-                title={
-                  <>
-                    {mintingStep === 'group' && 'Step 1/2: Minting Group NFT'}
-                    {mintingStep === 'voting' && 'Step 2/2: Minting Voting NFTs'}
-                    {mintingStep === 'complete' && 'Finalizing...'}
-                    <InfoButton text={INFO.twoSignatures} />
-                  </>
-                }
-              >
-                <p className="text-gray-700">{txStatus}</p>
-                <div className="mt-4 flex gap-2" aria-hidden="true">
-                  <div className={`h-2 flex-1 rounded-full ${mintingStep === 'group' || mintingStep === 'voting' || mintingStep === 'complete' ? 'bg-brand' : 'bg-gray-200'}`}></div>
-                  <div className={`h-2 flex-1 rounded-full ${mintingStep === 'voting' || mintingStep === 'complete' ? 'bg-brand' : 'bg-gray-200'}`}></div>
-                </div>
-                <p className="mt-2 text-xs text-muted">Do not close this window. Blockchain transactions may take 1-2 minutes.</p>
-              </Notice>
-            )}
-
             {/* Blockchain Result - Show after successful minting */}
             {blockchainResult ? (
               <Notice tone="success" title="Event Published to Blockchain!">
@@ -1686,6 +1657,29 @@ export default function EventDashboard() {
                     </>
                   )}
                 </Button>
+
+                {/* Minting progress — right under the button that started it */}
+                {isStarting && mintingStep !== 'idle' && (
+                  <Notice
+                    tone="progress"
+                    className="mt-6"
+                    title={
+                      <>
+                        {mintingStep === 'group' && 'Step 1/2: Minting Group NFT'}
+                        {mintingStep === 'voting' && 'Step 2/2: Minting Voting NFTs'}
+                        {mintingStep === 'complete' && 'Finalizing...'}
+                        <InfoButton text={INFO.twoSignatures} />
+                      </>
+                    }
+                  >
+                    <p className="text-gray-700">{txStatus}</p>
+                    <div className="mt-4 flex gap-2" aria-hidden="true">
+                      <div className={`h-2 flex-1 rounded-full ${mintingStep === 'group' || mintingStep === 'voting' || mintingStep === 'complete' ? 'bg-brand' : 'bg-gray-200'}`}></div>
+                      <div className={`h-2 flex-1 rounded-full ${mintingStep === 'voting' || mintingStep === 'complete' ? 'bg-brand' : 'bg-gray-200'}`}></div>
+                    </div>
+                    <p className="mt-2 text-xs text-muted">Do not close this window. Blockchain transactions may take 1-2 minutes.</p>
+                  </Notice>
+                )}
               </>
             )}
           </div>

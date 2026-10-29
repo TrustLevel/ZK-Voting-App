@@ -27,6 +27,7 @@ import { Identity } from 'modp-semaphore-bls12381/packages/typescript/src/identi
 import { encodeVoteSignal, generateVoteProof } from '@/lib/vote-helpers';
 import { asNetwork, explorerTxUrl } from '@/lib/network';
 import { NetworkBadge } from '@/components/NetworkBadge';
+import { LinkBox } from '@/components/LinkBox';
 import { formatLocalDateTime } from '@/lib/format';
 import { AppShell, PageIntro } from '@/components/AppShell';
 import { Button, buttonClass } from '@/components/Button';
@@ -968,23 +969,16 @@ export default function EventPage() {
       />
 
       {/* Event Access Link */}
-      <Notice tone="neutral" icon={<LinkIcon size={18} />} className="mb-6">
-        <div className="flex min-h-9 items-center gap-x-1">
-          <span className="font-semibold">Your event link</span>
-          <InfoButton text={INFO.eventLink} />
-        </div>
-        <p className="text-xs text-muted">
-          Use this link + your identity file to access this event later. Keep it secure!
-        </p>
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-          <p className="min-w-0 flex-1 break-all font-mono text-xs text-gray-700">
-            {typeof window !== 'undefined' ? window.location.href : ''}
-          </p>
-          <Button variant="outline" size="sm" onClick={copyEventLinkToClipboard} className="sm:flex-none">
-            {eventLinkCopied ? 'Copied!' : 'Copy'}
-          </Button>
-        </div>
-      </Notice>
+      <LinkBox
+        className="mb-6"
+        icon={<LinkIcon size={18} />}
+        title="Your event link"
+        info={<InfoButton text={INFO.eventLink} />}
+        hint="Use this link + your identity file to access this event later. Keep it secure!"
+        url={typeof window !== 'undefined' ? window.location.href : ''}
+        copied={eventLinkCopied}
+        onCopy={copyEventLinkToClipboard}
+      />
 
       {/* Tab Navigation */}
       <div className="mb-6 rounded-2xl border border-line bg-[#fafafa] px-3 py-3 sm:px-6">
