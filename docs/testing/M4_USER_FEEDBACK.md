@@ -18,7 +18,7 @@ feedback we received, who it came from, and what we changed in response. Items t
 | 1 | Rodrigo Oyarzún, CHIL Stake Pool | SPO, community voting | Organiser (created and ran an event) and voter, Eternl | [Questionnaire](interviews/VotingAppFeedback_Rodrigo.md) |
 | 2 | Sebastián Pabón, Gimbalabs | Developer, runs blockchain projects | Organiser and voter, Eternl | [Questionnaire](interviews/VotingAppFeedback_Sebastián.md) |
 | 3 | Talon (GitHub: Pumbbii) | Developer | Scripted system test against the hosted backend: 15 script-controlled voters, real registrations and on-chain votes, concurrency and attack scenarios. Produced the findings F0–F12. | [Test write-up and questionnaire](interviews/VotingAppFeedback_Pumbi.md) |
-| 4 | pinusch (GitHub: pinusch) | Community | Organised a live event with five participants who registered and voted from their browsers; 3 votes succeeded at first, 2 failed | [Test write-up and questionnaire](interviews/VotingAppFeedback_pinusch.md) |
+| 4 | pinusch (GitHub: pinusch) | Community | Organised a live event with five participants who registered and voted from their browsers; 3 votes succeeded at first, 2 failed | [Test write-up and questionnaire](interviews/VotingAppFeedback_Pinusch.md) |
 | 5 | Independent reviewers (Catalyst milestone review of M3) | Milestone reviewers | Written review of the hosted application | — |
 
 All tests ran on 2026-10-05 against the Milestone 3 deployment, Rodrigo's and Sebastián's in the
@@ -90,7 +90,7 @@ Three of five votes went through on the first try. Observations:
 The on-chain record adds a fourth point: the voting window of this event was five minutes long,
 the three confirmed votes needed about 90 seconds each, and the last one landed three seconds
 before the end, so the failed attempts had no time left to retry (timeline with the transactions
-in his [write-up](interviews/VotingAppFeedback_pinusch.md)). The create form now states the
+in the tester's [write-up](interviews/VotingAppFeedback_Pinusch.md)). The create form now states the
 minimum window derived from this.
 
 ### Catalyst reviewers (M3 review, carried into M4)
