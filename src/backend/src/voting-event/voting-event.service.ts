@@ -57,15 +57,17 @@ export class VotingEventService {
     return result;
   }
 
-  // F6: per-event promise chain that serialises vote submissions.
-  // All vote txs for the same event spend the same Semaphore and Voting UTxOs — two concurrent
-  // submissions would both reference stale UTxO hashes and one would be rejected by the node.
-  private readonly voteLocks = new Map<number, Promise<any>>();
+  // F6: promise chain that serialises vote submissions. Relay votes are serialised per
+  // NETWORK, not per event: every event on a network spends the same relay wallet, so two
+  // events voting at the same time would both build on the relay's not-yet-spent change
+  // output and one would fail with "unknown transaction input" (seen 2026-10-29). Within one
+  // network this also covers the per-event Semaphore/Voting UTxO contention.
+  private readonly voteLocks = new Map<string | number, Promise<any>>();
 
-  private withVoteLock<T>(eventId: number, fn: () => Promise<T>): Promise<T> {
-    const prev = this.voteLocks.get(eventId) ?? Promise.resolve();
+  private withVoteLock<T>(key: string | number, fn: () => Promise<T>): Promise<T> {
+    const prev = this.voteLocks.get(key) ?? Promise.resolve();
     const result = prev.catch(() => {}).then(fn);
-    this.voteLocks.set(eventId, result.catch(() => {}));
+    this.voteLocks.set(key, result.catch(() => {}));
     return result;
   }
 
@@ -717,7 +719,9 @@ export class VotingEventService {
       signalMessage: string;
     },
   ): Promise<{ txHash: string }> {
-    return this.withVoteLock(eventId, async () => {
+    const lockEvent = await this.votingEventRepository.findOne({ where: { eventId }, select: ['eventId', 'network'] });
+    if (!lockEvent) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
+    return this.withVoteLock(`relay:${lockEvent.network ?? 'preprod'}`, async () => {
       const event = await this.votingEventRepository.findOne({ where: { eventId } });
       if (!event) throw new HttpException('Event not found', HttpStatus.NOT_FOUND);
       if (!event.semaphoreAddress || !event.votingValidatorAddress || !event.semaphoreNft || !event.votingNft || !event.groupNft)
