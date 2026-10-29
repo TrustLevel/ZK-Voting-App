@@ -14,6 +14,7 @@ import {
   Asset,
   MeshTxBuilder,
 } from '@meshsdk/core';
+import { CardanoNetwork } from '../network.js';
 
 // ── CSL lazy-load ─────────────────────────────────────────────────────────────
 
@@ -65,6 +66,8 @@ async function toCborHex(data: any): Promise<string> {
 
 export async function buildGroupMintTransaction(params: {
   provider: BlockfrostProvider;
+  // Cardano network (default 'preprod').
+  network?: CardanoNetwork;
   policyId: string;
   assetName: string;
   clothedCbor: string;
@@ -93,6 +96,7 @@ export async function buildGroupMintTransaction(params: {
     paymentKeyHash,
     collateralUtxo,
   } = params;
+  const network: CardanoNetwork = params.network ?? 'preprod';
 
   const [createRedeemerCbor, groupDatumCbor] = await Promise.all([
     toCborHex(createRedeemer),
@@ -107,7 +111,7 @@ export async function buildGroupMintTransaction(params: {
 
   try {
     const unsignedTx = await txBuilder
-      .setNetwork('preprod')
+      .setNetwork(network)
       .mintPlutusScriptV3()
       .mint('1', policyId, assetName)
       .mintingScript(clothedCbor)

@@ -8,6 +8,8 @@ import { VotingEvent } from './voting-event.entity';
 import { InvitationToken } from './invitation-token.entity';
 import { UsersService } from '../users/users.service';
 import { EmailService } from './email.service';
+import { NetworkConfig, FEE_PER_VOTE_LOVELACE } from '../network/network-config';
+import { HttpException } from '@nestjs/common';
 
 const mockRepository = () => ({
   find: jest.fn(),
@@ -16,25 +18,273 @@ const mockRepository = () => ({
   save: jest.fn(),
 });
 
+// Env of a server that serves both networks (values are placeholders, not real keys).
+// Standard BIP39 test vector (valid checksum), never funded.
+const TEST_MNEMONIC = Array(23).fill('abandon').concat('art').join(' ');
+const bothNetworksEnv: Record<string, string> = {
+  BLOCKFROST_API_KEY: 'preprodLegacyKey',
+  BLOCKFROST_API_KEY_MAINNET: 'mainnetKey',
+  RELAY_WALLET_MNEMONIC: TEST_MNEMONIC,
+  RELAY_WALLET_MNEMONIC_MAINNET: TEST_MNEMONIC,
+  VKEY_REF_MAINNET: 'a'.repeat(64) + '#0',
+};
+const configWith = (env: Record<string, string>) => ({ get: jest.fn((k: string) => env[k]) }) as unknown as ConfigService;
+
 describe('VotingEventService', () => {
   let service: VotingEventService;
   let votingEventRepo: ReturnType<typeof mockRepository>;
+  let env: Record<string, string>;
 
   beforeEach(async () => {
     votingEventRepo = mockRepository();
+    env = { ...bothNetworksEnv };
+    const configService = configWith(env);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         VotingEventService,
         { provide: getRepositoryToken(VotingEvent), useValue: votingEventRepo },
         { provide: getRepositoryToken(InvitationToken), useValue: mockRepository() },
-        { provide: ConfigService, useValue: { get: jest.fn() } },
+        { provide: ConfigService, useValue: configService },
+        { provide: NetworkConfig, useValue: new NetworkConfig(configService) },
         { provide: UsersService, useValue: {} },
         { provide: EmailService, useValue: {} },
       ],
     }).compile();
 
     service = module.get<VotingEventService>(VotingEventService);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    delete (global as any).fetch;
+  });
+
+  // Captures fetch calls and answers them from a handler.
+  const mockFetch = (handler: (url: string, init?: any) => { status: number; body?: any; text?: string }) => {
+    const calls: string[] = [];
+    (global as any).fetch = jest.fn(async (url: string, init?: any) => {
+      calls.push(url);
+      const r = handler(url, init);
+      return {
+        ok: r.status >= 200 && r.status < 300,
+        status: r.status,
+        json: async () => r.body,
+        text: async () => r.text ?? JSON.stringify(r.body ?? ''),
+      };
+    });
+    return calls;
+  };
+
+  describe('NetworkConfig', () => {
+    it('falls back to the legacy single-network variables for preprod only', () => {
+      const nc = new NetworkConfig(configWith({ BLOCKFROST_API_KEY: 'preprodX', RELAY_WALLET_MNEMONIC: TEST_MNEMONIC }));
+      expect(nc.blockfrostApiKey('preprod')).toBe('preprodX');
+      expect(nc.blockfrostApiKey('mainnet')).toBeNull();
+      expect(nc.relayMnemonic('mainnet')).toBeNull();
+      expect(nc.isEnabled('preprod')).toBe(true);
+      expect(nc.isEnabled('mainnet')).toBe(false);
+    });
+
+    it('prefers the per-network variables when both are set', () => {
+      const nc = new NetworkConfig(configWith({ BLOCKFROST_API_KEY: 'legacy', BLOCKFROST_API_KEY_PREPROD: 'preprodNew', BLOCKFROST_API_KEY_MAINNET: 'mainnetNew' }));
+      expect(nc.blockfrostApiKey('preprod')).toBe('preprodNew');
+      expect(nc.blockfrostApiKey('mainnet')).toBe('mainnetNew');
+      expect(nc.blockfrostBaseUrl('mainnet')).toBe('https://cardano-mainnet.blockfrost.io/api/v0');
+      expect(nc.blockfrostBaseUrl('preprod')).toBe('https://cardano-preprod.blockfrost.io/api/v0');
+      expect(nc.networkId('mainnet')).toBe(1);
+      expect(nc.networkId('preprod')).toBe(0);
+    });
+
+    it('mainnet is only enabled with a key, a relay wallet and a VKey reference UTxO', () => {
+      const base = { BLOCKFROST_API_KEY_MAINNET: 'm', RELAY_WALLET_MNEMONIC_MAINNET: TEST_MNEMONIC };
+      expect(new NetworkConfig(configWith(base)).isEnabled('mainnet')).toBe(false);
+      expect(new NetworkConfig(configWith({ ...base, VKEY_REF_MAINNET: 'b'.repeat(64) + '#3' })).isEnabled('mainnet')).toBe(true);
+      expect(new NetworkConfig(configWith({ ...base, VKEY_REF_MAINNET: 'b'.repeat(64) + '#3' })).vkeyRef('mainnet'))
+        .toEqual({ txHash: 'b'.repeat(64), outputIndex: 3 });
+      expect(() => new NetworkConfig(configWith({ ...base, VKEY_REF_MAINNET: 'nonsense' })).vkeyRef('mainnet')).toThrow('<txhash>#<index>');
+    });
+
+    it('keeps the Preprod VKey UTxO constant unless overridden', () => {
+      const nc = new NetworkConfig(configWith({}));
+      expect(nc.vkeyRef('preprod')).toEqual({ txHash: '3dc5c982ea80091afc75f4392ac9e91af8d9124a3318a0d76a26de4e934da083', outputIndex: 0 });
+      expect(nc.vkeyRef('mainnet')).toBeNull();
+    });
+
+    it('requires the fee deposit on mainnet only by default (FEE_DEPOSIT_NETWORKS)', () => {
+      expect(new NetworkConfig(configWith({})).feeDepositRequired('mainnet')).toBe(true);
+      expect(new NetworkConfig(configWith({})).feeDepositRequired('preprod')).toBe(false);
+      const both = new NetworkConfig(configWith({ FEE_DEPOSIT_NETWORKS: 'mainnet, preprod' }));
+      expect(both.feeDepositRequired('preprod')).toBe(true);
+      expect(new NetworkConfig(configWith({ FEE_DEPOSIT_NETWORKS: '' })).feeDepositRequired('mainnet')).toBe(true);
+    });
+
+    it('derives the relay address per network from the mnemonic', async () => {
+      const nc = new NetworkConfig(configWith(bothNetworksEnv));
+      const preprod = await nc.relayAddress('preprod');
+      const mainnet = await nc.relayAddress('mainnet');
+      expect(preprod).toMatch(/^addr_test1/);
+      expect(mainnet).toMatch(/^addr1/);
+      expect(await nc.relayAddress('mainnet')).toBe(mainnet);
+      expect(await new NetworkConfig(configWith({})).relayAddress('mainnet')).toBeNull();
+    });
+  });
+
+  describe('createBasicVotingEvent (network)', () => {
+    beforeEach(() => {
+      votingEventRepo.create.mockImplementation((e: any) => e);
+      votingEventRepo.save.mockImplementation(async (e: any) => e);
+    });
+
+    it('defaults to preprod and stores the chosen network', async () => {
+      const a = await service.createBasicVotingEvent('A', ['x', 'y'], 1, 2, 1, null);
+      expect(a.network).toBe('preprod');
+      const b = await service.createBasicVotingEvent('B', ['x', 'y'], 1, 2, 1, null, 'mainnet');
+      expect(b.network).toBe('mainnet');
+    });
+
+    it('rejects unknown networks and networks that are not enabled on this server', async () => {
+      await expect(service.createBasicVotingEvent('A', ['x', 'y'], 1, 2, 1, null, 'preview')).rejects.toThrow('Unknown network');
+      delete env.BLOCKFROST_API_KEY_MAINNET;
+      await expect(service.createBasicVotingEvent('A', ['x', 'y'], 1, 2, 1, null, 'mainnet')).rejects.toThrow('not enabled');
+      expect(votingEventRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('network routing of Blockfrost calls', () => {
+    const semaphoreNft = 'ab'.repeat(28);
+    // SemaphoreDatum with group_merke_root = 7
+    const datum = 'd8799f58' + '1c' + semaphoreNft + '07' + '58200000000000000000000000000000000000000000000000000000000000000000' + 'd8799f5820' + 'a'.repeat(64) + '00ffff';
+
+    it('reads the on-chain group root through the mainnet key and URL for a mainnet event', async () => {
+      votingEventRepo.findOne.mockResolvedValue({ eventId: 1, network: 'mainnet', semaphoreAddress: 'addr1sem', semaphoreNft } as unknown as VotingEvent);
+      const calls = mockFetch(() => ({ status: 200, body: [{ amount: [{ unit: semaphoreNft + '53', quantity: '1' }], inline_datum: datum }] }));
+      const r = await service.getOnChainGroupRoot(1);
+      expect(r.groupMerkleRoot).toBe('7');
+      expect(calls[0]).toBe('https://cardano-mainnet.blockfrost.io/api/v0/addresses/addr1sem/utxos');
+      expect((global as any).fetch.mock.calls[0][1].headers.project_id).toBe('mainnetKey');
+    });
+
+    it('uses the preprod URL and the legacy key for a preprod event (and for rows without a network)', async () => {
+      votingEventRepo.findOne.mockResolvedValue({ eventId: 1, semaphoreAddress: 'addr_test1sem', semaphoreNft } as unknown as VotingEvent);
+      const calls = mockFetch(() => ({ status: 200, body: [{ amount: [{ unit: semaphoreNft + '53', quantity: '1' }], inline_datum: datum }] }));
+      await service.getOnChainGroupRoot(1);
+      expect(calls[0]).toBe('https://cardano-preprod.blockfrost.io/api/v0/addresses/addr_test1sem/utxos');
+      expect((global as any).fetch.mock.calls[0][1].headers.project_id).toBe('preprodLegacyKey');
+    });
+
+    it('submits a vote tx to the network it was built for', async () => {
+      const calls = mockFetch((url) => url.endsWith('/evaluate') ? { status: 500, text: 'nope' } : { status: 200, text: '"deadbeef"' });
+      const r = await (service as any)._submitVote('00', undefined, undefined, 'mainnet');
+      expect(r.txHash).toBe('deadbeef');
+      expect(calls).toEqual([
+        'https://cardano-mainnet.blockfrost.io/api/v0/utils/txs/evaluate',
+        'https://cardano-mainnet.blockfrost.io/api/v0/tx/submit',
+      ]);
+    });
+
+    it('refuses with 503 when the event network has no Blockfrost key', async () => {
+      delete env.BLOCKFROST_API_KEY_MAINNET;
+      votingEventRepo.findOne.mockResolvedValue({ eventId: 1, network: 'mainnet', semaphoreAddress: 'x', semaphoreNft } as unknown as VotingEvent);
+      await expect(service.getOnChainGroupRoot(1)).rejects.toMatchObject({ status: 503 });
+    });
+  });
+
+  describe('fee deposit (mainnet-fee-deposit)', () => {
+    const voters = JSON.stringify([{ userId: 1, commitment: '1' }, { userId: 2, commitment: '2' }, { userId: 3, commitment: '3' }]);
+    const mainnetEvent = () => ({ eventId: 5, network: 'mainnet', groupLeafCommitments: voters, feeSpentLovelace: '0' }) as unknown as VotingEvent;
+    const required = 3n * FEE_PER_VOTE_LOVELACE;
+
+    it('does not require a deposit on preprod', () => {
+      expect(() => service.assertFeeBudget({ network: 'preprod' } as VotingEvent)).not.toThrow();
+      expect(() => service.assertFeeBudget({} as VotingEvent)).not.toThrow();
+    });
+
+    it('blocks relaying on mainnet without a deposit or when the budget is exhausted (402)', () => {
+      expect(() => service.assertFeeBudget({ network: 'mainnet' } as VotingEvent)).toThrow(HttpException);
+      try { service.assertFeeBudget({ network: 'mainnet' } as VotingEvent); } catch (e: any) { expect(e.status).toBe(402); }
+      const exhausted = { network: 'mainnet', feeDepositTxHash: 'x', feeBudgetLovelace: '2600000', feeSpentLovelace: '1400000' } as VotingEvent;
+      expect(() => service.assertFeeBudget(exhausted)).toThrow('exhausted');
+      const ok = { network: 'mainnet', feeDepositTxHash: 'x', feeBudgetLovelace: '2600000', feeSpentLovelace: '1300000' } as VotingEvent;
+      expect(() => service.assertFeeBudget(ok)).not.toThrow();
+    });
+
+    it('relayVote on an unfunded mainnet event fails before the proof is checked or a nullifier is written', async () => {
+      votingEventRepo.findOne.mockResolvedValue({ ...mainnetEvent(), semaphoreAddress: 'a', votingValidatorAddress: 'b', semaphoreNft: 'c', votingNft: 'd', groupNft: 'e', mintingOrefTxHash: 'f', mintingOrefIndex: 0 } as unknown as VotingEvent);
+      const verify = jest.spyOn(service, 'verifyRelayVoteProof');
+      const insert = jest.spyOn(service as any, 'insertNullifier');
+      await expect(service.relayVote(5, { zkProof: { pi_a: '', pi_b: '', pi_c: '' }, publicSignals: [], signalMessage: '' })).rejects.toMatchObject({ status: 402 });
+      expect(verify).not.toHaveBeenCalled();
+      expect(insert).not.toHaveBeenCalled();
+    });
+
+    it('reports the required amount: registered voters × fee per vote', async () => {
+      votingEventRepo.findOne.mockResolvedValue(mainnetEvent());
+      const s = await service.getFeeDepositStatus(5);
+      expect(s).toMatchObject({ network: 'mainnet', required: true, registeredVoters: 3, requiredLovelace: required.toString(), funded: false, depositTxHash: null });
+      expect(s.relayAddress).toMatch(/^addr1/);
+      votingEventRepo.findOne.mockResolvedValue({ eventId: 6, network: 'preprod', groupLeafCommitments: voters } as unknown as VotingEvent);
+      expect(await service.getFeeDepositStatus(6)).toMatchObject({ required: false, funded: true });
+    });
+
+    it('confirmFeeDeposit verifies the deposit on-chain and records the budget', async () => {
+      const event = mainnetEvent();
+      votingEventRepo.findOne.mockImplementation(async (q: any) => (q.where.eventId === 5 ? event : null));
+      votingEventRepo.save.mockImplementation(async (e: any) => e);
+      const relay = (await service.getNetworks()).find(n => n.network === 'mainnet')!.relayAddress!;
+      const txHash = 'c'.repeat(64);
+      const calls = mockFetch(() => ({ status: 200, body: { outputs: [
+        { address: 'addr1somebodyelse', amount: [{ unit: 'lovelace', quantity: '99000000' }] },
+        { address: relay, amount: [{ unit: 'lovelace', quantity: '2000000' }] },
+        { address: relay, amount: [{ unit: 'lovelace', quantity: '2000000' }] },
+      ] } }));
+      const r = await service.confirmFeeDeposit(5, txHash.toUpperCase());
+      expect(calls[0]).toBe(`https://cardano-mainnet.blockfrost.io/api/v0/txs/${txHash}/utxos`);
+      expect(r).toEqual({ success: true, budgetLovelace: '4000000', requiredLovelace: required.toString() });
+      expect(event.feeDepositTxHash).toBe(txHash);
+      expect(event.feeBudgetLovelace).toBe('4000000');
+      expect(() => service.assertFeeBudget(event)).not.toThrow();
+      expect(await service.getFeeDepositStatus(5)).toMatchObject({ funded: true, missingLovelace: '0' });
+      // Funded for all registered voters: another deposit is refused.
+      await expect(service.confirmFeeDeposit(5, 'e'.repeat(64))).rejects.toMatchObject({ status: 409 });
+    });
+
+    it('accepts a top-up deposit when more voters registered after the first deposit', async () => {
+      const event = { ...mainnetEvent(), feeDepositTxHash: 'a'.repeat(64), feeBudgetLovelace: '2600000' } as unknown as VotingEvent;
+      votingEventRepo.findOne.mockImplementation(async (q: any) => (q.where.eventId === 5 ? event : null));
+      votingEventRepo.save.mockImplementation(async (e: any) => e);
+      const relay = (await service.getNetworks()).find(n => n.network === 'mainnet')!.relayAddress!;
+      // 3 voters × 1.3 ADA = 3.9 ADA required, 2.6 ADA deposited → 1.3 ADA missing.
+      expect(await service.getFeeDepositStatus(5)).toMatchObject({ funded: false, missingLovelace: '1300000' });
+      mockFetch(() => ({ status: 200, body: { outputs: [{ address: relay, amount: [{ unit: 'lovelace', quantity: '1299999' }] }] } }));
+      await expect(service.confirmFeeDeposit(5, 'b'.repeat(64))).rejects.toThrow('Deposit too small');
+      mockFetch(() => ({ status: 200, body: { outputs: [{ address: relay, amount: [{ unit: 'lovelace', quantity: '1300000' }] }] } }));
+      const r = await service.confirmFeeDeposit(5, 'b'.repeat(64));
+      expect(r.budgetLovelace).toBe('3900000');
+      expect(event.feeDepositTxHash).toBe('a'.repeat(64) + ',' + 'b'.repeat(64));
+      expect(await service.getFeeDepositStatus(5)).toMatchObject({ funded: true });
+    });
+
+    it('confirmFeeDeposit rejects a deposit that is too small, unconfirmed, reused or on a free network', async () => {
+      const event = mainnetEvent();
+      votingEventRepo.findOne.mockImplementation(async (q: any) => (q.where.eventId === 5 ? event : null));
+      const relay = (await service.getNetworks()).find(n => n.network === 'mainnet')!.relayAddress!;
+      mockFetch(() => ({ status: 200, body: { outputs: [{ address: relay, amount: [{ unit: 'lovelace', quantity: '3899999' }] }] } }));
+      await expect(service.confirmFeeDeposit(5, 'd'.repeat(64))).rejects.toThrow('Deposit too small');
+      expect(event.feeDepositTxHash).toBeUndefined();
+
+      mockFetch(() => ({ status: 404, body: {} }));
+      await expect(service.confirmFeeDeposit(5, 'd'.repeat(64))).rejects.toMatchObject({ status: 404 });
+
+      await expect(service.confirmFeeDeposit(5, 'not-a-hash')).rejects.toMatchObject({ status: 400 });
+
+      // Deposit tx already used by another event (looked up with LIKE on the hash list).
+      votingEventRepo.findOne.mockImplementation(async (q: any) => (q.where.eventId === 5 ? event : { eventId: 9 }));
+      await expect(service.confirmFeeDeposit(5, 'd'.repeat(64))).rejects.toMatchObject({ status: 409 });
+
+      votingEventRepo.findOne.mockResolvedValue({ eventId: 7, network: 'preprod' } as unknown as VotingEvent);
+      await expect(service.confirmFeeDeposit(7, 'd'.repeat(64))).rejects.toThrow('No fee deposit is required');
+    });
   });
 
   describe('getVotingEvent', () => {

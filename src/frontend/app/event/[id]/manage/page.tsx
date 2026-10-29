@@ -28,7 +28,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useWallet } from '@meshsdk/react';
-import { BlockfrostProvider, deserializeAddress } from '@meshsdk/core';
+import { BlockfrostProvider, MeshTxBuilder, deserializeAddress } from '@meshsdk/core';
 import {
   buildAndSubmitGroupMintTx,
   buildAndSubmitSemaphoreVotingMintTx,
@@ -36,6 +36,19 @@ import {
   selectUtxoAndCreateOutputReference,
   waitForTxConfirmation,
 } from '@/lib/blockchain-helpers';
+import {
+  CardanoNetwork,
+  NETWORK_LABEL,
+  NetworkInfo,
+  asNetwork,
+  assertWalletNetwork,
+  blockfrostKeyEnvName,
+  blockfrostKeyFor,
+  explorerTxUrl,
+  fetchNetworks,
+  lovelaceToAda,
+} from '@/lib/network';
+import { NetworkBadge } from '@/components/NetworkBadge';
 
 // ============================================================================
 // CONSTANTS
@@ -51,6 +64,7 @@ interface CreatedEvent {
   eventId: number; // Changed from string to number
   adminLink?: string;
   eventName: string;
+  network: CardanoNetwork; // chosen at creation, immutable
   votingPower?: number | null; // 1 = simple, >1 = weighted
   options?: string | null; // JSON string array
   startingDate?: number | null; // POSIX timestamp
@@ -69,6 +83,22 @@ interface Participant {
 }
 
 type Tab = 'parameters' | 'participants' | 'start' | 'results';
+
+// GET /voting-event/:eventId/fee-deposit — the organiser's prepaid vote-fee budget
+// (fee-deposit networks only, i.e. Mainnet).
+interface FeeDepositStatus {
+  network: CardanoNetwork;
+  required: boolean;
+  relayAddress: string | null;
+  feePerVoteLovelace: string;
+  registeredVoters: number;
+  requiredLovelace: string;
+  depositTxHash: string | null;
+  budgetLovelace: string | null;
+  spentLovelace: string;
+  missingLovelace: string;
+  funded: boolean;
+}
 
 // ============================================================================
 // COMPONENTS
@@ -133,6 +163,15 @@ export default function EventDashboard() {
 
   // Blockchain & Voting State
   const [isStarting, setIsStarting] = useState(false);
+
+  // Network of the event as the backend serves it (relay address, VKey ref, deposit rule)
+  const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
+  const [networksLoadError, setNetworksLoadError] = useState<string | null>(null);
+
+  // Fee deposit (Mainnet): prepaid vote fees, must be funded before publishing
+  const [feeDeposit, setFeeDeposit] = useState<FeeDepositStatus | null>(null);
+  const [isDepositing, setIsDepositing] = useState(false);
+  const [depositStatus, setDepositStatus] = useState<string>('');
   const [publishedData, setPublishedData] = useState<{
     signature: string;
     publicKey: string;
@@ -266,6 +305,7 @@ export default function EventDashboard() {
             setCreatedEvent({
               eventId: eventData.eventId,
               eventName: eventData.eventName,
+              network: asNetwork(eventData.network),
               votingPower: eventData.votingPower,
               options: eventData.options,
               startingDate: eventData.startingDate,
@@ -342,6 +382,40 @@ export default function EventDashboard() {
     if (activeTab === 'results') loadResults();
   }, [activeTab]);
 
+  /**
+   * Network info for this event (which VKey UTxO to put in the datum, where the fee
+   * deposit goes, whether the server serves the network at all).
+   * Backend: GET /voting-event/networks
+   */
+  useEffect(() => {
+    if (!createdEvent) return;
+    fetchNetworks(BACKEND_API_URL)
+      .then(list => {
+        const info = list.find(n => n.network === createdEvent.network) ?? null;
+        setNetworkInfo(info);
+        setNetworksLoadError(info ? null : `The server does not know the network "${createdEvent.network}".`);
+      })
+      .catch(err => setNetworksLoadError(`Could not load network information: ${err instanceof Error ? err.message : String(err)}`));
+  }, [createdEvent?.eventId, createdEvent?.network]);
+
+  /**
+   * Fee deposit status, shown on the Start Voting tab (Mainnet events must be funded first).
+   * Backend: GET /voting-event/:eventId/fee-deposit
+   */
+  const loadFeeDeposit = async () => {
+    try {
+      const response = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/fee-deposit`, { headers: adminHeaders });
+      if (!response.ok) throw new Error(`${response.status}`);
+      setFeeDeposit(await response.json());
+    } catch (err) {
+      console.error('Failed to load fee deposit status:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'start' && createdEvent) loadFeeDeposit();
+  }, [activeTab, createdEvent?.eventId, participants.length]);
+
   // --------------------------------------------------------------------------
   // BACKEND API CALLS
   // --------------------------------------------------------------------------
@@ -368,6 +442,7 @@ export default function EventDashboard() {
       setCreatedEvent({
         eventId: backendEvent.eventId,
         eventName: backendEvent.eventName,
+        network: asNetwork(backendEvent.network),
         votingPower: backendEvent.votingPower,
         options: backendEvent.options, // Keep as JSON string with vote counts
         startingDate: backendEvent.startingDate,
@@ -678,6 +753,88 @@ export default function EventDashboard() {
    * 
    * ============================================================================
    */
+  /**
+   * Fee deposit (Mainnet): the organiser prepays the voters' transaction fees.
+   * Builds a plain payment of the missing amount to the relay wallet address, has the
+   * organiser's wallet sign and submit it, then asks the backend to verify it on-chain.
+   * Backend: POST /voting-event/:eventId/confirm-fee-deposit { txHash }
+   */
+  const handleSendFeeDeposit = async () => {
+    if (!feeDeposit?.required || feeDeposit.funded || !feeDeposit.relayAddress) return;
+    if (!connected || !wallet || !walletAddress) {
+      alert('Please connect your wallet to send the fee deposit');
+      return;
+    }
+    const network: CardanoNetwork = createdEvent?.network ?? 'preprod';
+    const amount = feeDeposit.missingLovelace;
+    const ada = lovelaceToAda(amount);
+    if (!window.confirm(
+      `Send the fee deposit of ${ada} ADA to the voting service?\n\n` +
+      `This covers your voters' transaction fees (${feeDeposit.registeredVoters} registered voters × ${lovelaceToAda(feeDeposit.feePerVoteLovelace)} ADA) ` +
+      `and is the cost of running this event. Any unused remainder is not refunded.`
+    )) return;
+
+    setIsDepositing(true);
+    setDepositStatus('Checking wallet network...');
+    try {
+      await assertWalletNetwork(wallet, network);
+
+      const blockfrostApiKey = blockfrostKeyFor(network);
+      if (!blockfrostApiKey) throw new Error(`Blockfrost API key for ${NETWORK_LABEL[network]} not configured (${blockfrostKeyEnvName(network)}).`);
+      const provider = new BlockfrostProvider(blockfrostApiKey);
+
+      setDepositStatus('Building the deposit transaction...');
+      const walletUtxos = await getWalletUtxos(wallet);
+      const txBuilder = new MeshTxBuilder({ fetcher: provider, verbose: false });
+      const unsignedTx = await txBuilder
+        .setNetwork(network)
+        .txOut(feeDeposit.relayAddress, [{ unit: 'lovelace', quantity: amount }])
+        .selectUtxosFrom(walletUtxos)
+        .changeAddress(walletAddress)
+        .complete();
+
+      setDepositStatus('Please sign the deposit in your wallet...');
+      const signedTx = await wallet.signTx(unsignedTx, false);
+      const txHash = await wallet.submitTx(signedTx);
+      console.log('Fee deposit submitted:', txHash);
+
+      // The backend verifies the tx itself; it answers 404 until Blockfrost has indexed it.
+      setDepositStatus(`Deposit submitted (${txHash.slice(0, 16)}...). Waiting for confirmation...`);
+      let confirmed = false;
+      let lastError = '';
+      for (let i = 0; i < 60 && !confirmed; i++) {
+        const response = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/confirm-fee-deposit`, {
+          method: 'POST',
+          headers: adminHeaders,
+          body: JSON.stringify({ txHash }),
+        });
+        if (response.ok) {
+          confirmed = true;
+          break;
+        }
+        const err = await response.json().catch(() => ({}));
+        lastError = typeof err?.message === 'string' ? err.message : `HTTP ${response.status}`;
+        if (response.status !== 404) break; // 404 = not indexed yet; anything else is final
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+      if (!confirmed) {
+        throw new Error(
+          `The deposit was submitted (tx ${txHash}) but could not be confirmed: ${lastError}. ` +
+          `Reload this page in a minute; if it is still not recorded, contact support with the tx hash.`
+        );
+      }
+      setDepositStatus('Fee deposit recorded.');
+      await loadFeeDeposit();
+    } catch (error) {
+      console.error('Fee deposit failed:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      setDepositStatus(`Error: ${message}`);
+      alert(`Fee deposit failed:\n\n${message}`);
+    } finally {
+      setIsDepositing(false);
+    }
+  };
+
   const handleStartVoting = async () => {
     // ═══════════════════════════════════════════════════════════════════════
     // A. VALIDATION
@@ -721,6 +878,27 @@ export default function EventDashboard() {
       return;
     }
 
+    const network: CardanoNetwork = createdEvent?.network ?? 'preprod';
+
+    if (!networkInfo || !networkInfo.enabled || !networkInfo.vkeyRef) {
+      alert(`${NETWORK_LABEL[network]} is not enabled on this server${networksLoadError ? ` (${networksLoadError})` : ''}. The event cannot be published here.`);
+      return;
+    }
+
+    // The wallet must be on the event's network — otherwise the mint txs would go to the wrong chain.
+    try {
+      await assertWalletNetwork(wallet, network);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+      return;
+    }
+
+    // Fee-deposit networks (Mainnet): the voters' fees must be prepaid before publishing.
+    if (feeDeposit?.required && !feeDeposit.funded) {
+      alert(`Send the fee deposit first (${lovelaceToAda(feeDeposit.missingLovelace)} ADA still missing). It prepays your voters' transaction fees.`);
+      return;
+    }
+
     setIsStarting(true);
     setMintingStep('idle');
     setTxStatus('Preparing blockchain transaction...');
@@ -757,13 +935,15 @@ export default function EventDashboard() {
       // C. INITIALIZE BLOCKFROST PROVIDER
       // ═══════════════════════════════════════════════════════════════════════
 
-      const blockfrostApiKey = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
+      // Per-network key: NEXT_PUBLIC_BLOCKFROST_API_KEY (Preprod) / NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET.
+      const blockfrostApiKey = blockfrostKeyFor(network);
       if (!blockfrostApiKey) {
-        throw new Error('Blockfrost API key not configured. Please check .env.local');
+        throw new Error(`Blockfrost API key for ${NETWORK_LABEL[network]} not configured (${blockfrostKeyEnvName(network)}).`);
       }
-
-      console.log('Blockfrost API Key loaded:', blockfrostApiKey.slice(0, 10) + '...');
-      console.log('API Key starts with "preprod"?', blockfrostApiKey.startsWith('preprod'));
+      if (!blockfrostApiKey.startsWith(network)) {
+        throw new Error(`${blockfrostKeyEnvName(network)} is not a ${network} Blockfrost key.`);
+      }
+      console.log(`Blockfrost provider for ${network}`);
 
       const provider = new BlockfrostProvider(blockfrostApiKey);
 
@@ -797,6 +977,7 @@ export default function EventDashboard() {
       // Build and submit Group NFT mint transaction
       const groupResult = await buildAndSubmitGroupMintTx({
         provider,
+        network,
         wallet,
         walletAddress,
         paymentKeyHash,
@@ -925,6 +1106,8 @@ export default function EventDashboard() {
       // Build and submit Semaphore + Voting NFT mint transaction
       const svResult = await buildAndSubmitSemaphoreVotingMintTx({
         provider,
+        network,
+        vkeyRef: networkInfo.vkeyRef,
         wallet,
         walletAddress,
         paymentKeyHash,
@@ -1140,7 +1323,10 @@ export default function EventDashboard() {
                     </svg>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-xl font-bold text-gray-900">Admin Dashboard</h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-xl font-bold text-gray-900">Admin Dashboard</h3>
+                      <NetworkBadge network={createdEvent.network} />
+                    </div>
                     <p className="text-sm text-gray-600 truncate">{createdEvent.eventName}</p>
                   </div>
                 </div>
@@ -1279,6 +1465,20 @@ export default function EventDashboard() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                     </svg>
                     <h3 className="font-bold text-gray-900">Voting Configuration</h3>
+                  </div>
+
+                  {/* Network — fixed at creation */}
+                  <div className="mb-6">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Cardano Network</label>
+                    <div className="px-4 py-3 bg-gray-50 rounded-xl border-2 border-gray-200 flex items-center gap-3">
+                      <NetworkBadge network={createdEvent.network} />
+                      <span className="text-sm text-gray-700">
+                        {createdEvent.network === 'mainnet'
+                          ? 'Real ADA: publishing and voting cost real transaction fees.'
+                          : 'Test network: free test ADA, no real money involved.'}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-600">The network was chosen when the event was created and cannot be changed.</p>
                   </div>
 
                   {/* Voting Type Display */}
@@ -1603,7 +1803,7 @@ export default function EventDashboard() {
                             </div>
                           </div>
                           <a
-                            href={`https://preprod.cardanoscan.io/transaction/${blockchainResult.groupTxHash}`}
+                            href={explorerTxUrl(createdEvent.network, blockchainResult.groupTxHash ?? "")}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium"
@@ -1648,7 +1848,7 @@ export default function EventDashboard() {
                             </div>
                           </div>
                           <a
-                            href={`https://preprod.cardanoscan.io/transaction/${blockchainResult.semaphoreVotingTxHash}`}
+                            href={explorerTxUrl(createdEvent.network, blockchainResult.semaphoreVotingTxHash ?? "")}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium"
@@ -1857,14 +2057,80 @@ export default function EventDashboard() {
                       <div className="mt-4 pt-3 border-t border-gray-200 text-sm text-gray-700">
                         <p className="font-semibold text-gray-900 mb-1">What happens when you click Publish</p>
                         <ol className="list-decimal ml-5 space-y-0.5">
+                          {feeDeposit?.required && (
+                            <li>Before the two transactions below, you send the <strong>fee deposit</strong> (see the box below) — this prepays your voters' transaction fees.</li>
+                          )}
                           <li>Your wallet asks you to sign transaction 1 of 2: the <strong>Group NFT</strong> that carries the registered voter list.</li>
                           <li>After about a minute it asks you to sign transaction 2 of 2: the <strong>Semaphore + Voting NFTs</strong> that hold the ballot.</li>
                           <li>Both need to confirm on-chain (1–2 minutes each). Keep this window open; the page shows each step.</li>
                         </ol>
+                        {createdEvent.network === 'mainnet' && (
+                          <p className="mt-2 text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs">
+                            <strong>Mainnet — real ADA.</strong> The two transactions lock 5 ADA in each of the three event contracts (15 ADA stay there) and cost about 1.5 ADA in fees.
+                            Your wallet also needs one plain-ADA output of at least 5 ADA as collateral. Keep about 25 ADA plus the fee deposit available.
+                          </p>
+                        )}
                       </div>
                     </div>
                   );
                 })()}
+
+                {/* Network not served by this backend */}
+                {networksLoadError && (
+                  <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-6 text-sm text-red-800">
+                    {networksLoadError}
+                  </div>
+                )}
+                {networkInfo && !networkInfo.enabled && (
+                  <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-6 text-sm text-red-800">
+                    <strong>{NETWORK_LABEL[createdEvent.network]} is not enabled on this server.</strong> The event cannot be published here.
+                  </div>
+                )}
+
+                {/* Fee deposit (Mainnet): prepaid vote fees */}
+                {feeDeposit?.required && (
+                  <div className={`border-2 rounded-xl p-5 mb-6 ${feeDeposit.funded ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-bold text-gray-900">Fee deposit</h3>
+                      <button type="button" onClick={loadFeeDeposit} className="text-xs font-medium text-gray-700 underline hover:text-gray-900">Refresh</button>
+                    </div>
+                    <p className="text-sm text-gray-800 mb-2">
+                      Fee deposit: <strong>{lovelaceToAda(feeDeposit.requiredLovelace)} ADA</strong> ({feeDeposit.registeredVoters} registered voter{feeDeposit.registeredVoters === 1 ? '' : 's'} × {lovelaceToAda(feeDeposit.feePerVoteLovelace)} ADA).
+                      This covers your voters' transaction fees and is the cost of running this event; any unused remainder is not refunded.
+                    </p>
+                    {feeDeposit.funded ? (
+                      <p className="text-sm text-green-900">
+                        Funded: {lovelaceToAda(feeDeposit.budgetLovelace ?? '0')} ADA deposited
+                        {feeDeposit.depositTxHash && (
+                          <> (<a href={explorerTxUrl(createdEvent.network, feeDeposit.depositTxHash.split(',').pop()!)} target="_blank" rel="noopener noreferrer" className="underline">view transaction</a>)</>
+                        )}.
+                      </p>
+                    ) : (
+                      <>
+                        {feeDeposit.depositTxHash && (
+                          <p className="text-sm text-amber-900 mb-2">
+                            {lovelaceToAda(feeDeposit.budgetLovelace ?? '0')} ADA deposited so far; more voters registered since, so {lovelaceToAda(feeDeposit.missingLovelace)} ADA are still missing.
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-700 mb-3">
+                          The deposit goes to the voting service's relay wallet on {NETWORK_LABEL[createdEvent.network]}:
+                          <span className="font-mono break-all block mt-1">{feeDeposit.relayAddress ?? 'not configured'}</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleSendFeeDeposit}
+                          disabled={isDepositing || !connected || !walletAddress || !feeDeposit.relayAddress || feeDeposit.registeredVoters === 0}
+                          className="px-5 py-2.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          {isDepositing && <LoadingSpinner />}
+                          {isDepositing ? 'Sending deposit...' : `Send fee deposit (${lovelaceToAda(feeDeposit.missingLovelace)} ADA)`}
+                        </button>
+                        {!connected && <p className="text-xs text-gray-600 mt-2">Connect your {NETWORK_LABEL[createdEvent.network]} wallet below first.</p>}
+                      </>
+                    )}
+                    {depositStatus && <p className="text-xs text-gray-700 mt-2">{depositStatus}</p>}
+                  </div>
+                )}
 
                 {/* Wallet Connection Status */}
                 {connected && walletAddress ? (
@@ -1915,7 +2181,7 @@ export default function EventDashboard() {
                 {/* Start Button */}
                 <button
                   onClick={handleStartVoting}
-                  disabled={isStarting || !startDate || !endDate || !connected || !walletAddress || participants.filter(p => p.status === 'registered').length === 0}
+                  disabled={isStarting || !startDate || !endDate || !connected || !walletAddress || participants.filter(p => p.status === 'registered').length === 0 || (feeDeposit?.required && !feeDeposit.funded) || (networkInfo !== null && !networkInfo.enabled)}
                   className="w-full bg-gray-900 text-white py-4 px-6 rounded-xl hover:bg-gray-800 transition-all font-semibold flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                   {isStarting ? (

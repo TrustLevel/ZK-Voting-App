@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { NetworkBadge } from '@/components/NetworkBadge';
 
 const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3000';
 const AUTO_REFRESH_INTERVAL_MS = 30000;
@@ -16,6 +17,7 @@ interface ResultOption {
 interface ResultsData {
   status: 'not_deployed' | 'upcoming' | 'live' | 'ended';
   eventName: string;
+  network?: 'mainnet' | 'preprod';
   startingDate: number | null;
   endingDate: number | null;
   registeredVoters: number | null; // null while voting is open (organiser-only)
@@ -109,7 +111,10 @@ export default function ResultsPage() {
           <Link href={`/event/${eventId}`} className="text-sm text-gray-500 hover:text-gray-700 mb-2 inline-block">
             ← Back to event
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">{data?.eventName}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-900">{data?.eventName}</h1>
+            <NetworkBadge network={data?.network ?? 'preprod'} />
+          </div>
           <p className="text-sm text-gray-500 mt-1">Voting results — on-chain data</p>
         </div>
 

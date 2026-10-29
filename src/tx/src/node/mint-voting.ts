@@ -114,7 +114,7 @@ console.log('\n🔨 Building transaction...');
 let unsignedMintTx;
 try {
   unsignedMintTx = await txBuilder
-      .setNetwork("preprod")
+      .setNetwork((process.env.NETWORK === "mainnet" ? "mainnet" : "preprod"))
       .invalidHereafter(txValidityEndSlot) // Validity must be entirely before event_start
       .mintPlutusScriptV3()
       .mint("1", policyId, assetName)

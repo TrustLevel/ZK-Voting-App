@@ -30,6 +30,8 @@ describe('VotingEventController routes', () => {
     'POST :eventId/save-blockchain-data',
     'POST :eventId/confirm-group-update',
     'POST :eventId/build-update-group-tx',
+    'GET :eventId/fee-deposit',
+    'POST :eventId/confirm-fee-deposit',
   ];
 
   it.each(adminRoutes)('%s requires the admin token', (route) => {
@@ -41,6 +43,12 @@ describe('VotingEventController routes', () => {
   it('only the admin routes are guarded', () => {
     const guarded = routes().filter((r) => r.guarded).map((r) => r.route).sort();
     expect(guarded).toEqual([...adminRoutes].sort());
+  });
+
+  it('declares GET networks before GET :eventId so it is not read as an event id', () => {
+    const all = routes().map((r) => r.route);
+    expect(all.indexOf('GET networks')).toBeGreaterThanOrEqual(0);
+    expect(all.indexOf('GET networks')).toBeLessThan(all.indexOf('GET :eventId'));
   });
 
   it('has no public endpoint that writes nullifiers or submits arbitrary txs (F2)', () => {

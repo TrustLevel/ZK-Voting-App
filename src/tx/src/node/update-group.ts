@@ -18,6 +18,7 @@ import {
 } from '../utils.js';
 import { VALIDATORS } from '../validators.js';
 import 'dotenv/config';
+import { CardanoNetwork } from '../network.js';
 
 /**
  * Build unsigned transaction that spends the Group UTxO and writes a new GroupDatum
@@ -32,6 +33,8 @@ import 'dotenv/config';
  */
 export async function buildUpdateGroupTransaction(params: {
   provider: BlockfrostProvider;
+  // Cardano network (default 'preprod').
+  network?: CardanoNetwork;
   groupScriptAddress: string;
   groupNftPolicyId: string;
   groupValidatorCbor: string;   // parameterized (clothed) CBOR from applyOrefParamToScript
@@ -52,6 +55,7 @@ export async function buildUpdateGroupTransaction(params: {
     collateralUtxo,
     newMerkleRoot,
   } = params;
+  const network: CardanoNetwork = params.network ?? 'preprod';
 
   // Fetch the Group UTxO from chain
   const groupUtxos: UTxO[] = await provider.fetchAddressUTxOs(groupScriptAddress);
@@ -76,7 +80,7 @@ export async function buildUpdateGroupTransaction(params: {
 
   try {
     const unsignedTx = await txBuilder
-      .setNetwork('preprod')
+      .setNetwork(network)
       .spendingPlutusScriptV3()
       .txIn(
         groupUtxo.input.txHash,

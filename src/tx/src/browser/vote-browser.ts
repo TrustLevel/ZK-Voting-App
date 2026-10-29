@@ -20,9 +20,11 @@ import {
   MeshTxBuilder,
 } from '@meshsdk/core';
 import { createOutputReference, createUrnaDatum } from './utils-browser.js';
+import { CardanoNetwork, OutputRef, VKEY_REF, vkeyRefFor, posixMsToSlot } from '../network.js';
 
-export const VKEY_REF_TX_HASH = "3dc5c982ea80091afc75f4392ac9e91af8d9124a3318a0d76a26de4e934da083";
-export const VKEY_REF_OUTPUT_INDEX = 0;
+// Preprod values, kept for backward compatibility — builders use vkeyRefFor(network).
+export const VKEY_REF_TX_HASH = VKEY_REF.preprod!.txHash;
+export const VKEY_REF_OUTPUT_INDEX = VKEY_REF.preprod!.outputIndex;
 
 // ── CSL lazy-load (async dynamic import works in both Node.js and browser) ────
 
@@ -144,6 +146,10 @@ export async function fetchOnChainGroupMerkleRoot(
 
 export interface BuildVoteTransactionParams {
   provider: BlockfrostProvider;
+  // Cardano network of the event (default 'preprod'); selects network id, slot config and VKey UTxO.
+  network?: CardanoNetwork;
+  // Override of the VKey reference UTxO (default: the network's constant from ../network.ts).
+  vkeyRef?: OutputRef;
   semaphoreScriptAddress: string;
   votingScriptAddress: string;
   semaphoreNftPolicyId: string;
@@ -200,6 +206,8 @@ export async function buildVoteTransaction(params: BuildVoteTransactionParams): 
     voteSignal, weight, eventStart, eventEnd,
     collateralUtxo,
   } = params;
+  const network: CardanoNetwork = params.network ?? 'preprod';
+  const vkeyRef = vkeyRefFor(network, params.vkeyRef);
 
   const semaphoreUtxos: UTxO[] = await provider.fetchAddressUTxOs(semaphoreScriptAddress);
   const semaphoreUtxo = semaphoreUtxos.find(u =>
@@ -256,7 +264,7 @@ export async function buildVoteTransaction(params: BuildVoteTransactionParams): 
     byteString(groupNftPolicyId),
     integer(onChainGroupMerkleRoot),
     byteString(mpfNewRoot),
-    createOutputReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX),
+    createOutputReference(vkeyRef.txHash, vkeyRef.outputIndex),
   ]);
 
   // Serialize via CBOR — avoids JSON path that truncates large integers to float64 in browser WASM CSL.
@@ -266,11 +274,9 @@ export async function buildVoteTransaction(params: BuildVoteTransactionParams): 
     toCborHex(updatedUrnaDatum),
   ]);
 
-  // Preprod slot calculation: slot = unix_seconds - 1655769600 + 86400
-  const SHELLEY_UNIX = 1655769600;
-  const SHELLEY_SLOT = 86400;
-  const eventStartSlot = Math.floor(eventStart / 1000) - SHELLEY_UNIX + SHELLEY_SLOT;
-  const eventEndSlot   = Math.floor(eventEnd   / 1000) - SHELLEY_UNIX + SHELLEY_SLOT;
+  // POSIX ms → absolute slot with the network's Shelley slot config.
+  const eventStartSlot = posixMsToSlot(network, eventStart);
+  const eventEndSlot   = posixMsToSlot(network, eventEnd);
   const currentSlot    = await provider.fetchLatestBlock().then((b: any) => parseInt(b.slot));
   const txValidityEndSlot = Math.min(currentSlot + 1200, eventEndSlot);
 
@@ -282,7 +288,7 @@ export async function buildVoteTransaction(params: BuildVoteTransactionParams): 
   let unsignedTx: string;
   try {
     unsignedTx = await txBuilder
-      .setNetwork('preprod')
+      .setNetwork(network)
       .invalidBefore(eventStartSlot + 1)
       .invalidHereafter(txValidityEndSlot)
 
@@ -298,7 +304,7 @@ export async function buildVoteTransaction(params: BuildVoteTransactionParams): 
       .txInInlineDatumPresent()
       .txInRedeemerValue(conStr(1, []), 'JSON', { mem: 800000, steps: 300000000 })
 
-      .readOnlyTxInReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX)
+      .readOnlyTxInReference(vkeyRef.txHash, vkeyRef.outputIndex)
 
       .txInCollateral(collateralUtxo.input.txHash, collateralUtxo.input.outputIndex, collateralUtxo.output.amount)
 

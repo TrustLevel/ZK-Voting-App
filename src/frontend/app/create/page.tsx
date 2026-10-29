@@ -21,6 +21,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useWallet } from '@meshsdk/react';
 import { useRouter } from 'next/navigation';
+import { CardanoNetwork, NETWORK_ID, NETWORK_LABEL, NetworkInfo, fetchNetworks } from '@/lib/network';
 
 // ============================================================================
 // CONSTANTS
@@ -50,6 +51,10 @@ export default function CreateEventForm() {
   const [eventName, setEventName] = useState('');
   const [votingPower, setVotingPower] = useState<number>(1);
   const [options, setOptions] = useState(['', '']);
+  // Cardano network of the event — chosen here, cannot be changed afterwards.
+  const [network, setNetwork] = useState<CardanoNetwork>('preprod');
+  const [networks, setNetworks] = useState<NetworkInfo[] | null>(null);
+  const [walletNetworkId, setWalletNetworkId] = useState<number | null>(null);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -92,6 +97,19 @@ export default function CreateEventForm() {
   // --------------------------------------------------------------------------
 
   /**
+   * Which networks this server serves (Mainnet needs its own key, relay wallet and VKey UTxO).
+   * Backend: GET /voting-event/networks
+   */
+  useEffect(() => {
+    fetchNetworks(BACKEND_API_URL)
+      .then(setNetworks)
+      .catch(err => {
+        console.error('Failed to load networks:', err);
+        setNetworks([]);
+      });
+  }, []);
+
+  /**
    * Get wallet address when wallet connects and find/create user in backend
    * This runs automatically when user connects their Cardano wallet
    */
@@ -99,6 +117,7 @@ export default function CreateEventForm() {
     const getWalletAddressAndUser = async () => {
       if (connected && wallet) {
         try {
+          wallet.getNetworkId().then(setWalletNetworkId).catch(() => setWalletNetworkId(null));
           const address = await wallet.getChangeAddress();
           setWalletAddress(address);
           await findOrCreateUser(address);
@@ -250,6 +269,7 @@ export default function CreateEventForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           eventName: eventName.trim(),
+          network,
           options: filteredOptions,
           votingPower: votingPower,
           adminUserId,
@@ -271,6 +291,7 @@ export default function CreateEventForm() {
       sessionStorage.setItem('createdEvent', JSON.stringify({
         eventId,
         eventName,
+        network,
         walletAddress,
         adminUserId,
         votingPower,
@@ -402,6 +423,56 @@ export default function CreateEventForm() {
                       <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                     </svg>
                     {error}
+                  </p>
+                )}
+              </div>
+
+              {/* Network — fixed for the lifetime of the event */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-gray-900 mb-3">Cardano Network</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {(['preprod', 'mainnet'] as CardanoNetwork[]).map(n => {
+                    const info = networks?.find(i => i.network === n);
+                    const enabled = networks === null ? n === 'preprod' : !!info?.enabled;
+                    return (
+                      <label
+                        key={n}
+                        className={`relative flex items-center justify-center p-4 border-2 rounded-xl transition ${
+                          !enabled ? 'border-gray-200 bg-gray-100 cursor-not-allowed opacity-60'
+                          : network === n ? 'border-gray-900 bg-gray-50 cursor-pointer' : 'border-gray-300 hover:border-gray-400 cursor-pointer'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="network"
+                          checked={network === n}
+                          disabled={!enabled}
+                          onChange={() => setNetwork(n)}
+                          className="sr-only"
+                        />
+                        <div className="text-center">
+                          <div className="font-semibold text-gray-900">{NETWORK_LABEL[n]}</div>
+                          <div className="text-sm text-gray-600">
+                            {n === 'mainnet' ? 'Real ADA — real costs' : 'Free test ADA'}
+                          </div>
+                          {!enabled && networks !== null && (
+                            <div className="text-xs text-gray-500 mt-1">Not available on this server</div>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-xs text-gray-600">
+                  The network cannot be changed after the event is created.
+                  {network === 'mainnet'
+                    ? ' On Mainnet, publishing locks about 15 ADA in the event contracts, costs about 1.5 ADA in fees, and you prepay the voters\' transaction fees (1.3 ADA per registered voter) before publishing.'
+                    : ' Preprod is the free test network: you need a Preprod wallet with test ADA from the faucet to publish.'}
+                </p>
+                {connected && walletNetworkId !== null && walletNetworkId !== NETWORK_ID[network] && (
+                  <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Your connected wallet is on {walletNetworkId === 1 ? 'Mainnet' : 'a testnet'}, but you chose {NETWORK_LABEL[network]}.
+                    You can still create the event, but to publish it you will need a wallet on {NETWORK_LABEL[network]}.
                   </p>
                 )}
               </div>

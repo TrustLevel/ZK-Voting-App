@@ -1,5 +1,6 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { AppService } from './app.service';
+import { isCardanoNetwork } from './network/network-config';
 
 @Controller()
 export class AppController {
@@ -11,8 +12,8 @@ export class AppController {
   }
 
   @Get('current-slot')
-  async getCurrentSlot() {
-    const currentSlot = await this.appService.getCurrentSlot();
+  async getCurrentSlot(@Query('network') network?: string) {
+    const currentSlot = await this.appService.getCurrentSlot(isCardanoNetwork(network) ? network : 'preprod');
     return { currentSlot };
   }
 }

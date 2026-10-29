@@ -120,7 +120,7 @@ const txBuilder = new MeshTxBuilder({
 console.log('\n🔨 Building transaction...');
 
 const unsignedMintTx = await txBuilder
-    .setNetwork("preprod")
+    .setNetwork((process.env.NETWORK === "mainnet" ? "mainnet" : "preprod"))
     .mintPlutusScriptV3()
     .mint("1", policyId, assetName)
     .mintingScript(clothedCbor)
