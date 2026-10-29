@@ -27,7 +27,7 @@ The milestone's outputs, acceptance criteria and evidence are addressed one by o
 **What we did.** The hosted Milestone 3 application was tested by four external testers on
 Cardano Preprod: two in the organiser and voter roles (Rodrigo Oyarzún, Sebastián Pabón), one
 with a scripted 15-voter system test including concurrency and attack scenarios (Talon), and one
-with a live group vote with five participants (pinisch). Feedback was collected with a
+with a live group vote with five participants (pinusch). Feedback was collected with a
 questionnaire (reproduced verbatim) and the testers' own write-ups.
 
 **Evidence.**
@@ -36,7 +36,7 @@ questionnaire (reproduced verbatim) and the testers' own write-ups.
 - Questionnaires: https://github.com/TrustLevel/ZK-Voting-App/tree/v1.0/docs/testing/interviews
 - The testers' own test write-ups (scripted system test, live group test):
   https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/interviews/VotingAppFeedback_Pumbi.md ·
-  https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/interviews/VotingAppFeedback_pinisch.md
+  https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/interviews/VotingAppFeedback_pinusch.md
 - Regression run after the fixes (test report):
   https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/M4_TEST_REPORT.md
 
