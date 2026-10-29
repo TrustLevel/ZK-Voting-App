@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { NetworkBadge } from '@/components/NetworkBadge';
 import { AppShell, PageIntro } from '@/components/AppShell';
 import { Button } from '@/components/Button';
-import { Card, CardHeader, Notice } from '@/components/Card';
+import { CardHeader, Notice } from '@/components/Card';
 import { ArrowLeftIcon, ChartIcon, RefreshIcon, Spinner } from '@/components/Icons';
 import { InfoButton } from '@/components/InfoButton';
 import { INFO } from '@/components/infoTexts';
@@ -154,7 +154,7 @@ export default function ResultsPage() {
       )}
 
       {/* Results */}
-      <Card className="mb-4">
+      <section className="mb-6 border-t border-line pt-7">
         <CardHeader
           icon={<ChartIcon size={20} />}
           title="Results by option"
@@ -199,7 +199,7 @@ export default function ResultsPage() {
             Last updated {lastUpdated.toLocaleTimeString()}
           </p>
         )}
-      </Card>
+      </section>
 
       {/* Transparency note */}
       <p className="text-center text-xs text-muted">
