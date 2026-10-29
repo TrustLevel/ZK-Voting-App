@@ -1,14 +1,14 @@
 # Deploying the ZK-Voting-App (preview branch)
 
-Hosting-agnostic deploy for the **preview** branch on **Cardano preprod testnet**:
-a single VPS running **Docker Compose** with **Caddy** (auto-HTTPS) in front of the
-NestJS backend and the Next.js frontend.
+Hosting-agnostic deploy for the **preview** branch on **Cardano Preprod and Mainnet**
+(the organiser chooses the network per event): a single VPS running **Docker Compose**
+with **Caddy** (auto-HTTPS) in front of the NestJS backend and the Next.js frontend.
 
-> **Architecture note (preview branch).** The preview architecture exposes the
-> Blockfrost API key in the browser and signs votes via a CIP-30 wallet. This is
-> **intentional and acceptable on preprod** — the only risk is API-quota
-> exhaustion, never funds. Do **not** ship this architecture to mainnet without
-> moving Blockfrost access server-side first.
+> **Architecture note.** Votes are built, paid and submitted by the backend's relay
+> wallet (voters never sign). The browser still holds a Blockfrost key for the
+> organiser's publish flow (mint txs, fee deposit); a leaked key only risks API quota,
+> never funds. Mainnet is disabled until the operator completes
+> [docs/MAINNET_SETUP.md](docs/MAINNET_SETUP.md) (VKey UTxO, relay wallet, keys).
 
 ---
 
@@ -177,14 +177,20 @@ Set in **`deploy/.env`**:
 |-----|---------|-------|
 | `DOMAIN`, `API_DOMAIN` | Caddy + compose | Frontend / backend hostnames. |
 | `ACME_EMAIL` | Caddy | Let's Encrypt notices (optional). |
-| `BLOCKFROST_API_KEY` | backend | Server-side preprod key. |
-| `NEXT_PUBLIC_BLOCKFROST_API_KEY` | frontend (browser) | Baked at build; use a **separate** key. |
+| `BLOCKFROST_API_KEY` | backend | Server-side Preprod key. |
+| `BLOCKFROST_API_KEY_MAINNET` | backend | Server-side Mainnet key (empty = Mainnet disabled). |
+| `NEXT_PUBLIC_BLOCKFROST_API_KEY` | frontend (browser) | Preprod; baked at build; use a **separate** key. |
+| `NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET` | frontend (browser) | Mainnet; baked at build. |
+| `RELAY_WALLET_MNEMONIC` | backend | Preprod relay wallet (24 words). |
+| `RELAY_WALLET_MNEMONIC_MAINNET` | backend | Mainnet relay wallet — separate hot wallet, real ADA. |
+| `VKEY_REF_MAINNET` | backend | `<txhash>#<index>` of the Mainnet VKey UTxO. |
+| `FEE_DEPOSIT_NETWORKS` | backend | Default `mainnet`; `mainnet,preprod` to rehearse the deposit with tADA. |
 | `JWT_SECRET` | backend | `openssl rand -hex 32`. |
 | `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | backend | Email invites — see caveat below. |
 
 Set **authoritatively in `docker-compose.yml`** from `DOMAIN`/`API_DOMAIN` (do not
-duplicate in `.env`): `PORT=3001`, `BLOCKFROST_NETWORK=preprod`, `DATABASE_PATH`,
-`CORS_ORIGIN`, `FRONTEND_URL`, `NEXT_PUBLIC_BACKEND_API_URL`.
+duplicate in `.env`): `PORT=3001`, `DATABASE_PATH`, `CORS_ORIGIN`, `FRONTEND_URL`,
+`NEXT_PUBLIC_BACKEND_API_URL`. (`BLOCKFROST_NETWORK` is gone: the network is per event.)
 
 > **`NEXT_PUBLIC_*` are inlined at build time.** Changing `API_DOMAIN` or the
 > public Blockfrost key requires a **rebuild** (`docker compose up -d --build`),

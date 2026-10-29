@@ -7,12 +7,14 @@ import { EmailService } from './email.service';
 import { VotingEvent } from './voting-event.entity';
 import { InvitationToken } from './invitation-token.entity';
 import { UsersModule } from '../users/users.module';
+import { NetworkModule } from '../network/network.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([VotingEvent, InvitationToken]),
     ConfigModule,
     UsersModule,
+    NetworkModule,
   ],
   controllers: [VotingEventController],
   providers: [VotingEventService, EmailService],

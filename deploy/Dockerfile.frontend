@@ -29,8 +29,10 @@ RUN cd src/tx && npx tsc
 # present here, not just at runtime. docker-compose passes them as build args.
 ARG NEXT_PUBLIC_BACKEND_API_URL
 ARG NEXT_PUBLIC_BLOCKFROST_API_KEY
+ARG NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET
 ENV NEXT_PUBLIC_BACKEND_API_URL=$NEXT_PUBLIC_BACKEND_API_URL
 ENV NEXT_PUBLIC_BLOCKFROST_API_KEY=$NEXT_PUBLIC_BLOCKFROST_API_KEY
+ENV NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET=$NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET
 
 # Heavy bundle (MeshSDK + snarkjs + WASM) — raise the heap to avoid OOM, mirroring
 # the dev script's --max-old-space-size=4096.

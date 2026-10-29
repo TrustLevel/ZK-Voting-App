@@ -15,6 +15,24 @@ export class VotingEvent {
   @Column({ name: 'event_name', type: 'text' })
   eventName: string;
 
+  // Cardano network the event lives on. Chosen at creation, immutable afterwards:
+  // script addresses, the VKey reference UTxO and the fee deposit all depend on it.
+  // Existing rows default to preprod (DB_SYNCHRONIZE adds the column with this default).
+  @Column({ name: 'network', type: 'text', default: 'preprod' })
+  network: 'mainnet' | 'preprod';
+
+  // Fee deposit (fee-deposit networks only, see NetworkConfig.feeDepositRequired):
+  // the organiser prepays registered voters × FEE_PER_VOTE_LOVELACE to the relay wallet
+  // before publishing. Budget and spent amounts are lovelace, stored as decimal strings.
+  @Column({ name: 'fee_deposit_tx_hash', type: 'text', nullable: true })
+  feeDepositTxHash: string | null;
+
+  @Column({ name: 'fee_budget_lovelace', type: 'text', nullable: true })
+  feeBudgetLovelace: string | null;
+
+  @Column({ name: 'fee_spent_lovelace', type: 'text', nullable: true, default: '0' })
+  feeSpentLovelace: string | null;
+
   @Column({ name: 'voting_nft', type: 'text', nullable: true })
   votingNft: string | null;
 

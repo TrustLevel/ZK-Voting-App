@@ -28,6 +28,7 @@ import {
 } from '@meshsdk/core';
 import { VALIDATORS } from '../validators.js';
 import 'dotenv/config';
+import { CardanoNetwork } from '../network.js';
 
 /**
  * Build unsigned transaction for minting Semaphore + Voting NFTs together
@@ -35,6 +36,8 @@ import 'dotenv/config';
  */
 export async function buildSemaphoreVotingMintTransaction(params: {
   provider: BlockfrostProvider;
+  // Cardano network (default 'preprod').
+  network?: CardanoNetwork;
   txValidityEndSlot: number;
   groupNftTxHash: string;
   groupNftOutputIndex: number;
@@ -79,6 +82,7 @@ export async function buildSemaphoreVotingMintTransaction(params: {
     paymentKeyHash,
     collateralUtxo,
   } = params;
+  const network: CardanoNetwork = params.network ?? 'preprod';
 
   const txBuilder = new MeshTxBuilder({
     fetcher: provider,
@@ -90,7 +94,7 @@ export async function buildSemaphoreVotingMintTransaction(params: {
 
   try {
     const unsignedTx = await txBuilder
-      .setNetwork("preprod")
+      .setNetwork(network)
       .invalidHereafter(txValidityEndSlot)
 
       // Reference input to existing Group NFT (required by Semaphore validator)

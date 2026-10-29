@@ -21,9 +21,8 @@ import {
   buildGroupMintTransaction,
   buildSemaphoreVotingMintTransaction,
   VALIDATORS,
-  VKEY_REF_TX_HASH,
-  VKEY_REF_OUTPUT_INDEX,
 } from '@src/tx/browser';
+import { CardanoNetwork, NETWORK_ID } from './network';
 
 export {
   textToHex,
@@ -54,6 +53,7 @@ export interface SemaphoreVotingMintResult {
 
 export async function buildAndSubmitGroupMintTx(params: {
   provider: BlockfrostProvider;
+  network: CardanoNetwork; // script addresses carry the network tag; the builder sets the network too
   wallet: IWallet;
   walletAddress: string;
   paymentKeyHash: string;
@@ -61,12 +61,12 @@ export async function buildAndSubmitGroupMintTx(params: {
   selectedUtxo: UTxO;
   walletUtxos: UTxO[];
 }): Promise<GroupMintResult> {
-  const { provider, wallet, walletAddress, paymentKeyHash, merkleRoot, selectedUtxo, walletUtxos } = params;
+  const { provider, network, wallet, walletAddress, paymentKeyHash, merkleRoot, selectedUtxo, walletUtxos } = params;
 
   const outputReference = createOutputReference(selectedUtxo.input.txHash, selectedUtxo.input.outputIndex);
   const clothedCbor = await applyOrefParamToScript(VALIDATORS.group.mint, outputReference);
   const policyId = resolveScriptHash(clothedCbor, 'V3');
-  const scriptAddress = resolvePlutusScriptAddress({ code: clothedCbor, version: 'V3' }, 0);
+  const scriptAddress = resolvePlutusScriptAddress({ code: clothedCbor, version: 'V3' }, NETWORK_ID[network]);
 
   const assetName = textToHex('zkvapp-group');
   const mintValue: Asset[] = [
@@ -80,6 +80,7 @@ export async function buildAndSubmitGroupMintTx(params: {
 
   const unsignedTx = await buildGroupMintTransaction({
     provider,
+    network,
     policyId,
     assetName,
     clothedCbor,
@@ -102,6 +103,10 @@ export async function buildAndSubmitGroupMintTx(params: {
 
 export async function buildAndSubmitSemaphoreVotingMintTx(params: {
   provider: BlockfrostProvider;
+  network: CardanoNetwork;
+  // VKey reference UTxO of the network (from GET /voting-event/networks) — stored in the
+  // Semaphore datum and used by the relay on every vote, so both must agree.
+  vkeyRef: { txHash: string; outputIndex: number };
   wallet: IWallet;
   walletAddress: string;
   paymentKeyHash: string;
@@ -118,20 +123,21 @@ export async function buildAndSubmitSemaphoreVotingMintTx(params: {
   txValidityEndSlot: number;
 }): Promise<SemaphoreVotingMintResult> {
   const {
-    provider, wallet, walletAddress, paymentKeyHash,
+    provider, network, vkeyRef, wallet, walletAddress, paymentKeyHash,
     groupNftTxHash, groupNftOutputIndex, groupPolicyId,
     merkleRoot, options, votingPower, startingDate, endingDate,
     selectedUtxo, walletUtxos, txValidityEndSlot,
   } = params;
+  const networkId = NETWORK_ID[network];
 
   const outputReference = createOutputReference(selectedUtxo.input.txHash, selectedUtxo.input.outputIndex);
 
   const semaphoreValidatorCbor = await applyOrefParamToScript(VALIDATORS.semaphore.mint, outputReference);
-  const semaphoreScriptAddr = resolvePlutusScriptAddress({ code: semaphoreValidatorCbor, version: 'V3' }, 0);
+  const semaphoreScriptAddr = resolvePlutusScriptAddress({ code: semaphoreValidatorCbor, version: 'V3' }, networkId);
   const semaphorePolicyId = resolveScriptHash(semaphoreValidatorCbor, 'V3');
 
   const votingValidatorCbor = await applyOrefParamToScript(VALIDATORS.voting.mint, outputReference);
-  const votingScriptAddr = resolvePlutusScriptAddress({ code: votingValidatorCbor, version: 'V3' }, 0);
+  const votingScriptAddr = resolvePlutusScriptAddress({ code: votingValidatorCbor, version: 'V3' }, networkId);
   const votingPolicyId = resolveScriptHash(votingValidatorCbor, 'V3');
 
   const nullHash = '0000000000000000000000000000000000000000000000000000000000000000';
@@ -139,7 +145,7 @@ export async function buildAndSubmitSemaphoreVotingMintTx(params: {
     byteString(groupPolicyId),
     integer(merkleRoot),
     byteString(nullHash),
-    createOutputReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX),
+    createOutputReference(vkeyRef.txHash, vkeyRef.outputIndex),
   ]);
 
   const weight = votingPower > 1 ? votingPower : 0;
@@ -170,6 +176,7 @@ export async function buildAndSubmitSemaphoreVotingMintTx(params: {
 
   const unsignedTx = await buildSemaphoreVotingMintTransaction({
     provider,
+    network,
     txValidityEndSlot,
     groupNftTxHash,
     groupNftOutputIndex,

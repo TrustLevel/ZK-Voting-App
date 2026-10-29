@@ -30,8 +30,12 @@ Copy `.env.example` to `.env` and fill in the values:
 
 ```env
 PORT=3000
-BLOCKFROST_API_KEY=        # Blockfrost project ID for Preprod
-BLOCKFROST_NETWORK=preview # preview | preprod | mainnet
+BLOCKFROST_API_KEY=        # Blockfrost project ID for Preprod (legacy name; _PREPROD takes precedence)
+BLOCKFROST_API_KEY_MAINNET=   # Blockfrost project ID for Mainnet (empty = Mainnet disabled)
+RELAY_WALLET_MNEMONIC=     # Preprod relay wallet (24 words)
+RELAY_WALLET_MNEMONIC_MAINNET=   # Mainnet relay wallet (separate hot wallet)
+VKEY_REF_MAINNET=          # <txhash>#<index> of the Mainnet VKey UTxO (docs/MAINNET_SETUP.md)
+#FEE_DEPOSIT_NETWORKS=mainnet   # networks where organisers prepay the voters' fees
 DATABASE_PATH=db/voting-app.db
 JWT_SECRET=                # random secret for JWT signing
 CORS_ORIGIN=http://localhost:3002
@@ -163,8 +167,11 @@ SQLite via TypeORM. Default path: `db/voting-app.db` (configurable via `DATABASE
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/voting-event/:eventId/vote` | Submit signed TX hex to Blockfrost, returns `{ txHash }` |
-| `GET` | `/voting-event/:eventId/results` | Get current vote tallies |
+| `GET` | `/voting-event/networks` | Networks this server serves: enabled, relay address, fee-deposit rule, VKey reference |
+| `POST` | `/voting-event/:eventId/relay-vote` | Verify the ZK proof, insert the nullifier, build/sign/submit the vote with the relay wallet of the event's network; 402 without fee budget on Mainnet |
+| `GET` | `/voting-event/:eventId/fee-deposit` | (admin) Required deposit, relay address, booked budget and spent fees |
+| `POST` | `/voting-event/:eventId/confirm-fee-deposit` | (admin) Verify the organiser's deposit tx on-chain and book it as the budget. Body: `{ txHash }` |
+| `GET` | `/voting-event/:eventId/results` | Status, turnout (admin token) and, after the end date, per-option tallies |
 | `POST` | `/voting-event/:eventId/save-blockchain-data` | Persist on-chain contract addresses after bootstrap |
 
 ### Group Transactions (admin)
@@ -232,7 +239,7 @@ Copy `.env.example` to `.env` and fill in all values. Critical production settin
 | `CORS_ORIGIN` | Set to the deployed frontend URL (e.g. `https://app.yourdomain.com`) |
 | `DATABASE_PATH` | Path on a **persistent volume** — survives restarts and redeployments |
 | `JWT_SECRET` | Cryptographically random, at least 32 bytes |
-| `BLOCKFROST_NETWORK` | `preprod` for Preprod Testnet, `mainnet` for Mainnet |
+| `BLOCKFROST_API_KEY_MAINNET`, `RELAY_WALLET_MNEMONIC_MAINNET`, `VKEY_REF_MAINNET` | Set all three to enable Mainnet events (`docs/MAINNET_SETUP.md`); the network is chosen per event |
 
 ### Persistent storage
 

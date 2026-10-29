@@ -14,6 +14,7 @@ export class VotingEventController {
     @Body('startingDate') startingDate: number,
     @Body('endingDate') endingDate: number,
     @Body('adminUserId') adminUserId?: number,
+    @Body('network') network?: string,
   ) {
     return await this.votingEventService.createBasicVotingEvent(
       eventName,
@@ -22,12 +23,21 @@ export class VotingEventController {
       endingDate,
       votingPower,
       adminUserId ?? null,
+      network,
     );
   }
 
   @Get()
   async getAllVotingEvents() {
     return await this.votingEventService.getAllVotingEvents();
+  }
+
+  // Which networks this server serves (enabled = key + relay wallet + VKey UTxO configured),
+  // with the relay address, fee-deposit rule and VKey reference the frontend needs.
+  // Declared before GET :eventId so "networks" is not read as an event id.
+  @Get('networks')
+  async getNetworks() {
+    return await this.votingEventService.getNetworks();
   }
 
   @Get(':eventId')
@@ -166,6 +176,23 @@ export class VotingEventController {
     @Body('nullifier') nullifier: string,
   ) {
     return await this.votingEventService.rollbackNullifier(eventId, nullifier);
+  }
+
+  // Fee deposit status of an event (organiser only): required amount, relay address, budget.
+  @Get(':eventId/fee-deposit')
+  @UseGuards(AdminTokenGuard)
+  async getFeeDeposit(@Param('eventId') eventId: number) {
+    return await this.votingEventService.getFeeDepositStatus(eventId);
+  }
+
+  // Records the organiser's fee deposit after verifying the tx on-chain (fee-deposit networks).
+  @Post(':eventId/confirm-fee-deposit')
+  @UseGuards(AdminTokenGuard)
+  async confirmFeeDeposit(
+    @Param('eventId') eventId: number,
+    @Body('txHash') txHash: string,
+  ) {
+    return await this.votingEventService.confirmFeeDeposit(eventId, txHash);
   }
 
   @Get(':eventId/on-chain-group-root')

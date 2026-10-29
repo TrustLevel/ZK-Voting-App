@@ -6,7 +6,7 @@ export { buildUpdateGroupTransaction } from './node/update-group.js';
 export { buildSemaphoreVotingMintTransaction } from './node/mint-sv.js';
 export { buildVoteTransaction, VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } from './browser/vote-browser.js';
 export type { BuildVoteTransactionParams } from './browser/vote-browser.js';
-export { buildRelayVoteTransaction, applyOrefParamToScriptNode } from './node/relay-vote.js';
+export { buildRelayVoteTransaction, applyOrefParamToScriptNode, getTxFeeLovelace } from './node/relay-vote.js';
 export type { BuildRelayVoteTransactionParams } from './node/relay-vote.js';
 export { selectUtxoForCollateral } from './browser/utils-browser.js';
 
@@ -18,6 +18,9 @@ export * from './types.js';
 
 // Validators
 export * from './validators.js';
+
+// Per-network constants (network id, slot config, VKey UTxO, addresses)
+export * from './network.js';
 
 /**
  * @src/tx - Transaction Building Module

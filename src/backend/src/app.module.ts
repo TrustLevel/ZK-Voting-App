@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { VotingEventModule } from './voting-event/voting-event.module';
+import { NetworkModule } from './network/network.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { VotingEventModule } from './voting-event/voting-event.module';
     AuthModule,
     UsersModule,
     VotingEventModule,
+    NetworkModule,
   ],
   controllers: [AppController],
   providers: [AppService],

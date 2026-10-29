@@ -16,8 +16,9 @@ file, click **Register Commitment**, come back when voting opens, pick your opti
 - **A browser.** Desktop or mobile.
 
 You do **not** need a Cardano wallet, any ADA or test ADA, and you never sign anything. The
-voting service pays the blockchain fee for your vote. The vote runs on the Cardano Preprod
-testnet; no real money is involved.
+voting service pays the blockchain fee for your vote. The event page shows whether the vote
+runs on the Cardano **Preprod testnet** (no real money involved) or on **Mainnet** (the
+organiser has prepaid the fees); for you the steps are the same.
 
 ---
 
@@ -109,7 +110,7 @@ Keep the tab open until you see **Vote Submitted**.
 
 The card **Vote Submitted** says *Your vote has been recorded anonymously on-chain.* and
 shows **Your choice** and a **Transaction** link (**View on Explorer**) to the Cardano
-Preprod explorer. The transaction contains your proof and the updated tally, but nothing
+explorer of the event's network. The transaction contains your proof and the updated tally, but nothing
 that identifies you: no wallet address of yours, no name, no e-mail.
 
 You can vote only once. A second attempt with the same identity is rejected.

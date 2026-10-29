@@ -1,6 +1,6 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Like, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { VotingEvent } from './voting-event.entity';
 import { InvitationToken } from './invitation-token.entity';
@@ -11,6 +11,7 @@ import { EmailService } from './email.service';
 import { v4 as uuidv4 } from 'uuid';
 import { timingSafeEqual } from 'crypto';
 import { deserializeDatum } from '@meshsdk/core';
+import { CardanoNetwork, FEE_PER_VOTE_LOVELACE, NetworkConfig, NetworkInfo, isCardanoNetwork } from '../network/network-config';
 
 interface CreateVotingEventDto {
   eventName: string;
@@ -76,7 +77,15 @@ export class VotingEventService {
     private configService: ConfigService,
     private usersService: UsersService,
     private emailService: EmailService,
+    private networkConfig: NetworkConfig,
   ) {}
+
+  // Blockfrost REST access for an event's network. Throws 503 when the network is not configured.
+  private blockfrost(network: CardanoNetwork): { base: string; headers: { project_id: string } } {
+    const apiKey = this.networkConfig.blockfrostApiKey(network);
+    if (!apiKey) throw new HttpException(`Network ${network} is not enabled on this server`, HttpStatus.SERVICE_UNAVAILABLE);
+    return { base: this.networkConfig.blockfrostBaseUrl(network), headers: { project_id: apiKey } };
+  }
 
   private async getNullifierStore(eventId: number): Promise<any> {
     if (!this.nullifierStores.has(eventId)) {
@@ -110,7 +119,14 @@ export class VotingEventService {
     endingDate: number,
     votingPower: number, // 1 = simple vote (one vote per user), >1 = weighted vote (distribute voting power across options)
     adminUserId: number | null,
+    networkInput?: string, // 'mainnet' | 'preprod' (default preprod); immutable after creation
   ): Promise<VotingEvent> {
+    const network: CardanoNetwork = networkInput === undefined ? 'preprod' : (networkInput as CardanoNetwork);
+    if (!isCardanoNetwork(network))
+      throw new HttpException(`Unknown network "${networkInput}" — use "mainnet" or "preprod"`, HttpStatus.BAD_REQUEST);
+    if (!this.networkConfig.isEnabled(network))
+      throw new HttpException(`Network ${network} is not enabled on this server`, HttpStatus.BAD_REQUEST);
+
     // Generate random event ID (between 1 billion and 9 billion)
     const randomEventId = Math.floor(Math.random() * 8000000000) + 1000000000;
 
@@ -130,6 +146,7 @@ export class VotingEventService {
     const votingEvent = this.votingEventRepository.create({
       eventId: randomEventId,
       eventName,
+      network,
       startingDate,
       endingDate,
       votingPower,
@@ -544,11 +561,12 @@ export class VotingEventService {
     signedTx: string,
     eventId?: number,
     nullifier?: string,
+    network: CardanoNetwork = 'preprod',
   ): Promise<{ txHash: string }> {
     if (!signedTx) {
       throw new HttpException('Missing signedTx in request body', HttpStatus.BAD_REQUEST);
     }
-    const run = () => this._submitVote(signedTx, eventId, nullifier);
+    const run = () => this._submitVote(signedTx, eventId, nullifier, network);
     return eventId !== undefined ? this.withVoteLock(eventId, run) : run();
   }
 
@@ -556,16 +574,17 @@ export class VotingEventService {
     signedTx: string,
     eventId?: number,
     nullifier?: string,
+    network: CardanoNetwork = 'preprod',
   ): Promise<{ txHash: string }> {
 
-    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const { base, headers: bfHeaders } = this.blockfrost(network);
     const txBytes = Buffer.from(signedTx, 'hex');
 
     // ── Step 1: Evaluate scripts before submitting ────────────────────────────
     try {
-      const evalResponse = await fetch('https://cardano-preprod.blockfrost.io/api/v0/utils/txs/evaluate', {
+      const evalResponse = await fetch(`${base}/utils/txs/evaluate`, {
         method: 'POST',
-        headers: { 'project_id': apiKey, 'Content-Type': 'application/cbor' },
+        headers: { ...bfHeaders, 'Content-Type': 'application/cbor' },
         body: txBytes,
       });
       const evalBody = await evalResponse.text();
@@ -608,9 +627,9 @@ export class VotingEventService {
     }
 
     // ── Step 2: Submit ────────────────────────────────────────────────────────
-    const response = await fetch('https://cardano-preprod.blockfrost.io/api/v0/tx/submit', {
+    const response = await fetch(`${base}/tx/submit`, {
       method: 'POST',
-      headers: { 'project_id': apiKey, 'Content-Type': 'application/cbor' },
+      headers: { ...bfHeaders, 'Content-Type': 'application/cbor' },
       body: txBytes,
     });
 
@@ -699,6 +718,10 @@ export class VotingEventService {
       if (!event.mintingOrefTxHash || event.mintingOrefIndex === null)
         throw new HttpException('Minting output reference not set on event', HttpStatus.BAD_REQUEST);
 
+      const network: CardanoNetwork = event.network ?? 'preprod';
+      // Fee-deposit networks (Mainnet): the organiser's prepaid budget must cover this vote.
+      this.assertFeeBudget(event);
+
       // F2: a nullifier only enters the trie after the ZK proof was verified against
       // this event's on-chain group root, so nobody can block the trie with junk.
       const { nullifierHash, signalHash, voteSignal } = await this.verifyRelayVoteProof(event, payload);
@@ -709,16 +732,18 @@ export class VotingEventService {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { BlockfrostProvider, MeshWallet } = require('@meshsdk/core');
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { buildRelayVoteTransaction, applyOrefParamToScriptNode, createOutputReference, VALIDATORS, parseMnemonic, extractPaymentKeyHash } = await import('@src/tx');
+        const { buildRelayVoteTransaction, applyOrefParamToScriptNode, createOutputReference, VALIDATORS, parseMnemonic, extractPaymentKeyHash, getTxFeeLovelace } = await import('@src/tx');
 
-        const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
-        const secretKey = this.configService.get<string>('RELAY_WALLET_MNEMONIC') ?? '';
-        if (!secretKey) throw new HttpException('Relay wallet not configured', HttpStatus.SERVICE_UNAVAILABLE);
+        const apiKey = this.networkConfig.blockfrostApiKey(network) ?? '';
+        const secretKey = this.networkConfig.relayMnemonic(network) ?? '';
+        if (!apiKey || !secretKey) throw new HttpException(`Relay wallet for ${network} not configured`, HttpStatus.SERVICE_UNAVAILABLE);
+        const vkeyRef = this.networkConfig.vkeyRef(network);
+        if (!vkeyRef) throw new HttpException(`VKey reference UTxO for ${network} not configured`, HttpStatus.SERVICE_UNAVAILABLE);
         const provider = new BlockfrostProvider(apiKey);
 
         const mnemonic: string[] = parseMnemonic(secretKey);
         const relayWallet = new MeshWallet({
-          networkId: 0,
+          networkId: this.networkConfig.networkId(network),
           fetcher: provider,
           key: { type: 'mnemonic', words: mnemonic },
         });
@@ -733,6 +758,8 @@ export class VotingEventService {
 
         const unsignedTx = await buildRelayVoteTransaction({
           provider,
+          network,
+          vkeyRef,
           semaphoreScriptAddress: event.semaphoreAddress,
           votingScriptAddress: event.votingValidatorAddress,
           semaphoreNftPolicyId: event.semaphoreNft,
@@ -756,7 +783,12 @@ export class VotingEventService {
         });
 
         const signedTx: string = await relayWallet.signTx(unsignedTx, false);
-        const result = await this._submitVote(signedTx, eventId, nullifier);
+        const result = await this._submitVote(signedTx, eventId, nullifier, network);
+        // Book the actual fee against the event's prepaid budget (fee-deposit networks).
+        if (this.networkConfig.feeDepositRequired(network)) {
+          const fee = getTxFeeLovelace(signedTx);
+          await this.recordFeeSpent(eventId, fee);
+        }
         // Hold the per-event lock until this vote is on-chain and the new state UTxOs are
         // visible to Blockfrost; otherwise the next vote is built on inputs this one spent
         // and fails with "unknown transaction input" (F6).
@@ -777,10 +809,7 @@ export class VotingEventService {
   // Polls Blockfrost until the tx is included and the Semaphore state UTxO it created is
   // indexed. Gives up after the timeout (the next vote then retries on its own).
   private async waitForVoteVisible(event: VotingEvent, txHash: string, timeoutMs = 180_000): Promise<void> {
-    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
-    const network = this.configService.get<string>('BLOCKFROST_NETWORK') ?? 'preprod';
-    const base = `https://cardano-${network}.blockfrost.io/api/v0`;
-    const headers = { project_id: apiKey };
+    const { base, headers } = this.blockfrost(event.network ?? 'preprod');
     const started = Date.now();
     let included = false;
     while (Date.now() - started < timeoutMs) {
@@ -805,6 +834,135 @@ export class VotingEventService {
       await new Promise(r => setTimeout(r, 5_000));
     }
     console.warn(`[relayVote] vote ${txHash} not visible after ${timeoutMs / 1000}s — releasing the vote lock`);
+  }
+
+  // ── Networks and fee deposit ────────────────────────────────────────────────
+
+  async getNetworks(): Promise<NetworkInfo[]> {
+    return this.networkConfig.describeAll();
+  }
+
+  private registeredVoterCount(event: VotingEvent): number {
+    // After publishing, the group is frozen: the snapshot taken at mint time is the voter list.
+    const source = event.semaphoreLeafCommitments ?? event.groupLeafCommitments ?? '[]';
+    return (JSON.parse(source || '[]') as unknown[]).length;
+  }
+
+  // Lovelace the organiser must deposit: one FEE_PER_VOTE_LOVELACE per registered voter.
+  requiredFeeDepositLovelace(event: VotingEvent): bigint {
+    return BigInt(this.registeredVoterCount(event)) * FEE_PER_VOTE_LOVELACE;
+  }
+
+  async getFeeDepositStatus(eventId: number): Promise<{
+    network: CardanoNetwork;
+    required: boolean;
+    relayAddress: string | null;
+    feePerVoteLovelace: string;
+    registeredVoters: number;
+    requiredLovelace: string;
+    depositTxHash: string | null;
+    budgetLovelace: string | null;
+    spentLovelace: string;
+    missingLovelace: string;
+    funded: boolean;
+  }> {
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
+    const network: CardanoNetwork = event.network ?? 'preprod';
+    const required = this.networkConfig.feeDepositRequired(network);
+    return {
+      network,
+      required,
+      relayAddress: await this.networkConfig.relayAddress(network),
+      feePerVoteLovelace: FEE_PER_VOTE_LOVELACE.toString(),
+      registeredVoters: this.registeredVoterCount(event),
+      requiredLovelace: this.requiredFeeDepositLovelace(event).toString(),
+      depositTxHash: event.feeDepositTxHash ?? null,
+      budgetLovelace: event.feeBudgetLovelace ?? null,
+      spentLovelace: event.feeSpentLovelace ?? '0',
+      missingLovelace: this.missingFeeDepositLovelace(event).toString(),
+      funded: !required || this.missingFeeDepositLovelace(event) === 0n,
+    };
+  }
+
+  // Lovelace still missing for the voters registered right now (0 when the budget covers them).
+  // Voters can register between a deposit and the publish, so a top-up deposit is possible.
+  private missingFeeDepositLovelace(event: VotingEvent): bigint {
+    const budget = BigInt(event.feeBudgetLovelace ?? '0');
+    const required = this.requiredFeeDepositLovelace(event);
+    return required > budget ? required - budget : 0n;
+  }
+
+  // Verifies the organiser's deposit tx on-chain and adds it to the event's fee budget.
+  // The tx must pay at least the still-missing amount (registered voters × fee − budget) to the
+  // relay wallet address and must not have been used before. Called by the manage page before
+  // the mint txs; a further deposit tops the budget up when more voters registered in between.
+  async confirmFeeDeposit(eventId: number, txHash: string): Promise<{ success: boolean; budgetLovelace: string; requiredLovelace: string }> {
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
+    const network: CardanoNetwork = event.network ?? 'preprod';
+    if (!this.networkConfig.feeDepositRequired(network))
+      throw new HttpException(`No fee deposit is required on ${network}`, HttpStatus.BAD_REQUEST);
+    if (typeof txHash !== 'string' || !/^[0-9a-f]{64}$/i.test(txHash))
+      throw new HttpException('txHash must be a 64-character hex transaction hash', HttpStatus.BAD_REQUEST);
+    txHash = txHash.toLowerCase();
+    const missing = this.missingFeeDepositLovelace(event);
+    if (missing === 0n)
+      throw new HttpException('This event is already funded for all registered voters', HttpStatus.CONFLICT);
+    const reused = await this.votingEventRepository.findOne({ where: { feeDepositTxHash: Like(`%${txHash}%`) } });
+    if (reused) throw new HttpException('This deposit transaction has already been used', HttpStatus.CONFLICT);
+
+    const relayAddress = await this.networkConfig.relayAddress(network);
+    if (!relayAddress) throw new HttpException(`Relay wallet for ${network} not configured`, HttpStatus.SERVICE_UNAVAILABLE);
+
+    const { base, headers } = this.blockfrost(network);
+    const response = await fetch(`${base}/txs/${txHash}/utxos`, { headers });
+    if (response.status === 404)
+      throw new HttpException('Deposit transaction not found on-chain yet — wait for confirmation and retry', HttpStatus.NOT_FOUND);
+    if (!response.ok)
+      throw new HttpException(`Blockfrost error fetching the deposit transaction (${response.status})`, HttpStatus.BAD_GATEWAY);
+    const utxos: any = await response.json();
+    const outputs: any[] = Array.isArray(utxos?.outputs) ? utxos.outputs : [];
+    const deposited = outputs
+      .filter(o => o.address === relayAddress)
+      .reduce((sum, o) => sum + BigInt((o.amount ?? []).find((a: any) => a.unit === 'lovelace')?.quantity ?? '0'), 0n);
+
+    const required = this.requiredFeeDepositLovelace(event);
+    if (deposited < missing)
+      throw new HttpException(
+        `Deposit too small: ${deposited} lovelace paid to the relay wallet, ${missing} lovelace still required (${this.registeredVoterCount(event)} registered voters × ${FEE_PER_VOTE_LOVELACE} = ${required}, already deposited ${event.feeBudgetLovelace ?? '0'})`,
+        HttpStatus.BAD_REQUEST,
+      );
+
+    const budget = (BigInt(event.feeBudgetLovelace ?? '0') + deposited).toString();
+    event.feeDepositTxHash = event.feeDepositTxHash ? `${event.feeDepositTxHash},${txHash}` : txHash;
+    event.feeBudgetLovelace = budget;
+    event.feeSpentLovelace = event.feeSpentLovelace ?? '0';
+    await this.votingEventRepository.save(event);
+    console.log(`[confirmFeeDeposit] event ${eventId} (${network}): +${deposited} lovelace from tx ${txHash}, budget ${budget}`);
+    return { success: true, budgetLovelace: budget, requiredLovelace: required.toString() };
+  }
+
+  // Throws 402 when a fee-deposit network event has no deposit or its budget cannot cover one more vote.
+  assertFeeBudget(event: VotingEvent): void {
+    const network: CardanoNetwork = event.network ?? 'preprod';
+    if (!this.networkConfig.feeDepositRequired(network)) return;
+    if (!event.feeDepositTxHash || !event.feeBudgetLovelace)
+      throw new HttpException('This event has no fee deposit — the organiser must fund it before votes can be relayed', HttpStatus.PAYMENT_REQUIRED);
+    const budget = BigInt(event.feeBudgetLovelace);
+    const spent = BigInt(event.feeSpentLovelace ?? '0');
+    if (spent + FEE_PER_VOTE_LOVELACE > budget)
+      throw new HttpException(
+        `The organiser's fee budget for this event is exhausted (${spent} of ${budget} lovelace used)`,
+        HttpStatus.PAYMENT_REQUIRED,
+      );
+  }
+
+  private async recordFeeSpent(eventId: number, feeLovelace: bigint): Promise<void> {
+    const event = await this.votingEventRepository.findOne({ where: { eventId } });
+    if (!event) return;
+    event.feeSpentLovelace = (BigInt(event.feeSpentLovelace ?? '0') + feeLovelace).toString();
+    await this.votingEventRepository.save(event);
   }
 
   // Check admin token for /manage access
@@ -1046,13 +1204,9 @@ export class VotingEventService {
     if (!event.semaphoreAddress || !event.semaphoreNft)
       throw new HttpException('Event blockchain setup incomplete', HttpStatus.BAD_REQUEST);
 
-    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
-    const network = this.configService.get<string>('BLOCKFROST_NETWORK') ?? 'preprod';
-    const baseUrl = `https://cardano-${network}.blockfrost.io/api/v0`;
+    const { base, headers } = this.blockfrost(event.network ?? 'preprod');
 
-    const response = await fetch(`${baseUrl}/addresses/${event.semaphoreAddress}/utxos`, {
-      headers: { 'project_id': apiKey },
-    });
+    const response = await fetch(`${base}/addresses/${event.semaphoreAddress}/utxos`, { headers });
     if (!response.ok) {
       throw new HttpException(`Blockfrost error fetching Semaphore UTxOs (${response.status})`, HttpStatus.BAD_GATEWAY);
     }
@@ -1084,6 +1238,7 @@ export class VotingEventService {
   async getResults(eventId: number, adminToken?: string): Promise<{
     status: 'not_deployed' | 'upcoming' | 'live' | 'ended';
     eventName: string;
+    network: CardanoNetwork;
     startingDate: number | null;
     endingDate: number | null;
     registeredVoters: number | null;
@@ -1104,7 +1259,7 @@ export class VotingEventService {
       : event.startingDate && now < event.startingDate ? 'upcoming'
       : event.endingDate && now < event.endingDate ? 'live'
       : 'ended';
-    const base = { status, eventName: event.eventName, startingDate: event.startingDate, endingDate: event.endingDate, registeredVoters } as const;
+    const base = { status, eventName: event.eventName, network: (event.network ?? 'preprod') as CardanoNetwork, startingDate: event.startingDate, endingDate: event.endingDate, registeredVoters } as const;
 
     const hidden = { registeredVoters: null, totalVotes: null };
     if (!deployed) return { ...base, ...(isOrganiser ? { totalVotes: 0 } : hidden), resultsAvailable: false, options: emptyOptions };
@@ -1123,13 +1278,9 @@ export class VotingEventService {
 
   // Reads the UrnaDatum tally from the Voting UTxO; null when it cannot be read.
   private async fetchOnChainTally(event: VotingEvent): Promise<Array<[number, number]> | null> {
-    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
-    const network = this.configService.get<string>('BLOCKFROST_NETWORK') ?? 'preprod';
     try {
-      const response = await fetch(
-        `https://cardano-${network}.blockfrost.io/api/v0/addresses/${event.votingValidatorAddress}/utxos`,
-        { headers: { project_id: apiKey } },
-      );
+      const { base, headers } = this.blockfrost(event.network ?? 'preprod');
+      const response = await fetch(`${base}/addresses/${event.votingValidatorAddress}/utxos`, { headers });
       // 404 = address has no UTxO history yet
       if (!response.ok) return null;
 
@@ -1239,11 +1390,14 @@ export class VotingEventService {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { buildUpdateGroupTransaction } = await import('@src/tx');
 
-    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const network: CardanoNetwork = event.network ?? 'preprod';
+    const apiKey = this.networkConfig.blockfrostApiKey(network);
+    if (!apiKey) throw new HttpException(`Network ${network} is not enabled on this server`, HttpStatus.SERVICE_UNAVAILABLE);
     const provider = new BlockfrostProvider(apiKey);
 
     const unsignedTx = await buildUpdateGroupTransaction({
       provider,
+      network,
       groupScriptAddress: event.groupValidatorAddress,
       groupNftPolicyId: event.groupNft,
       groupValidatorCbor: event.groupValidatorCbor,

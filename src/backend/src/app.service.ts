@@ -1,17 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { BlockfrostProvider } from '@meshsdk/core';
+import { CardanoNetwork, NetworkConfig } from './network/network-config';
 
 @Injectable()
 export class AppService {
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly networkConfig: NetworkConfig) {}
 
   getHello(): string {
     return 'Hello World!';
   }
 
-  async getCurrentSlot(): Promise<number> {
-    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+  async getCurrentSlot(network: CardanoNetwork = 'preprod'): Promise<number> {
+    const apiKey = this.networkConfig.blockfrostApiKey(network) ?? '';
     const provider = new BlockfrostProvider(apiKey);
     const block = await provider.fetchLatestBlock();
     return parseInt(block.slot);

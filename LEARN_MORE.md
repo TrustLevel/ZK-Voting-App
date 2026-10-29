@@ -4,13 +4,13 @@ Anonymous, verifiable voting on Cardano. Voters prove they belong to an authoris
 cast a ballot **without anyone — not even the organiser — being able to link the vote back to
 them**, while every vote is tallied immutably on-chain.
 
-> **Status: Preview · Public test live · Updated: 2026-10-28**
-> The application is deployed and open for public testing on the **Cardano Preprod Testnet**.
-> **Voters need no wallet and no test ADA**: the vote transaction is built, paid and submitted
-> by the voting service (relay design); the voter's browser only produces the zero-knowledge
-> proof. **Organisers still need a Preprod wallet with free test ADA** to publish an event.
-> No real funds are involved. This is a preview release; expect testnet-only behaviour and
-> occasional changes.
+> **Status: Preview · Public test live · Updated: 2026-10-29**
+> The application runs on the **Cardano Preprod Testnet** and on **Cardano Mainnet**; the
+> organiser chooses the network when creating an event. **Voters need no wallet and no ADA**
+> on either network: the vote transaction is built, paid and submitted by the voting service
+> (relay design); the voter's browser only produces the zero-knowledge proof. **Organisers need
+> a wallet on the chosen network**: free test ADA on Preprod, real ADA on Mainnet (see
+> *Preprod or Mainnet?* below). This is a preview release; expect occasional changes.
 
 **Try it:** https://vote.trustlevel.io
 
@@ -29,16 +29,32 @@ number of points across options).
 
 ---
 
+## Preprod or Mainnet?
+
+You choose the network when you create an event, and it cannot be changed afterwards.
+
+| | Preprod testnet | Mainnet |
+|---|---|---|
+| Money | free test ADA from the faucet | real ADA |
+| Publishing an event | two transactions, a few test ADA | two transactions: 15 ADA stay locked in the event contracts, about 1.5 ADA fees, plus one plain-ADA output of at least 5 ADA as collateral |
+| Voters' transaction fees | paid by the service | prepaid by you: a **fee deposit** of 1.3 ADA per registered voter, sent before publishing; it is the cost of the event and an unused remainder is not refunded |
+| Voters | no wallet, no ADA | no wallet, no ADA |
+| Explorer | preprod.cardanoscan.io | cardanoscan.io |
+
+Use Preprod to try the application; use Mainnet for a vote whose record should live on the
+public Cardano ledger.
+
 ## Before you start (organisers only)
 
-Voters only need their invitation link and a browser. Organisers need a Cardano wallet set to
-**Preprod** and some free test ADA, because the two transactions that publish an event are
-signed and paid by the organiser:
+Voters only need their invitation link and a browser. Organisers need a Cardano wallet on the
+network of the event, because the transactions that publish an event (and, on Mainnet, the fee
+deposit) are signed and paid by the organiser:
 
 1. **Install a CIP-30 wallet** browser extension — [Eternl](https://eternl.io/) (recommended) or
    [Lace](https://www.lace.io/).
-2. **Switch the wallet network to Preprod** (testnet), not Mainnet.
-3. **Get free test ADA** from the [Cardano Testnet Faucet](https://docs.cardano.org/cardano-testnets/tools/faucet) — paste your wallet's Preprod address and request funds. A few test ADA is enough to cover the two publishing transactions.
+2. **Switch the wallet to the network of your event.** The application refuses a wallet on the
+   wrong network when you publish.
+3. **Preprod: get free test ADA** from the [Cardano Testnet Faucet](https://docs.cardano.org/cardano-testnets/tools/faucet) — paste your wallet's Preprod address and request funds. **Mainnet:** have about 25 ADA plus the fee deposit available.
 
 ---
 
@@ -91,7 +107,7 @@ You set up and run a voting event end to end.
 
 ## FAQ
 
-**Is this real money?** No. It runs on the Cardano **Preprod Testnet**. Voters pay nothing; organisers use free test ADA.
+**Is this real money?** On **Preprod** no: free test ADA, voters pay nothing. On **Mainnet** yes: the organiser pays the publishing transactions and prepays the voters' fees as a deposit; voters still pay nothing and need no wallet.
 
 **Can the organiser see how I voted?** No. The zero-knowledge proof hides who voted, and no voter
 wallet appears in a vote transaction. The options' running totals are public on the blockchain
@@ -101,7 +117,7 @@ and a voter. Known limits: [docs/M4_USER_FEEDBACK.md](docs/M4_USER_FEEDBACK.md),
 **Can I vote twice?** No. A one-time nullifier derived inside your zero-knowledge proof blocks any
 second vote, without ever revealing your identity.
 
-**Do I need a wallet?** Voters do not. Organisers need a Preprod wallet to create and publish an event.
+**Do I need a wallet?** Voters do not. Organisers need a wallet on the network of their event (Preprod or Mainnet) to create and publish it.
 
 **What if I lose my identity?** Your voting identity lives in the browser you registered with and
 in the identity file downloaded at registration. Keep that file; you can upload it on the voting

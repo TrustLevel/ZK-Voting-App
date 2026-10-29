@@ -8,6 +8,7 @@ import {
   MeshTxBuilder,
 } from '@meshsdk/core';
 import { createUrnaDatum, createOutputReference } from '../utils.js';
+import { CardanoNetwork, OutputRef, VKEY_REF, vkeyRefFor, posixMsToSlot } from '../network.js';
 
 // Convert MPF proof steps (from proof.toJSON()) to on-chain List<ProofStep> Plutus data.
 // Matches the ProofStep type in aiken-lang/merkle-patricia-forestry:
@@ -15,11 +16,11 @@ import { createUrnaDatum, createOutputReference } from '../utils.js';
 //   Fork   { skip, neighbor }   → Constr 1 [Int, Constr 0 [Int, ByteArray, ByteArray]]
 //   Leaf   { skip, neighbor }   → Constr 2 [Int, ByteArray, ByteArray]
 // VKey UTxO — permanently locked at the always-false script address.
-// Script: agustinbadi/zk-voting-app always_false.else (hash: 7b21efdd...)
-// Address (preprod): addr_test1wzl94ddu5xplr7p8f55ldtxjvw6cqqsh57jkj4vndwthtkgdw2fq8
-// This OutputReference is set once and never changes.
-export const VKEY_REF_TX_HASH = "3dc5c982ea80091afc75f4392ac9e91af8d9124a3318a0d76a26de4e934da083";
-export const VKEY_REF_OUTPUT_INDEX = 0;
+// Script: always_false.else (hash: 7b21efdd...), one UTxO per network (see ../network.ts).
+// These two constants are the Preprod values, kept for backward compatibility;
+// builders take `network` / `vkeyRef` and use vkeyRefFor(network) by default.
+export const VKEY_REF_TX_HASH = VKEY_REF.preprod!.txHash;
+export const VKEY_REF_OUTPUT_INDEX = VKEY_REF.preprod!.outputIndex;
 
 function mpfStepsToPlutusData(steps: Array<any>): ReturnType<typeof list> {
   return list(steps.map(step => {
@@ -41,6 +42,11 @@ function mpfStepsToPlutusData(steps: Array<any>): ReturnType<typeof list> {
 
 export interface BuildVoteTransactionParams {
   provider: BlockfrostProvider;
+
+  // Cardano network of the event (default 'preprod'); selects network id, slot config and VKey UTxO.
+  network?: CardanoNetwork;
+  // Override of the VKey reference UTxO (default: the network's constant from ../network.ts).
+  vkeyRef?: OutputRef;
 
   // On-chain addresses and policy IDs from VotingEvent entity
   semaphoreScriptAddress: string;  // VotingEvent.semaphoreAddress
@@ -111,6 +117,8 @@ export async function buildVoteTransaction(
     mpfProofSteps, mpfNewRoot,
     voteSignal, currentOptions, weight, eventStart, eventEnd,
   } = params;
+  const network: CardanoNetwork = params.network ?? 'preprod';
+  const vkeyRef = vkeyRefFor(network, params.vkeyRef);
 
   // ── Step 3: Fetch Semaphore UTxO ─────────────────────────────────────────
   const semaphoreUtxos: UTxO[] = await provider.fetchAddressUTxOs(semaphoreScriptAddress);
@@ -160,15 +168,12 @@ export async function buildVoteTransaction(
     byteString(groupNftPolicyId),
     integer(groupMerkleRoot),
     byteString(mpfNewRoot),
-    createOutputReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX),
+    createOutputReference(vkeyRef.txHash, vkeyRef.outputIndex),
   ]);
 
   // ── Step 10: Build transaction ───────────────────────────────────────────
-  // Convert POSIX ms → Cardano preprod slot.
-  // Preprod Shelley era started at Unix time 1655769600s, slot 86400.
-  const SHELLEY_UNIX_TIME = 1655769600;
-  const SHELLEY_SLOT = 86400;
-  const eventStartSlot = Math.floor(eventStart / 1000) - SHELLEY_UNIX_TIME + SHELLEY_SLOT;
+  // Convert POSIX ms → absolute slot with the network's Shelley slot config.
+  const eventStartSlot = posixMsToSlot(network, eventStart);
 
   // Use a near-future slot for invalidHereafter rather than the full event end date.
   // The on-chain validity check only requires invalidBefore(eventStartSlot).
@@ -185,7 +190,7 @@ export async function buildVoteTransaction(
 
   try {
     unsignedVoteTx = await txBuilder
-      .setNetwork("preprod")
+      .setNetwork(network)
       // is_entirely_after requires lower_bound > event_start; +1 slot = +1000ms
       .invalidBefore(eventStartSlot + 1)
       .invalidHereafter(txValidityEndSlot)
@@ -215,7 +220,7 @@ export async function buildVoteTransaction(
       .txInRedeemerValue(conStr(1, []), "JSON", { mem: 800000, steps: 300000000 })
 
       // VKey UTxO as read-only reference input — semaphore validator reads vkey datum from it
-      .readOnlyTxInReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX)
+      .readOnlyTxInReference(vkeyRef.txHash, vkeyRef.outputIndex)
 
       // Collateral
       .txInCollateral(

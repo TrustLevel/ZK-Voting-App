@@ -25,8 +25,8 @@ import {
   MeshTxBuilder,
 } from '@meshsdk/core';
 import { createUrnaDatum, createOutputReference } from '../utils.js';
-import { VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } from './vote.js';
 import { selectUtxoForCollateral } from '../browser/utils-browser.js';
+import { CardanoNetwork, OutputRef, vkeyRefFor, posixMsToSlot } from '../network.js';
 
 export { VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } from './vote.js';
 
@@ -46,6 +46,12 @@ const { csl, CSLSerializer, applyParamsToScript: cjsApplyParamsToScript } = _req
  */
 export function applyOrefParamToScriptNode(validatorCbor: string, oref: any): string {
   return cjsApplyParamsToScript(validatorCbor, [oref], 'JSON');
+}
+
+/** Fee (lovelace) declared in the body of a (signed or unsigned) transaction hex. */
+export function getTxFeeLovelace(txHex: string): bigint {
+  const tx = csl.Transaction.from_hex(txHex);
+  return BigInt(tx.body().fee().to_str());
 }
 
 // ── CBOR serialization ─────────────────────────────────────────────────────────
@@ -143,6 +149,11 @@ function mpfStepsToPlutusData(steps: Array<any>): ReturnType<typeof list> {
 export interface BuildRelayVoteTransactionParams {
   provider: BlockfrostProvider;
 
+  // Cardano network of the event (default 'preprod'); selects network id, slot config and VKey UTxO.
+  network?: CardanoNetwork;
+  // Override of the VKey reference UTxO (default: the network's constant from ../network.ts).
+  vkeyRef?: OutputRef;
+
   semaphoreScriptAddress: string;
   votingScriptAddress: string;
   semaphoreNftPolicyId: string;
@@ -185,6 +196,8 @@ export async function buildRelayVoteTransaction(
     mpfProofSteps, mpfNewRoot,
     voteSignal, weight, eventStart, eventEnd,
   } = params;
+  const network: CardanoNetwork = params.network ?? 'preprod';
+  const vkeyRef = vkeyRefFor(network, params.vkeyRef);
 
   // ── Fetch on-chain UTxOs ───────────────────────────────────────────────────
 
@@ -246,15 +259,13 @@ export async function buildRelayVoteTransaction(
     byteString(groupNftPolicyId),
     integer(groupMerkleRoot),
     byteString(mpfNewRoot),
-    createOutputReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX),
+    createOutputReference(vkeyRef.txHash, vkeyRef.outputIndex),
   ]);
 
-  // ── Slot window ────────────────────────────────────────────────────────────
+  // ── Slot window (network-specific Shelley slot config) ─────────────────────
 
-  const SHELLEY_UNIX_TIME = 1655769600;
-  const SHELLEY_SLOT = 86400;
-  const eventStartSlot = Math.floor(eventStart / 1000) - SHELLEY_UNIX_TIME + SHELLEY_SLOT;
-  const eventEndSlot   = Math.floor(eventEnd   / 1000) - SHELLEY_UNIX_TIME + SHELLEY_SLOT;
+  const eventStartSlot = posixMsToSlot(network, eventStart);
+  const eventEndSlot   = posixMsToSlot(network, eventEnd);
 
   const currentSlot = await provider.fetchLatestBlock().then((b: any) => parseInt(b.slot));
   const txValidityEndSlot = Math.min(currentSlot + 1200, eventEndSlot);
@@ -285,7 +296,7 @@ export async function buildRelayVoteTransaction(
 
   try {
     unsignedVoteTx = await txBuilder
-      .setNetwork('preprod')
+      .setNetwork(network)
       .invalidBefore(eventStartSlot + 1)
       .invalidHereafter(txValidityEndSlot)
 
@@ -301,7 +312,7 @@ export async function buildRelayVoteTransaction(
       .txInInlineDatumPresent()
       .txInRedeemerValue(conStr(1, []), 'JSON', { mem: 800000, steps: 300000000 })
 
-      .readOnlyTxInReference(VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX)
+      .readOnlyTxInReference(vkeyRef.txHash, vkeyRef.outputIndex)
 
       .txInCollateral(collateralUtxo.input.txHash, collateralUtxo.input.outputIndex, collateralUtxo.output.amount)
 

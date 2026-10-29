@@ -4,6 +4,7 @@ import { createWallet, walletBaseAddress, applyOrefParamToScript, parseMnemonic,
 import { BlockfrostProvider, conStr, resolveScriptHash, MeshTxBuilder, Asset, resolvePlutusScriptAddress, PlutusScript, UTxO } from '@meshsdk/core';
 import { VALIDATORS } from '../validators.js';
 import 'dotenv/config';
+import { CardanoNetwork } from '../network.js';
 
 /**
  * Build unsigned transaction for minting Group NFT
@@ -13,6 +14,8 @@ import 'dotenv/config';
 // INTEGRATION LABEL: FRONTEND
 export async function buildGroupMintTransaction(params: {
   provider: BlockfrostProvider;
+  // Cardano network (default 'preprod').
+  network?: CardanoNetwork;
   policyId: string;
   assetName: string;
   clothedCbor: string;
@@ -41,6 +44,7 @@ export async function buildGroupMintTransaction(params: {
     paymentKeyHash,
     collateralUtxo,
   } = params;
+  const network: CardanoNetwork = params.network ?? 'preprod';
 
   const txBuilder = new MeshTxBuilder({
     fetcher: provider,
@@ -52,7 +56,7 @@ export async function buildGroupMintTransaction(params: {
 
   try {
     const unsignedTx = await txBuilder
-      .setNetwork("preprod")
+      .setNetwork(network)
       .mintPlutusScriptV3()
       .mint("1", policyId, assetName)
       .mintingScript(clothedCbor)

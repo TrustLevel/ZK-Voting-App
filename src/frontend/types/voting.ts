@@ -13,6 +13,7 @@ export interface VotingEvent {
   // Core fields
   eventId: number;
   eventName: string;
+  network?: 'mainnet' | 'preprod'; // chosen at creation, immutable
 
   // Voting configuration (nullable during creation)
   votingNft?: string | null;
@@ -71,6 +72,7 @@ export interface VoteSubmission {
 // Create event payload matching backend API (POST /voting-event)
 export interface CreateEventPayload {
   eventName: string;
+  network: 'mainnet' | 'preprod';
   options: string[]; // Array of option strings that backend will format
   startingDate: number; // POSIX timestamp
   endingDate: number; // POSIX timestamp

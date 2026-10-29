@@ -19,6 +19,7 @@ import {
   conStr,
   MeshTxBuilder,
 } from '@meshsdk/core';
+import { CardanoNetwork } from '../network.js';
 
 // ── CSL lazy-load ─────────────────────────────────────────────────────────────
 
@@ -70,6 +71,8 @@ async function toCborHex(data: any): Promise<string> {
 
 export async function buildSemaphoreVotingMintTransaction(params: {
   provider: BlockfrostProvider;
+  // Cardano network (default 'preprod').
+  network?: CardanoNetwork;
   txValidityEndSlot: number;
   groupNftTxHash: string;
   groupNftOutputIndex: number;
@@ -114,6 +117,7 @@ export async function buildSemaphoreVotingMintTransaction(params: {
     paymentKeyHash,
     collateralUtxo,
   } = params;
+  const network: CardanoNetwork = params.network ?? 'preprod';
 
   const [semaphoreRedeemerCbor, votingRedeemerCbor, semaphoreDatumCbor, urnaDatumCbor] =
     await Promise.all([
@@ -128,7 +132,7 @@ export async function buildSemaphoreVotingMintTransaction(params: {
 
   try {
     const unsignedTx = await txBuilder
-      .setNetwork('preprod')
+      .setNetwork(network)
       .invalidHereafter(txValidityEndSlot)
 
       .readOnlyTxInReference(groupNftTxHash, groupNftOutputIndex)

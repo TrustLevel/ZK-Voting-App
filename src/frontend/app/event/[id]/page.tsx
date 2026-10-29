@@ -26,6 +26,8 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Identity } from 'modp-semaphore-bls12381/packages/typescript/src/identity';
 import { encodeVoteSignal, generateVoteProof } from '@/lib/vote-helpers';
+import { asNetwork, explorerTxUrl } from '@/lib/network';
+import { NetworkBadge } from '@/components/NetworkBadge';
 
 // ============================================================================
 // CONSTANTS
@@ -40,6 +42,7 @@ const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://local
 interface VotingEvent {
   eventId: number;
   eventName: string;
+  network?: 'mainnet' | 'preprod';
   options: string; // JSON string
   startingDate: number | null;
   endingDate: number | null;
@@ -447,6 +450,9 @@ export default function EventPage() {
     }
     if (status === 503) {
       return 'The voting service is temporarily unavailable. Please try again in a few minutes.';
+    }
+    if (status === 402) {
+      return 'The organiser\'s fee budget for this event is used up, so no more votes can be recorded. Please contact the event organizer — nothing is required from you.';
     }
     if (raw.includes('BadInputs') || raw.includes('UtxoFailure') || raw.includes('All inputs are spent')) {
       return 'Another vote is still being confirmed on the blockchain. Please wait about a minute and try again — your vote was not counted yet.';
@@ -998,7 +1004,10 @@ export default function EventPage() {
                     </svg>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-xl font-bold text-gray-900">{event.eventName}</h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-xl font-bold text-gray-900">{event.eventName}</h3>
+                      <NetworkBadge network={asNetwork(event.network)} />
+                    </div>
                     <p className="text-sm text-gray-600">
                       {formatDate(event.startingDate)} - {formatDate(event.endingDate)}
                     </p>
@@ -1427,7 +1436,7 @@ export default function EventPage() {
                       <div className="bg-white rounded-lg p-3 border border-gray-200 mt-3">
                         <p className="text-xs text-gray-600 mb-1">Transaction:</p>
                         <a
-                          href={`https://preprod.cardanoscan.io/transaction/${voteTxHash}`}
+                          href={explorerTxUrl(asNetwork(event?.network), voteTxHash)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs font-mono text-blue-600 hover:underline break-all"
