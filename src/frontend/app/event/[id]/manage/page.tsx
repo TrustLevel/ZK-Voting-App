@@ -52,7 +52,7 @@ import {
 } from '@/lib/network';
 import { NetworkBadge } from '@/components/NetworkBadge';
 import { LinkBox } from '@/components/LinkBox';
-import { formatLocalDateTime } from '@/lib/format';
+import { formatLocalDateTime, parseDateTimeLocal, toDateTimeLocalValue } from '@/lib/format';
 import { AppShell, PageIntro } from '@/components/AppShell';
 import { Button, LinkButton } from '@/components/Button';
 import { CardHeader, CodeBox, DataRow, Notice } from '@/components/Card';
@@ -337,15 +337,9 @@ export default function EventDashboard() {
    */
   useEffect(() => {
     if (createdEvent) {
-      // Convert POSIX timestamps to datetime-local format
-      if (createdEvent.startingDate) {
-        const startDateTime = new Date(createdEvent.startingDate * 1000);
-        setStartDate(startDateTime.toISOString().slice(0, 16));
-      }
-      if (createdEvent.endingDate) {
-        const endDateTime = new Date(createdEvent.endingDate * 1000);
-        setEndDate(endDateTime.toISOString().slice(0, 16));
-      }
+      // POSIX seconds → datetime-local in the organiser's local time (as on /create)
+      if (createdEvent.startingDate) setStartDate(toDateTimeLocalValue(createdEvent.startingDate));
+      if (createdEvent.endingDate) setEndDate(toDateTimeLocalValue(createdEvent.endingDate));
     }
   }, [createdEvent]);
 
@@ -834,9 +828,9 @@ export default function EventDashboard() {
       return;
     }
 
-    // Parse as UTC by appending 'Z' to treat input as UTC time
-    const start = new Date(startDate + ':00.000Z');
-    const end = new Date(endDate + ':00.000Z');
+    // datetime-local values are the organiser's local time (same as on /create)
+    const start = new Date(parseDateTimeLocal(startDate) * 1000);
+    const end = new Date(parseDateTimeLocal(endDate) * 1000);
     const now = new Date();
 
     // Check if start date is in the past
@@ -1493,7 +1487,7 @@ export default function EventDashboard() {
                     />
                     <div className="rounded-xl border border-line bg-white px-4 py-1">
                       {([['Starting Date:', startDate], ['Ending Date:', endDate]] as const).map(([label, value]) => {
-                        const posix = Math.floor(new Date(value + ':00.000Z').getTime() / 1000);
+                        const posix = parseDateTimeLocal(value);
                         return (
                           <DataRow key={label} label={label}>
                             {formatLocalDateTime(posix)}

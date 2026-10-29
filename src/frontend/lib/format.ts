@@ -23,3 +23,23 @@ export function formatLocalDateTime(input: number | Date | null | undefined): st
   }
   return zone ? `${text.trim()} (${zone})` : text.trim();
 }
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * POSIX seconds → value for an <input type="datetime-local"> ("YYYY-MM-DDTHH:MM") in the
+ * viewer's local time, the inverse of parseDateTimeLocal. Pages that let the organiser
+ * edit event times fill their inputs with this so the input never shows UTC.
+ */
+export function toDateTimeLocalValue(posixSeconds: number | null | undefined): string {
+  if (posixSeconds === null || posixSeconds === undefined) return '';
+  const d = new Date(posixSeconds * 1000);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** datetime-local value (local time) → POSIX seconds; NaN for an empty or invalid value. */
+export function parseDateTimeLocal(value: string): number {
+  if (!value) return NaN;
+  return Math.floor(new Date(value).getTime() / 1000);
+}
