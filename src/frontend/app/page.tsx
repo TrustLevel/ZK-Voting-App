@@ -247,12 +247,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-line bg-white px-6 pb-10 pt-8 text-sm text-muted md:px-12">
-        <div className="flex flex-wrap items-center gap-3">
-          <Image src="/TrustLevel_JPG_LOGO.jpg" alt="TrustLevel" width={150} height={26} className="h-[26px] w-auto" />
-          <span>· funded by Project Catalyst (Fund 12) · powered by</span>
-          <Image src="/cf-logo.svg" alt="" width={18} height={18} />
-          <span className="font-semibold text-foreground">Cardano</span>
-        </div>
+        <Image src="/TrustLevel_JPG_LOGO.jpg" alt="TrustLevel" width={150} height={26} className="h-[26px] w-auto" />
         <div className="flex flex-wrap gap-5">
           <a href="/info" className="text-foreground hover:text-brand-dark">Learn more</a>
           <a href={DOCS} className="text-foreground hover:text-brand-dark">Documentation</a>

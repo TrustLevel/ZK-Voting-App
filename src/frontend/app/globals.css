@@ -1,6 +1,9 @@
 @import "tailwindcss";
 
 :root {
+  /* The app is light-only: no dark-mode tokens, so inherited text never turns
+     light on the white surfaces when the OS prefers dark. */
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
   /* TrustLevel brand tokens (same values as trustlevel.io) */
@@ -21,13 +24,6 @@
   --color-line: var(--line);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
