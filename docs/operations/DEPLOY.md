@@ -1,6 +1,6 @@
-# Deploying the ZK-Voting-App (preview branch)
+# Deploying the ZK-Voting-App
 
-Hosting-agnostic deploy for the **preview** branch on **Cardano Preprod and Mainnet**
+Hosting-agnostic deploy of the **main** branch (a tagged release, `v1.0` = Milestone 4) on **Cardano Preprod and Mainnet**
 (the organiser chooses the network per event): a single VPS running **Docker Compose**
 with **Caddy** (auto-HTTPS) in front of the NestJS backend and the Next.js frontend.
 
@@ -16,52 +16,9 @@ with **Caddy** (auto-HTTPS) in front of the NestJS backend and the Next.js front
 
 - A Linux VPS with **Docker** + **Docker Compose v2** installed.
 - A domain you control, with DNS pointing at the VPS (see [§3](#3-dns)).
-- **One uncommitted source fix must be in the build.** The preview branch carries a
-  local edit to `src/backend/src/voting-event/voting-event.service.ts`:
-  the import was changed from
-  `modp-semaphore-bls12381/packages/typescript/lib/group` →
-  `.../src/group`. The `lib/` path is **not** in the package's `exports` field, so
-  Node throws `ERR_PACKAGE_PATH_NOT_EXPORTED` at runtime. If you deploy from a
-  **fresh `git clone`**, this fix is missing and the backend crashes at runtime.
-  **Commit it first:**
-  ```sh
-  git add src/backend/src/voting-event/voting-event.service.ts
-  git commit -m "fix(backend): import Group from src/group (lib/ not in exports)"
-  git push
-  ```
-  Verify it is present after checkout:
-  ```sh
-  grep "packages/typescript/src/group" src/backend/src/voting-event/voting-event.service.ts
-  # expected: import { Group } from 'modp-semaphore-bls12381/packages/typescript/src/group';
-  ```
-
-- **The frontend production build needs two `next.config.ts` fixes** (validated via
-  isolated Docker build; surfaced only by `next build`, never by `next dev`, so they
-  were latent). Without them `docker build -f deploy/Dockerfile.frontend` fails.
-  Apply to `src/frontend/next.config.ts`:
-  1. **`fs` in the client bundle.** `@meshsdk/core-cst` (pulled in via
-     `@meshsdk/web3-sdk` → `@meshsdk/react`) references `node:fs`, which has no
-     browser equivalent → `Module not found: Can't resolve 'fs'`. Inside the
-     `if (!isServer)` block of the `webpack` function, next to the existing
-     `@peculiar/webcrypto` alias, add:
-     ```ts
-     config.resolve.fallback = { ...config.resolve.fallback, fs: false };
-     ```
-     Safe because the frontend never uses the fs-backed code path (transactions are built by the backend).
-  2. **Build-blocking lint / strict-TS.** `next build` runs ESLint + `tsc` and
-     fails on pre-existing `@typescript-eslint/no-explicit-any` errors. At the top
-     of the `nextConfig` object add:
-     ```ts
-     eslint: { ignoreDuringBuilds: true },
-     typescript: { ignoreBuildErrors: true },
-     ```
-     Quality gates, not functional blockers — acceptable for the POC milestone;
-     clean up the `any`s later if you want the gates back on.
-
-  Verify after applying:
-  ```sh
-  grep -E "ignoreDuringBuilds|ignoreBuildErrors|resolve.fallback" src/frontend/next.config.ts
-  ```
+- Build from a clean checkout of `main` (or a release tag). The frontend's `next.config.ts`
+  already carries what the production build needs (`fs: false` fallback for the client bundle,
+  lint and strict-TS gates off for `next build`); nothing has to be patched before building.
 
 ---
 
