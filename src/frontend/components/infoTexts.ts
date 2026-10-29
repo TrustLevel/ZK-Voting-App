@@ -39,11 +39,11 @@ export const INFO = {
   },
   network: {
     title: 'Preprod or Mainnet',
-    body: 'Preprod is Cardano\'s public test network: it runs on free test ADA from the faucet (one default faucet payment is enough), nothing of value is at stake, and it is the right place to try the system. Mainnet is the live Cardano network: publishing locks 15 ADA in the event contracts, costs about 1.5 ADA in fees, and you prepay your voters\' transaction fees (1.3 ADA per registered voter). Keep about 25 ADA plus that deposit in the wallet. The network is fixed when the event is created; your wallet must be on the same network when you publish.',
+    body: 'Preprod: Cardano\'s test network, free test ADA from the faucet, nothing of value at stake. Use it to try the system. Mainnet: the live network, real ADA. Publishing costs about 17 ADA (15 stay locked in the event contracts) plus a fee deposit of 1.3 ADA per registered voter. The choice is final.',
   },
   organiserWallet: {
     title: 'Your wallet as organiser',
-    body: 'The wallet identifies you as the organiser now and signs the two transactions that publish the event later. Use a wallet on the network you chose above. It needs one plain-ADA output of at least 5 ADA as collateral plus the fees: on Preprod one faucet payment covers this, on Mainnet keep about 25 ADA plus the fee deposit (1.3 ADA per registered voter). Your voters need no wallet and no ADA.',
+    body: 'Your wallet identifies you as the organiser and later signs the two transactions that publish the event. It must be on the network chosen above and hold at least 5 ADA in one plain output as collateral; on Mainnet keep about 25 ADA plus the fee deposit. Voters need no wallet.',
   },
   feeDeposit: {
     title: 'Fee deposit',
@@ -59,8 +59,9 @@ export const INFO = {
   },
   votingWindow: {
     title: 'Voting window',
-    body: 'Start and end are written to the blockchain when you publish; the smart contract accepts votes only inside this window. Rules: the start cannot be in the past, the end must be after the start, there is no minimum or maximum length. Before the start you still have to invite your participants, wait for them to register (invitation links are valid for seven days) and publish, which takes two transactions of one to two minutes and must finish at least 90 seconds before the start. So set the start days ahead, not minutes.',
+    body: 'Fixed once the event exists; votes are accepted on-chain only inside it. Rules: start not in the past, end after start. Rule of thumb: create the event at least one day before the start so everyone can register (invitation links expire after seven days), and publish at least 15 minutes before the start. Voting period: at least one hour. Votes are processed one after another, about one to two minutes each, so for a large group voting at the same moment plan two minutes per voter; 24 hours is comfortable.',
   },
+
   noWallet: {
     title: 'Why you need no wallet',
     body: 'The voting service submits your vote transaction to Cardano and pays its fee. Your browser only produces the proof. Nothing that identifies you, no wallet address, name or e-mail, is written to the blockchain.',
@@ -87,6 +88,6 @@ export const INFO = {
   },
   createdEventFixed: {
     title: 'What can still change',
-    body: 'Name, options, voting type and network are fixed once the event exists. The voting window is written to the blockchain when you publish. Participants can be added or removed until the invitations are sent.',
+    body: 'Name, options, voting type, network and voting window are fixed once the event exists. Check them before you click Create Event.',
   },
 } as const satisfies Record<string, InfoText>;
