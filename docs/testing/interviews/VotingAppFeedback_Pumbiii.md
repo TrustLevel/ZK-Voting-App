@@ -5,9 +5,9 @@
 
 ### Tester Information
 
-**Name:** Talon
+**Name:** Talon C. 
 
-**GitHub:** Pumbbii
+**GitHub:** Pumbiii
 
 **Organization:**
 
@@ -17,7 +17,7 @@
 
 **Wallet used:**
 
-- [ ] Eternl
+- [x] Eternl
 - [ ] Nami
 - [ ] Vespr
 - [ ] Lace
@@ -30,7 +30,7 @@
 - [ ] None — this is my first time
 - [ ] Basic — I have used a dApp occasionally
 - [ ] Intermediate — I use dApps regularly
-- [ ] Advanced — I develop or manage blockchain projects
+- [x] Advanced — I develop or manage blockchain projects
 
 **Date of the test:** 2026-10-05
 
@@ -42,7 +42,7 @@
 
 *What worked as expected or better than expected?*
 
-**Answer:**
+The core is sound. Membership is a Semaphore proof on BLS12-381 verified by the Plutus validator itself, not by the server; the group root is frozen on-chain at publish, so the organiser cannot add voters afterwards; double voting is blocked by a nullifier in a Merkle Patricia Forestry trie whose root lives in the contract datum. Every one of my votes was a real transaction I could trace: inputs, redeemer with proof and nullifier, updated tally in the output datum. 12 of 15 scripted votes confirmed on the first run, the tally on-chain matched what the API reported, and the weighted mode enforced the point sum in the validator. The circuit and the trusted setup were left alone, which is the right call.
 
 ---
 
@@ -54,12 +54,14 @@ Overall experience rating:
 - [ ] 1 — Very confusing
 - [ ] 2 — Difficult
 - [ ] 3 — Acceptable
-- [ ] 4 — Clear
+- [x] 4 — Clear
 - [ ] 5 — Very intuitive
 
 Comments:
+Clear (for the flow; the API is another matter)
 
-**Answer:**
+Answer:
+The flow itself is clear: invite, register, publish, vote. What I ran into was underneath. After one vote was rolled back, every later vote failed because the backend's nullifier trie had detached from its store. Two concurrent registrations lost a member without an error. Two votes in one block window collide on the shared state UTxO; one of them needs a retry. The public event endpoint returned the admin token, the invitees' e-mail addresses and the user-to-commitment map. The nullifier insert and delete endpoints had no authentication at all, so anyone could desync the trie and block an election. A Blockfrost project key was in the frontend bundle. Non-members got HTTP 500 instead of a message. None of this is visible to a normal user until it bites.
 
 ---
 
@@ -67,7 +69,7 @@ Comments:
 
 *Were you able to understand what happened to your vote once it was cast? Did the application give you confidence that the result would be accurate and tamper-proof? What gave you that sense — or the lack of it?*
 
-**Answer:**
+Verifiable: yes, fully. Anyone with the voting policy id can recount the tally from the chain and check every proof against the published group root. Transparent in a way the project should state plainly: the chosen option is readable on-chain, so this is voter anonymity, not ballot secrecy, and at the time of my test the paying wallet sat next to the vote in the same transaction, which undid the anonymity for anyone who knew the wallet. The backend also sees the Merkle-path request by user id seconds before the vote from the same client; an operator who logs both can link them.
 
 ---
 
@@ -75,7 +77,7 @@ Comments:
 
 *DAO governance, Catalyst, SPOs, NFT communities, community treasuries, or anything else that comes to mind.*
 
-**Answer:**
+Member votes where the roll is known but the ballot must not be attributable: DAO and treasury governance, SPO alliances, working groups inside Catalyst, internal votes of DRep or committee bodies, token-holder polls with a snapshot as the group. Anything that today runs on a Google form with a promise.
 
 ---
 
@@ -83,7 +85,7 @@ Comments:
 
 *Open question. It could be a feature, a flow, a message, something visual — whatever has been on your mind.*
 
-**Answer:**
+In order of urgency: write the nullifier only after the server has verified the proof, and put every admin route behind the token. Take the voter's wallet out of the vote transaction; a relay that pays the fee gives you anonymity and removes the onboarding problem at once. Serialise votes per event and wait for the previous transaction before building the next, with automatic rollback. Get the Blockfrost key out of the browser. Gate results until the end. Return proper status codes. Longer term: serve the frozen group so clients compute their own Merkle path, and submit through a channel the operator cannot correlate; if ballot secrecy is ever required, that is encrypted ballots or commit-reveal, a protocol change, not a patch.
 
 ---
 
@@ -93,13 +95,13 @@ Comments:
 
 ## Own testing: scripted system test, 2026-10-05
 
-The tester ran a scripted system test against the hosted application on Cardano Preprod
+I ran a scripted system test against the hosted application on Cardano Preprod
 (Milestone 3 deployment, `preview` @ `51cddaa`): 15 script-controlled voters with their own
 wallets and Semaphore identities, real invitations, real registrations and real on-chain votes,
 plus concurrency and attack scenarios. The run produced the application-level findings F0–F12;
 their status after the Milestone 4 fixes is kept in
 [M4_USER_FEEDBACK.md, section 4](../M4_USER_FEEDBACK.md). The project re-ran the same scenarios
-on 2026-10-28 against the fixed deployment; that regression run is the
+on 2026-10-28/29 against the fixed deployment; that regression run is the
 [test report](../M4_TEST_REPORT.md).
 
 How to read it: every API call the script makes is the call the frontend makes; every vote is a
