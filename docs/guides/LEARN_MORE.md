@@ -129,7 +129,7 @@ prepays the voters' fees as a deposit; voters still pay nothing and need no wall
 **Can the organiser see how I voted?** No. The zero-knowledge proof hides who voted, and no voter
 wallet appears in a vote transaction. The options' running totals are public on the blockchain
 (the application hides them until the event ends); what is protected is the link between a vote
-and a voter. Known limits: [docs/M4_USER_FEEDBACK.md](../M4_USER_FEEDBACK.md), section 5.
+and a voter. Known limits: [docs/testing/M4_USER_FEEDBACK.md](../testing/M4_USER_FEEDBACK.md), section 5.
 
 **Can I vote twice?** No. A one-time nullifier derived inside your zero-knowledge proof blocks any
 second vote, without ever revealing your identity.

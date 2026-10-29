@@ -14,7 +14,7 @@
 | Hosted backend API | https://api.vote.trustlevel.io |
 | Source (this milestone) | https://github.com/TrustLevel/ZK-Voting-App/tree/preview |
 | Audit report | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/audit/AUDIT.md |
-| User feedback | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/M4_USER_FEEDBACK.md |
+| User feedback | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/M4_USER_FEEDBACK.md |
 | Test report | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/M4_TEST_REPORT.md |
 | TrustLevel Gitbook | [ZK Voting App](https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app) · [Audit report](https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app/audit-report-milestone-4) · [User feedback](https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app/user-feedback-milestone-4) · [Test report](https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app/test-report-milestone-4) |
 
@@ -24,16 +24,20 @@ The milestone's outputs, acceptance criteria and evidence are addressed one by o
 
 ## Output 1 — Prototype testing and feedback collection from at least 3 test users
 
-**What we did.** The hosted Milestone 3 application was tested by external users in the organiser
-and voter roles, plus a live group vote with five participants, plus a scripted 15-voter system
-test on Cardano Preprod. Feedback was collected with a questionnaire (reproduced verbatim) and
-from the live sessions.
+**What we did.** The hosted Milestone 3 application was tested by four external testers on
+Cardano Preprod: two in the organiser and voter roles (Rodrigo Oyarzún, Sebastián Pabón), one
+with a scripted 15-voter system test including concurrency and attack scenarios (Talon), and one
+with a live group vote with five participants (pinusch). Feedback was collected with a
+questionnaire (reproduced verbatim) and the testers' own write-ups.
 
 **Evidence.**
 - Feedback document (who tested, what they said, what changed):
-  https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/M4_USER_FEEDBACK.md
+  https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/M4_USER_FEEDBACK.md
 - Questionnaires: https://github.com/TrustLevel/ZK-Voting-App/tree/preview/docs/testing/interviews
-- Test report of the scripted run and the live group test:
+- The testers' own test write-ups (scripted system test, live group test):
+  https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/interviews/VotingAppFeedback_Pumbi.md ·
+  https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/interviews/VotingAppFeedback_pinusch.md
+- Regression run after the fixes (test report):
   https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/M4_TEST_REPORT.md
 
 ---
@@ -125,7 +129,7 @@ vote) and attack scenarios against the hardened endpoints.
 **Run:** 2026-10-28, event `4988274691` on Preprod, backend `preview` @ `b2a86a6` as deployed on
 https://api.vote.trustlevel.io; voting window 05:52–07:07 UTC; 15 script-controlled voters (13
 registered before publishing, one late registrant, one no-show). All 26 verdicts passed. Full detail,
-timeline and on-chain state trace: test report, Part C
+timeline and on-chain state trace: test report
 (https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/M4_TEST_REPORT.md).
 
 | Scenario | Expected | Result |

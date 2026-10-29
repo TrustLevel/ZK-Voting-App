@@ -87,8 +87,8 @@ Phase 1 design references: [SMART_CONTRACT_SPECIFICATION.md](docs/design/SMART_C
 |---|---|
 | Submission (acceptance criteria → evidence) | [docs/milestones/MILESTONE4_SUBMISSION.md](docs/milestones/MILESTONE4_SUBMISSION.md) |
 | Smart-contract audit report | [docs/audit/AUDIT.md](docs/audit/AUDIT.md) · [Upstream Semaphore changes](docs/audit/UPSTREAM_SEMAPHORE_CHANGES.md) |
-| User feedback and resulting changes | [docs/M4_USER_FEEDBACK.md](docs/M4_USER_FEEDBACK.md) · questionnaires in [docs/Interviews](docs/testing/interviews) |
-| Test report (scripted system tests 2026-10-05 and 2026-10-28, live group test) | [docs/testing/M4_TEST_REPORT.md](docs/testing/M4_TEST_REPORT.md) |
+| User feedback and resulting changes | [docs/testing/M4_USER_FEEDBACK.md](docs/testing/M4_USER_FEEDBACK.md) · questionnaires in [docs/testing/interviews](docs/testing/interviews) |
+| Test report (regression run of 2026-10-28 after the fixes) | [docs/testing/M4_TEST_REPORT.md](docs/testing/M4_TEST_REPORT.md) |
 | Relay vote design (voters need no wallet) | [docs/design/RELAY_VOTE_DESIGN.md](docs/design/RELAY_VOTE_DESIGN.md) |
 
 ---
@@ -105,10 +105,8 @@ For the full protocol description and cryptographic details see [`src/zk/DOCS.md
 
 Step-by-step guides against the hosted application, with the labels and messages you see on screen:
 
-- [Organiser guide](docs/guides/ORGANISER_GUIDE.md) — create an event, invite participants, publish it to the blockchain, read the results. Needs a Preprod wallet with test ADA.
+- [Organiser guide](docs/guides/ORGANISER_GUIDE.md) — create an event, invite participants, publish it to the blockchain, read the results. Needs a wallet on the network of the event (Mainnet or Preprod).
 - [Voter guide](docs/guides/VOTER_GUIDE.md) — register, keep your identity file, cast a vote, check the result. No wallet and no ADA needed.
-
-Project close-out material for Catalyst Milestone 5 is in [`docs/milestones/CLOSEOUT_REPORT.md`](docs/milestones/CLOSEOUT_REPORT.md) and [`docs/community/`](docs/milestones/m5/community).
 
 ---
 
@@ -152,7 +150,7 @@ During the voting window, open the event and select your choice. Before submitti
 - Computes a one-time nullifier that prevents voting twice.
 - Sends proof, nullifier and your choice to the voting service, which verifies the proof and submits the vote transaction to Cardano with its own wallet — no signature and no fee from you.
 
-No one — not the organiser, not the server, not the blockchain — can link your vote back to you. The known limits of this guarantee are listed in [docs/M4_USER_FEEDBACK.md](docs/M4_USER_FEEDBACK.md), section 5.
+No one — not the organiser, not the server, not the blockchain — can link your vote back to you. The known limits of this guarantee are listed in [docs/testing/M4_USER_FEEDBACK.md](docs/testing/M4_USER_FEEDBACK.md), section 5.
 
 **5. View results**
 While voting is open the page shows the turnout only. Once the event ends, the vote tally is publicly visible on-chain. Results are final and cannot be altered by anyone.
