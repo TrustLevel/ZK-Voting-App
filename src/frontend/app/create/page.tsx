@@ -515,7 +515,6 @@ export default function CreateEventForm() {
             icon={<CalendarIcon size={20} />}
             title="Voting Period"
             info={<InfoButton text={INFO.votingWindow} />}
-            description="Times are in your local time."
           />
 
           {dateError && (
@@ -552,6 +551,7 @@ export default function CreateEventForm() {
               />
             </div>
           </div>
+          <p className="mt-2 text-xs text-muted">Times are in your local time.</p>
         </section>
 
         {/* Wallet + Submit: the wallet comes last because it should match the network chosen above */}
