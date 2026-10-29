@@ -33,20 +33,20 @@ export function CardHeader({
 }) {
   return (
     <div className={`mb-4 ${className}`}>
-      <div className="flex items-start gap-3">
+      <div className="flex flex-wrap items-start gap-3 sm:flex-nowrap">
         {icon && (
           <span aria-hidden="true" className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-brand text-ink">
             {icon}
           </span>
         )}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[10rem] flex-1">
           <div className="flex min-h-9 items-center gap-x-1">
             <Tag className="min-w-0 text-base font-bold text-ink md:text-[17px]">{title}</Tag>
             {info}
           </div>
           {description && <p className="mt-1 text-sm leading-relaxed text-muted">{description}</p>}
         </div>
-        {action && <div className="flex-none">{action}</div>}
+        {action && <div className="basis-full sm:basis-auto sm:flex-none">{action}</div>}
       </div>
     </div>
   );
@@ -100,17 +100,17 @@ export function Notice({
   const shownIcon = icon === null ? null : icon ?? toneIcon[tone];
   return (
     <div className={`rounded-2xl border p-4 md:p-5 ${toneClass[tone]} ${className}`}>
-      <div className="flex items-start gap-3">
+      <div className="flex flex-wrap items-start gap-3 sm:flex-nowrap">
         {shownIcon && (
           <span aria-hidden="true" className={`flex h-9 w-9 flex-none items-center justify-center rounded-full ${toneIconClass[tone]}`}>
             {shownIcon}
           </span>
         )}
-        <div className="min-w-0 flex-1 text-sm leading-relaxed">
+        <div className="min-w-[10rem] flex-1 text-sm leading-relaxed">
           {title && <div className="flex min-h-9 items-center gap-x-1 text-[15px] font-bold"><span className="min-w-0">{title}</span></div>}
           {children}
         </div>
-        {action && <div className="flex-none">{action}</div>}
+        {action && <div className="basis-full sm:basis-auto sm:flex-none">{action}</div>}
       </div>
     </div>
   );

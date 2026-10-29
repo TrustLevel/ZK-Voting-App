@@ -36,7 +36,7 @@ export function AppShell({
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center gap-3">
           <Link href="/" aria-label="TrustLevel ZK Voting — home" className="inline-flex min-h-11 items-center">
-            <Image src="/TrustLevel_JPG_LOGO.jpg" alt="TrustLevel" width={400} height={70} className="h-auto w-[220px] md:w-[280px]" priority />
+            <Image src="/TrustLevel_JPG_LOGO.jpg" alt="TrustLevel" width={400} height={70} className="h-auto w-[260px] md:w-[360px]" priority />
           </Link>
           {aside}
         </div>

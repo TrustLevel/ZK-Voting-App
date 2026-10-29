@@ -22,8 +22,9 @@ import { useWallet } from '@meshsdk/react';
 import { useRouter } from 'next/navigation';
 import { CardanoNetwork, NETWORK_ID, NETWORK_LABEL, NetworkInfo, fetchNetworks } from '@/lib/network';
 import { AppShell, PageIntro } from '@/components/AppShell';
+import { Steps } from '@/components/Steps';
 import { Button, LinkButton } from '@/components/Button';
-import { Card, CardHeader, Notice } from '@/components/Card';
+import { CardHeader, Notice } from '@/components/Card';
 import { FieldLabel, choiceTileClass, inputClass, inputErrorClass } from '@/components/Field';
 import { AlertIcon, CalendarIcon, PlusIcon, SlidersIcon, TrashIcon, WalletIcon } from '@/components/Icons';
 import { InfoButton } from '@/components/InfoButton';
@@ -331,28 +332,43 @@ export default function CreateEventForm() {
   return (
     <AppShell>
       <PageIntro
-        eyebrow="ORGANISER"
+        eyebrow="ORGANISER · STEP 1 OF 2"
         title="Create New Voting Event"
-        lede="Configure your voting event parameters. Inviting participants and publishing to the blockchain follow on the event dashboard."
+        lede="Set the event parameters: name, network, voting type, options and voting period. They cannot be changed once the event exists. Step 2, inviting participants and publishing to the blockchain, follows on the event dashboard."
+        className="mb-6"
       />
+
+      <div className="mb-8 rounded-2xl border border-line bg-[#fafafa] px-3 py-3 sm:px-6">
+        <Steps
+          label="Where you are"
+          active="parameters"
+          steps={[
+            { key: 'parameters', label: 'Event parameters', done: false },
+            { key: 'dashboard', label: 'Invite & publish', done: false },
+          ]}
+          hints={['this page', 'event dashboard, after creation']}
+        />
+      </div>
 
       {/* Connect Wallet Section */}
       {!connected ? (
-        <Card className="mb-6">
-          <CardHeader
-            icon={<WalletIcon size={20} />}
-            title="Connect your Cardano wallet"
-            info={<InfoButton text={INFO.noWallet} label="Who needs a wallet?" />}
-            description="The wallet identifies you as the organiser and later signs the transactions that publish the event. Your voters need no wallet."
-          />
-          <Button variant="dark" size="lg" onClick={() => setShowWalletModal(true)} disabled={isConnecting} className="sm:w-auto">
-            {isConnecting ? 'Connecting...' : 'Connect Wallet'}
-          </Button>
-        </Card>
+        <Notice
+          tone="attention"
+          icon={<WalletIcon size={20} />}
+          className="mb-8"
+          title={<>Connect your Cardano wallet <InfoButton text={INFO.noWallet} label="Who needs a wallet?" /></>}
+          action={
+            <Button variant="dark" size="md" onClick={() => setShowWalletModal(true)} disabled={isConnecting}>
+              {isConnecting ? 'Connecting...' : 'Connect Wallet'}
+            </Button>
+          }
+        >
+          <p className="text-[#3a2f08]">The wallet identifies you as the organiser and later signs the transactions that publish the event. Your voters need no wallet.</p>
+        </Notice>
       ) : (
         <Notice
           tone="success"
-          className="mb-6"
+          className="mb-8"
           title="Wallet Connected"
           action={
             <Button variant="danger" size="sm" onClick={() => disconnect()}>
@@ -366,9 +382,9 @@ export default function CreateEventForm() {
         </Notice>
       )}
 
-      <form onSubmit={handleCreateEvent} className="space-y-6">
+      <form onSubmit={handleCreateEvent} className="space-y-8">
         {/* Voting Configuration */}
-        <Card>
+        <section className="border-t border-line pt-7">
           <CardHeader
             icon={<SlidersIcon size={20} />}
             title="Voting Configuration"
@@ -527,10 +543,10 @@ export default function CreateEventForm() {
               Add Option
             </Button>
           </div>
-        </Card>
+        </section>
 
         {/* Voting Period */}
-        <Card>
+        <section className="border-t border-line pt-7">
           <CardHeader
             icon={<CalendarIcon size={20} />}
             title="Voting Period"
@@ -572,10 +588,10 @@ export default function CreateEventForm() {
               />
             </div>
           </div>
-        </Card>
+        </section>
 
         {/* Submit */}
-        <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+        <div className="flex flex-col gap-3 border-t border-line pt-7 sm:flex-row">
           <Button
             type="submit"
             variant="primary"
