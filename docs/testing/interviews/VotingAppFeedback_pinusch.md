@@ -104,6 +104,35 @@ attempt; two failed at first.
 | 2 | The second successful voter saw the running tally while others had not voted yet. | F9 (interim results) |
 | 3 | A vote was rejected on the first attempt and succeeded on the second: two votes within one block collided on the shared state UTxO. | F6 |
 
+### Timeline and on-chain evidence
+
+Event `1869725828` ("Group Test event"), Cardano Preprod, simple vote with the options A, B and C.
+Times in UTC on 2026-10-05; the transactions are public on the chain. The on-chain state and the
+times were read back from the public event record of the hosted backend and from the Preprod
+chain (Koios) on 2026-10-29.
+
+| Time | What | Transaction |
+|---|---|---|
+| 09:18:39 | Invitations sent to the five participants | — |
+| 09:20:58 | Group NFT minted: the group Merkle tree with the five registered commitments is written on-chain | [`1d8bd719c9237fcc0f75f41677b00ef1dcfcb170fb738c5e20c49bfdcd8bcea1`](https://preprod.cardanoscan.io/transaction/1d8bd719c9237fcc0f75f41677b00ef1dcfcb170fb738c5e20c49bfdcd8bcea1) |
+| 09:21:39 | Semaphore + Voting NFTs minted: the ballot is published | [`8eda0c92dced8f1579ce074c6549ab035c942b4379ad520ed31b84e1bffebd5f`](https://preprod.cardanoscan.io/transaction/8eda0c92dced8f1579ce074c6549ab035c942b4379ad520ed31b84e1bffebd5f) |
+| 09:30:00 | Voting window opens | — |
+| 09:32:00 | Vote 1 confirmed (fee 1.071755 ADA, paid by the voter's wallet in the Milestone 3 design) | [`4562a7bf5f6a066e9697217192744b63068fe015077786386d2ba7dde2c96427`](https://preprod.cardanoscan.io/transaction/4562a7bf5f6a066e9697217192744b63068fe015077786386d2ba7dde2c96427) |
+| 09:33:31 | Vote 2 confirmed (fee 1.075011 ADA, paid by the voter's wallet in the Milestone 3 design) | [`dd60247300660709fdaf05ecc6270f8cf40bf897e4c47104ac9260cb9a433897`](https://preprod.cardanoscan.io/transaction/dd60247300660709fdaf05ecc6270f8cf40bf897e4c47104ac9260cb9a433897) |
+| 09:34:57 | Vote 3 confirmed (fee 1.078223 ADA, paid by the voter's wallet in the Milestone 3 design) | [`07bf5de3c6f4f1674c9b52759b9281d6445e726594676b9930606efd9e469a1d`](https://preprod.cardanoscan.io/transaction/07bf5de3c6f4f1674c9b52759b9281d6445e726594676b9930606efd9e469a1d) |
+| 09:35:00 | Voting window closes | — |
+
+Result on-chain and in the API: A 1, B 1, C 1; 3 votes from 5 registered voters.
+
+What the times show: the voting window was **five minutes** long. The three confirmed votes went
+through one after another, about 90 seconds apart (proof in the browser, then one block
+confirmation each), and the third one landed three seconds before the window closed. After
+09:35:00 the validator rejects every vote, so the two attempts that failed at first had no window
+left for a retry. The live test therefore hit three things at once: the collision of two votes
+built on the same state (F6), the misleading message that reported it (F10), and a window too
+short for five serialised votes. The create form now states the minimum derived from this:
+at least 10 minutes plus about one minute per voter.
+
 What changed because of these observations is in [M4_USER_FEEDBACK.md](../M4_USER_FEEDBACK.md),
 sections 3 and 4: the misleading message and the interim results are fixed; the collision is
 mitigated (automatic rollback, retry succeeds) and the fix for the remaining retry is deployed

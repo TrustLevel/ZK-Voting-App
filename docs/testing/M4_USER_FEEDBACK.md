@@ -87,6 +87,12 @@ Three of five votes went through on the first try. Observations:
 3. One vote was **rejected on the first attempt and succeeded on the second**: two votes had been
    submitted within the same block and collided on the shared on-chain state.
 
+The on-chain record adds a fourth point: the voting window of this event was five minutes long,
+the three confirmed votes needed about 90 seconds each, and the last one landed three seconds
+before the end, so the failed attempts had no time left to retry (timeline with the transactions
+in his [write-up](interviews/VotingAppFeedback_pinusch.md)). The create form now states the
+minimum window derived from this.
+
 ### Catalyst reviewers (M3 review, carried into M4)
 
 Unfriendly raw transaction errors in the UI; a cancelled wallet signature locked the voter out;
