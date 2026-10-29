@@ -342,12 +342,12 @@ export default function CreateEventForm() {
           label="Where you are"
           active="parameters"
           steps={[
-            { key: 'parameters', label: 'Step 1: Event parameters', done: false },
-            { key: 'dashboard', label: 'Step 2: Invite & publish', done: false },
+            { key: 'parameters', label: 'Step 1: Event parameters (this page)', done: false },
+            { key: 'dashboard', label: 'Step 2: Invite & publish (event dashboard)', done: false },
           ]}
           hints={[
-            'This page. Name, network, voting type, options and voting period. They cannot be changed once the event exists.',
-            'Event dashboard, after creation. Invite participants and publish the event to the blockchain.',
+            'Name, network, voting type, options and voting period. They cannot be changed once the event exists.',
+            'After creation: invite participants and publish the event to the blockchain.',
           ]}
         />
       </div>
@@ -371,7 +371,7 @@ export default function CreateEventForm() {
               onChange={(e) => setEventName(e.target.value)}
               aria-invalid={!!nameError}
               className={`${inputClass} ${nameError ? inputErrorClass : ''}`}
-              placeholder="e.g., Q1 2025 Community Feature Voting"
+              placeholder="e.g., Q1 2027 Community Feature Voting"
             />
             {nameError && (
               <p role="alert" className="mt-2 flex items-center gap-1.5 text-sm text-red-700">
@@ -515,7 +515,7 @@ export default function CreateEventForm() {
             icon={<CalendarIcon size={20} />}
             title="Voting Period"
             info={<InfoButton text={INFO.votingWindow} />}
-            description="Set the planned start and end dates for your voting event (your local time)."
+            description="Times are in your local time."
           />
 
           {dateError && (
@@ -530,7 +530,7 @@ export default function CreateEventForm() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Start Date */}
             <div>
-              <FieldLabel htmlFor="start-date" hint="At least 10 minutes from now (everyone must be registered before you publish, and publishing takes about 5 minutes).">Start Date & Time</FieldLabel>
+              <FieldLabel htmlFor="start-date" hint="At least 10 minutes from now (everyone must be registered before you publish, plus publishing takes about 5 minutes).">Start Date & Time</FieldLabel>
               <input
                 id="start-date"
                 type="datetime-local"
@@ -542,7 +542,7 @@ export default function CreateEventForm() {
 
             {/* End Date */}
             <div>
-              <FieldLabel htmlFor="end-date" hint="Plan at least 5 minutes + about 2 minutes for each voter voting at the same moment (votes are processed one after another).">End Date & Time</FieldLabel>
+              <FieldLabel htmlFor="end-date" hint="Plan at least 10 minutes + about 1 minute for each voter (votes are processed one after another).">End Date & Time</FieldLabel>
               <input
                 id="end-date"
                 type="datetime-local"

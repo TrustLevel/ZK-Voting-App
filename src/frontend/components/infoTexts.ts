@@ -59,8 +59,9 @@ export const INFO = {
   },
   votingWindow: {
     title: 'Voting window',
-    body: 'Fixed once the event exists; votes are accepted on-chain only inside it. Rules: start not in the past, end after start. Lead time: registering takes a participant under a minute once they have the link, publishing takes about 5 minutes (two transactions, each confirmed on-chain) and must be finished 90 seconds before the start. Plan about 10 minutes between creating the event and the start; everyone who should vote must be registered before you publish. Invitation links are valid for seven days. Voting period: a vote takes about half a minute in the browser plus one to two minutes on-chain, and votes are processed one after another. Plan at least 5 minutes, plus about 2 minutes for every voter who votes at the same moment (10 voters at once: about 25 minutes).',
+    body: 'Fixed once the event exists; votes are accepted on-chain only inside it. Rules: start not in the past, end after start. Lead time: registering takes a participant under a minute once they have the link; publishing takes about 5 minutes (two transactions, each confirmed on-chain) and must be finished 90 seconds before the start. Plan about 10 minutes between creating the event and the start; everyone who should vote must be registered before you publish. Invitation links are valid for seven days. Voting period: a vote takes about half a minute in the browser plus one to two minutes on-chain, and votes are processed one after another. Plan at least 10 minutes plus about 1 minute for each voter.',
   },
+
 
 
   noWallet: {
