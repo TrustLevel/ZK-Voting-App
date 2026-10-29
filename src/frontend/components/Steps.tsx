@@ -43,7 +43,7 @@ export function Steps<K extends string>({ steps, active, onSelect, label = 'Step
                     <span className={`text-[11px] font-semibold leading-tight sm:text-xs ${isActive ? 'text-ink' : step.done ? 'text-ink' : 'text-muted'}`}>
                       {step.label}
                     </span>
-                    {hints?.[i] && <span className="text-[11px] leading-tight text-muted">{hints[i]}</span>}
+                    {hints?.[i] && <span className="max-w-[22rem] px-1 text-[12px] leading-snug text-muted">{hints[i]}</span>}
                   </>
                 );
                 const cls = 'relative z-10 flex w-full min-w-0 flex-col items-center gap-2 rounded-xl px-1 py-1 text-center';

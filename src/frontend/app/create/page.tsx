@@ -334,12 +334,6 @@ export default function CreateEventForm() {
       <PageIntro
         eyebrow="ORGANISER · STEP 1 OF 2"
         title="Create New Voting Event"
-        lede={
-          <>
-            <span className="block"><strong className="font-semibold text-ink">Step 1 (this page):</strong> set the event parameters: name, network, voting type, options and voting period. They cannot be changed once the event exists.</span>
-            <span className="mt-1 block"><strong className="font-semibold text-ink">Step 2 (event dashboard):</strong> invite participants and publish the event to the blockchain.</span>
-          </>
-        }
         className="mb-6"
       />
 
@@ -348,10 +342,13 @@ export default function CreateEventForm() {
           label="Where you are"
           active="parameters"
           steps={[
-            { key: 'parameters', label: 'Event parameters', done: false },
-            { key: 'dashboard', label: 'Invite & publish', done: false },
+            { key: 'parameters', label: 'Step 1: Event parameters', done: false },
+            { key: 'dashboard', label: 'Step 2: Invite & publish', done: false },
           ]}
-          hints={['this page', 'event dashboard, after creation']}
+          hints={[
+            'This page. Name, network, voting type, options and voting period. They cannot be changed once the event exists.',
+            'Event dashboard, after creation. Invite participants and publish the event to the blockchain.',
+          ]}
         />
       </div>
 
