@@ -32,6 +32,11 @@ describe('VotingEventController routes', () => {
     'POST :eventId/build-update-group-tx',
     'GET :eventId/fee-deposit',
     'POST :eventId/confirm-fee-deposit',
+    'POST :eventId/build-group-mint-tx',
+    'POST :eventId/build-semaphore-voting-mint-tx',
+    'POST :eventId/build-fee-deposit-tx',
+    'POST :eventId/submit-tx',
+    'GET :eventId/tx/:txHash',
   ];
 
   it.each(adminRoutes)('%s requires the admin token', (route) => {
@@ -55,5 +60,10 @@ describe('VotingEventController routes', () => {
     const all = routes().map((r) => r.route);
     expect(all).not.toContain('POST :eventId/nullifier');
     expect(all).not.toContain('POST :eventId/vote');
+  });
+
+  it('declares GET :eventId/tx/:txHash as admin-only (Blockfrost polling goes through the backend)', () => {
+    const found = routes().find((r) => r.route === 'GET :eventId/tx/:txHash');
+    expect(found?.guarded).toBe(true);
   });
 });

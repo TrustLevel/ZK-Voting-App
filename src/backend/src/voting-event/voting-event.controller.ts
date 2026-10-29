@@ -1,10 +1,14 @@
 import { Controller, Post, Get, Delete, Patch, Body, Param, Query, Headers, UseGuards } from '@nestjs/common';
 import { VotingEventService } from './voting-event.service';
 import { AdminTokenGuard } from './admin-token.guard';
+import { OrganiserTxService } from './organiser-tx.service';
 
 @Controller('voting-event')
 export class VotingEventController {
-  constructor(private readonly votingEventService: VotingEventService) {}
+  constructor(
+    private readonly votingEventService: VotingEventService,
+    private readonly organiserTxService: OrganiserTxService,
+  ) {}
 
   @Post()
   async createBasicVotingEvent(
@@ -241,5 +245,54 @@ export class VotingEventController {
     },
   ) {
     return await this.votingEventService.buildUpdateGroupTx(eventId, body);
+  }
+
+  // ── Organiser transactions (no Blockfrost in the browser) ──────────────────
+  // The backend builds the publish transactions with its own key, the organiser signs them
+  // with the CIP-30 wallet, submit-tx accepts only transactions the backend built.
+
+  // Body: { walletAddress, walletUtxos } → { unsignedTx, txHash, policyId, scriptAddress, mintUtxo }
+  @Post(':eventId/build-group-mint-tx')
+  @UseGuards(AdminTokenGuard)
+  async buildGroupMintTx(
+    @Param('eventId') eventId: number,
+    @Body() body: { walletAddress: unknown; walletUtxos: unknown },
+  ) {
+    return await this.organiserTxService.buildGroupMintTx(eventId, body);
+  }
+
+  // Body: { walletAddress, startingDate, endingDate } → { unsignedTx, txHash, semaphore/voting ids, mintingOref }
+  // 409 with code GROUP_NFT_NOT_INDEXED / WALLET_UTXOS_NOT_INDEXED while Blockfrost lags — retry.
+  @Post(':eventId/build-semaphore-voting-mint-tx')
+  @UseGuards(AdminTokenGuard)
+  async buildSemaphoreVotingMintTx(
+    @Param('eventId') eventId: number,
+    @Body() body: { walletAddress: unknown; startingDate: unknown; endingDate: unknown },
+  ) {
+    return await this.organiserTxService.buildSemaphoreVotingMintTx(eventId, body);
+  }
+
+  // Body: { walletAddress, walletUtxos } → { unsignedTx, txHash, amountLovelace, relayAddress }
+  @Post(':eventId/build-fee-deposit-tx')
+  @UseGuards(AdminTokenGuard)
+  async buildFeeDepositTx(
+    @Param('eventId') eventId: number,
+    @Body() body: { walletAddress: unknown; walletUtxos: unknown },
+  ) {
+    return await this.organiserTxService.buildFeeDepositTx(eventId, body);
+  }
+
+  // Body: { signedTx } → { txHash, kind }
+  @Post(':eventId/submit-tx')
+  @UseGuards(AdminTokenGuard)
+  async submitTx(@Param('eventId') eventId: number, @Body() body: { signedTx: unknown }) {
+    return await this.organiserTxService.submitTx(eventId, body);
+  }
+
+  // → { txHash, confirmed, blockHeight }
+  @Get(':eventId/tx/:txHash')
+  @UseGuards(AdminTokenGuard)
+  async getTxStatus(@Param('eventId') eventId: number, @Param('txHash') txHash: string) {
+    return await this.organiserTxService.getTxStatus(eventId, txHash);
   }
 }

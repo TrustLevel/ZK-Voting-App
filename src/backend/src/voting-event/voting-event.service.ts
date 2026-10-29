@@ -297,13 +297,13 @@ export class VotingEventService {
     return participants.map(p => p.userId);
   }
 
-  async getAllVotingEvents(): Promise<Omit<VotingEvent, 'adminToken' | 'invitedParticipants' | 'groupLeafCommitments' | 'nullifierLeafCommitments'>[]> {
+  async getAllVotingEvents(): Promise<Omit<VotingEvent, 'adminToken' | 'invitedParticipants' | 'groupLeafCommitments' | 'nullifierLeafCommitments' | 'publishState'>[]> {
     const events = await this.votingEventRepository.find();
     return events.map(e => this.toPublic(e));
   }
 
   // Get voting event details
-  async getVotingEvent(eventId: number): Promise<Omit<VotingEvent, 'adminToken' | 'invitedParticipants' | 'groupLeafCommitments' | 'nullifierLeafCommitments'>> {
+  async getVotingEvent(eventId: number): Promise<Omit<VotingEvent, 'adminToken' | 'invitedParticipants' | 'groupLeafCommitments' | 'nullifierLeafCommitments' | 'publishState'>> {
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
     if (!event) {
       throw new Error('Voting event not found');
@@ -312,8 +312,9 @@ export class VotingEventService {
   }
 
   private toPublic(event: VotingEvent) {
-    // F1: strip sensitive fields from every public response
-    const { adminToken: _a, invitedParticipants: _i, groupLeafCommitments: _g, nullifierLeafCommitments: _n, ...rest } = event;
+    // F1: strip sensitive fields from every public response (publishState is the organiser's
+    // in-progress publish — internal to OrganiserTxService)
+    const { adminToken: _a, invitedParticipants: _i, groupLeafCommitments: _g, nullifierLeafCommitments: _n, publishState: _p, ...rest } = event;
     return rest;
   }
 
@@ -568,6 +569,12 @@ export class VotingEventService {
     }
     const run = () => this._submitVote(signedTx, eventId, nullifier, network);
     return eventId !== undefined ? this.withVoteLock(eventId, run) : run();
+  }
+
+  // Organiser transactions (OrganiserTxService): same evaluate-then-submit path as votes,
+  // without a nullifier to roll back.
+  async submitSignedTx(signedTx: string, network: CardanoNetwork): Promise<{ txHash: string }> {
+    return this._submitVote(signedTx, undefined, undefined, network);
   }
 
   private async _submitVote(

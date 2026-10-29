@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { VotingEventController } from './voting-event.controller';
 import { VotingEventService } from './voting-event.service';
+import { OrganiserTxService } from './organiser-tx.service';
 import { EmailService } from './email.service';
 import { VotingEvent } from './voting-event.entity';
 import { InvitationToken } from './invitation-token.entity';
@@ -17,7 +18,7 @@ import { NetworkModule } from '../network/network.module';
     NetworkModule,
   ],
   controllers: [VotingEventController],
-  providers: [VotingEventService, EmailService],
+  providers: [VotingEventService, OrganiserTxService, EmailService],
   exports: [TypeOrmModule],
 })
 export class VotingEventModule {}

@@ -102,6 +102,12 @@ export class VotingEvent {
   @Column({ name: 'blockchain_data', type: 'text', nullable: true })
   blockchainData: string | null;
 
+  // Organiser publish in progress (OrganiserTxService): the unsigned transactions the backend
+  // built for CIP-30 signing, keyed by tx id, and the submitted Group mint. JSON; null when
+  // nothing is pending or the publish completed.
+  @Column({ name: 'publish_state', type: 'text', nullable: true })
+  publishState: string | null;
+
   // Minting OutputReference used in Phase 2 of bootstrap (semaphore + voting NFT mint).
   // Required by the frontend to derive the parameterized validator CBORs via applyOrefParamToScript().
   @Column({ name: 'minting_oref_tx_hash', type: 'text', nullable: true })
