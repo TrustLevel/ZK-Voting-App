@@ -1397,6 +1397,10 @@ export default function EventDashboard() {
                 info={<InfoButton text={INFO.inviteValidity} />}
                 description="Enter an email address to invite a participant. Each participant will receive a unique voting link."
               />
+              {/* Invitations go out once; after that the list cannot grow, so the input is hidden. */}
+              {invitationsSent ? (
+                <p className="text-sm text-muted">Invitations have been sent. New participants can no longer be added to this event.</p>
+              ) : (
               <div className="flex flex-col gap-3 sm:flex-row">
                 <input
                   type="email"
@@ -1412,6 +1416,7 @@ export default function EventDashboard() {
                   Add Participant
                 </Button>
               </div>
+              )}
             </section>
 
             {/* Participants List */}
