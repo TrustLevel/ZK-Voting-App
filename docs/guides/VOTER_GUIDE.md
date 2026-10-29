@@ -1,7 +1,8 @@
 # Voter guide: casting an anonymous vote with the ZK Voting App
 
 You have been invited to a vote that runs on the ZK Voting App. This guide shows what to do,
-step by step, using the labels you will see on screen.
+step by step, using the labels you will see on screen. Every term on the page has a small
+**i** button next to it that explains it in place.
 
 Short version: open your invitation link, click **Generate Identity**, keep the downloaded
 file, click **Register Commitment**, come back when voting opens, pick your option and click
@@ -12,26 +13,33 @@ file, click **Register Commitment**, come back when voting opens, pick your opti
 ## What you need
 
 - **The invitation link** from the e-mail with the subject "You're invited to vote in
-  <event name>". The link is personal. Do not forward it.
+  <event name>". The link is personal and valid for seven days. Do not forward it.
 - **A browser.** Desktop or mobile.
 
-You do **not** need a Cardano wallet, any ADA or test ADA, and you never sign anything. The
-voting service pays the blockchain fee for your vote. The event page shows whether the vote
-runs on the Cardano **Preprod testnet** (no real money involved) or on **Mainnet** (the
-organiser has prepaid the fees); for you the steps are the same.
+You do **not** need a Cardano wallet, any ADA or an account, and you never sign anything. The
+voting service submits your vote to the blockchain and pays its fee. The badge at the top of
+the event page says whether the vote runs on **Cardano Mainnet** (the organiser has prepaid
+the fees) or on the **Cardano Preprod testnet** (test network, no real money involved); for
+you the steps are the same.
 
 ---
 
 ## Step 1: Open the invitation link
 
-Click the button in the e-mail. The page shows the event name and three tabs across the top:
-**Register**, **Vote** and **Results**. While the link is checked you see **Validating
-Invitation**.
+Click the button in the e-mail. The page shows the event name, a strip with the **Voting
+period**, the **Type** (simple vote, or weighted with the number of points) and the
+**Status** (*Not published yet*, *Upcoming*, *Voting open* or *Voting ended*), and three steps
+across the top: **Register**, **Vote** and **Results**. Times are shown in your local time
+with the time zone in brackets. While the link is checked you see **Validating Invitation**.
+
+The box **Your event link** holds the address of this page with a **Copy** button. Open the
+same link later to vote; together with your identity file it lets you continue on another
+device.
 
 If you see **Invalid Invitation**, the link is incomplete or has expired. Invitation links are
-valid for seven days after the organiser sent them. Ask the organiser.
+valid for seven days after they were sent. If yours has expired, ask the organiser.
 
-`[screenshot: event page after opening the invitation link, Register tab active]`
+`*(screenshot to follow: event page after opening the invitation link, Register step active)*`
 
 ---
 
@@ -39,45 +47,46 @@ valid for seven days after the organiser sent them. Ask the organiser.
 
 Registration creates your anonymous voting identity. Do this as soon as you can: the
 invitation link is valid for seven days, and the organiser can only publish the vote with the
-participants who have registered by then.
+participants who have registered by then. Registering does not cast a vote.
 
-1. In the **Registration** card, click **Generate Identity**.
-   Your browser creates a Semaphore identity, two random secret numbers, entirely on your
+1. Under **Registration**, click **Generate Identity**.
+   Your browser creates two random secret numbers, your voting identity, entirely on your
    device. A file named `semaphore-identity-event-<number>.json` is downloaded automatically.
-2. The card now shows **Identity File Downloaded** and the warning **Keep this file safe!**
-   - You need it to vote later.
-   - Never share it with anyone. Whoever has the file can vote in your place.
-   - If you lose it and your browser data, you cannot vote.
+2. The box **Identity File Downloaded** shows the warning **Keep this file safe!**
+   - You'll need it to vote later.
+   - Never share your identity file with anyone. Whoever has the file can vote in your place.
+   - If you lose this file and your browser data, you cannot vote.
 3. Below it you see **Your Commitment ID**, a long number. This is the only thing that is sent
    to the server: a public fingerprint of your identity from which the secrets cannot be
    recovered.
-4. Click **Register Commitment**. The card changes to **Registration Complete**.
+4. Click **Register Commitment**. The box changes to **Registration Complete**.
 
-`[screenshot: Registration card after Generate Identity, with the Keep this file safe warning]`
-`[screenshot: Registration Complete]`
+`*(screenshot to follow: Identity File Downloaded with the Keep this file safe warning)*`
+`*(screenshot to follow: Registration Complete)*`
 
 Your browser also keeps the identity in its local storage. If you vote from the same browser
 on the same device, you will not need the file. The file is your backup for any other device.
+Keep it until the vote has ended.
 
 ---
 
 ## Step 3: Wait for the voting window
 
-The vote has a fixed start and end time, enforced by the blockchain. The **Vote** tab tells
-you where things stand:
+The vote has a fixed start and end time, enforced by the blockchain. The status strip under
+the event name and the **Vote** step tell you where things stand:
 
 | What you see | Meaning |
 |---|---|
-| **Voting Not Yet Available** | The organiser has not published the vote on the blockchain yet |
-| **Voting Hasn't Started Yet** with a date | Published; come back at that time (the page updates itself) |
-| **Cast Your Vote**, *Voting is open until …* | You can vote now |
-| **Voting Has Ended** | The window is closed; see the Results tab |
+| Status **Not published yet**; Vote step says *The voting start date has not been set yet.* | The organiser has not published the vote on the blockchain yet |
+| Status **Upcoming**; **Voting Hasn't Started Yet** with a date | Published; come back at that time (the page updates itself) |
+| Status **Voting open**; **Cast Your Vote**, *Voting is open until …* | You can vote now |
+| Status **Voting ended**; **Voting Has Ended** | The window is closed; see the Results step |
 
 ---
 
 ## Step 4: Vote
 
-Open your invitation link again (or the same page) and go to the **Vote** tab.
+Open your invitation link again (or the same page) and go to **Vote**.
 
 If you are on a different browser or device than the one you registered with, the page shows
 **Identity File Required**. Click **Upload Identity File** and select the
@@ -90,7 +99,8 @@ Then make your choice:
   counter **Points Remaining** must reach 0; the button stays disabled until all points are
   placed.
 
-Click **Submit Vote**. The page walks through four steps and explains each one:
+Click **Submit Vote**. A status box under the button walks through four steps and explains
+each one:
 
 1. **Fetching Merkle proof...** Your membership path in the voter group is loaded.
 2. **Encoding vote signal...** Your choice is prepared as the message the proof commits to.
@@ -101,33 +111,35 @@ Click **Submit Vote**. The page walks through four steps and explains each one:
 
 Keep the tab open until you see **Vote Submitted**.
 
-`[screenshot: Select Your Choice with one option selected]`
-`[screenshot: Generating ZK proof step]`
+`*(screenshot to follow: Select Your Choice with one option selected)*`
+`*(screenshot to follow: Generating ZK proof step)*`
 
 ---
 
 ## Step 5: Confirmation
 
-The card **Vote Submitted** says *Your vote has been recorded anonymously on-chain.* and
-shows **Your choice** and a **Transaction** link (**View on Explorer**) to the Cardano
-explorer of the event's network. The transaction contains your proof and the updated tally, but nothing
-that identifies you: no wallet address of yours, no name, no e-mail.
+The box **Vote Submitted** says *Your vote has been recorded anonymously on-chain.* and shows
+**Your choice**, a **Transaction** link (**View on Explorer**) to the Cardano explorer of the
+event's network, and a **View Results** button. The transaction contains your proof and the
+updated tally, but nothing that identifies you: no wallet address, no name, no e-mail.
 
 You can vote only once. A second attempt with the same identity is rejected.
 
-`[screenshot: Vote Submitted card with the explorer link]`
+`*(screenshot to follow: Vote Submitted box with the explorer link)*`
 
 ---
 
 ## Step 6: Results
 
-The **Results** tab shows the voting period and the voting type. While the vote is open it
-shows *X of N registered voters have voted so far.* The numbers per option are revealed only
-after the end time, so that nobody is influenced by interim counts. After the end, click
-**Refresh Results** to load the final tally from the blockchain.
+While the vote is open, **Results** says *Results are not available yet. They are revealed
+once the voting period ends.* You see neither the counts per option nor how many people have
+voted, so that nobody is influenced by interim numbers. After the end, click
+**Refresh Results** to load the final tally from the blockchain: every option with its votes
+(simple vote) or points (weighted vote) and its percentage.
 
 Anyone can open the public results page without a link:
-`https://vote.trustlevel.io/event/<event id>/results`.
+`https://vote.trustlevel.io/event/<event id>/results`. It shows the same thing: nothing
+until the end, then the final tally.
 
 ---
 
@@ -136,12 +148,14 @@ Anyone can open the public results page without a link:
 | Message | What it means | What to do |
 |---|---|---|
 | **Invalid Invitation** | Link incomplete, or older than seven days | Open the link from the e-mail again; if it has expired, ask the organiser |
-| **Registration Required** on the Vote tab | You have not registered yet | Go to the Register tab |
+| **Registration Required** on the Vote step | You have not registered yet | Click **Go to Registration** |
 | **Identity File Required** | This browser has no copy of your identity | Upload the JSON file from registration |
-| *Another vote is still being confirmed on the blockchain. Please wait about a minute and try again.* | Someone else's vote is in the same block | Wait a minute, click **Submit Vote** again; your vote was not counted yet |
-| *The voting period is not open right now.* | Start not reached or end passed | Check the dates on the Results tab |
-| *Your vote could not be verified for this event.* | The proof did not match the published voter group, for example because you registered after publishing | Reload once; if it persists, contact the organiser |
-| *The voting service could not pay the transaction fee.* | A problem on the service side | Nothing is required from you; tell the organiser |
+| *Another vote is still being confirmed on the blockchain. Your vote was not counted yet — please try again in a few minutes.* | Someone else's vote is being written right now | Wait a few minutes, click **Submit Vote** again |
+| *The voting period is not open right now.* | Start not reached or end passed | Check the dates in the strip under the event name |
+| *Your vote could not be verified for this event.* | The proof did not match the published voter group, for example because you registered after publishing | Reload once and try again; if it persists, contact the organiser |
+| *The organiser's fee budget for this event is used up …* | The organiser's prepaid fees are spent (Mainnet) | Nothing is required from you; try again later and tell the organiser |
+| *The voting service could not pay the transaction fee.* | A problem on the service side | Nothing is required from you; try again in a few minutes |
+| *Your vote identity has already been used in a previous attempt.* | A vote with your identity was already recorded | If you did not see **Vote Submitted** earlier, contact the organiser |
 
 Every failed attempt is rolled back completely. You can always try again as long as the
 window is open.

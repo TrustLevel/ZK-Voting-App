@@ -225,7 +225,7 @@ Tilman as committers. Decide who is named here.]`
 | Test report (M4) | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/M4_TEST_REPORT.md |
 | Milestone 3 submission | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/MILESTONE3_SUBMISSION.md |
 | Milestone 4 submission | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/MILESTONE4_SUBMISSION.md |
-| TrustLevel knowledge base | https://trustlevel.gitbook.io/knowledge-base/tools-and-apps/zk-voting-app |
+| TrustLevel knowledge base | https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app |
 | Walkthrough videos (M3) | https://youtu.be/b8HeAZMSW6s · https://www.youtube.com/watch?v=EuaH2kGwe_0 |
 | Close-out video | `[verify: link]` |
 | Tutorial video | `[verify: link]` |
