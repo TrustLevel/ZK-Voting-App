@@ -1430,11 +1430,7 @@ export default function EventDashboard() {
                   {participants.map((participant, index) => (
                     <li
                       key={index}
-                      className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${
-                        participant.status === 'registered'
-                          ? 'border-emerald-200 bg-emerald-50'
-                          : 'border-line bg-white'
-                      }`}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-line bg-white p-3"
                     >
                       {/* Status Icon */}
                       <span aria-hidden="true" className={`flex h-8 w-8 flex-none items-center justify-center rounded-full ${participant.status === 'registered' ? 'bg-emerald-600 text-white' : 'border border-line bg-[#fafafa] text-muted'}`}>
@@ -1999,7 +1995,7 @@ export default function EventDashboard() {
                           rank={index + 1}
                           text={result.text}
                           percent={Number(percentage)}
-                          value={<span className="tabular-nums">{votingPower > 1 ? `${percentage}%` : `${votes} votes`}</span>}
+                          value={<span className="tabular-nums">{votingPower > 1 ? `${percentage}%` : `${votes} vote${votes !== 1 ? 's' : ''}`}</span>}
                         />
                       );
                     })}
