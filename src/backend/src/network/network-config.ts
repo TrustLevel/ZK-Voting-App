@@ -16,8 +16,9 @@ import { ConfigService } from '@nestjs/config';
  *   FEE_DEPOSIT_NETWORKS = comma-separated networks on which the organiser must prepay
  *     the vote fees (default: mainnet)
  *
- * A network is "enabled" when it has a Blockfrost key, a relay mnemonic and a VKey
- * reference UTxO. Events can only be created on enabled networks.
+ * A network is "enabled" when it has a Blockfrost key and a VKey reference UTxO; events
+ * can only be created on enabled networks. The relay wallet is checked when a vote is
+ * relayed (503 without it, as before) and reported as `relayConfigured`.
  */
 
 export type CardanoNetwork = 'mainnet' | 'preprod';
@@ -62,6 +63,7 @@ export const FEE_PER_VOTE_LOVELACE = 1_300_000n;
 export interface NetworkInfo {
   network: CardanoNetwork;
   enabled: boolean;
+  relayConfigured: boolean;
   networkId: 0 | 1;
   relayAddress: string | null;
   feeDepositRequired: boolean;
@@ -120,7 +122,7 @@ export class NetworkConfig {
   }
 
   isEnabled(network: CardanoNetwork): boolean {
-    return !!this.blockfrostApiKey(network) && !!this.relayMnemonic(network) && !!this.vkeyRef(network);
+    return !!this.blockfrostApiKey(network) && !!this.vkeyRef(network);
   }
 
   /** The relay wallet's address on the network (derived offline from the mnemonic), or null. */
@@ -143,6 +145,7 @@ export class NetworkConfig {
     return {
       network,
       enabled: this.isEnabled(network),
+      relayConfigured: !!this.relayMnemonic(network),
       networkId: NETWORK_ID[network],
       relayAddress: await this.relayAddress(network),
       feeDepositRequired: this.feeDepositRequired(network),

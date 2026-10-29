@@ -81,9 +81,16 @@ describe('VotingEventService', () => {
       const nc = new NetworkConfig(configWith({ BLOCKFROST_API_KEY: 'preprodX', RELAY_WALLET_MNEMONIC: TEST_MNEMONIC }));
       expect(nc.blockfrostApiKey('preprod')).toBe('preprodX');
       expect(nc.blockfrostApiKey('mainnet')).toBeNull();
+      expect(nc.relayMnemonic('preprod')).toBe(TEST_MNEMONIC);
       expect(nc.relayMnemonic('mainnet')).toBeNull();
       expect(nc.isEnabled('preprod')).toBe(true);
       expect(nc.isEnabled('mainnet')).toBe(false);
+    });
+
+    it('preprod stays enabled without a relay wallet (as before: creating works, relaying answers 503)', async () => {
+      const nc = new NetworkConfig(configWith({ BLOCKFROST_API_KEY: 'preprodX' }));
+      expect(nc.isEnabled('preprod')).toBe(true);
+      expect((await nc.describe('preprod')).relayConfigured).toBe(false);
     });
 
     it('prefers the per-network variables when both are set', () => {
@@ -96,9 +103,10 @@ describe('VotingEventService', () => {
       expect(nc.networkId('preprod')).toBe(0);
     });
 
-    it('mainnet is only enabled with a key, a relay wallet and a VKey reference UTxO', () => {
+    it('mainnet is only enabled with a key and a VKey reference UTxO', () => {
       const base = { BLOCKFROST_API_KEY_MAINNET: 'm', RELAY_WALLET_MNEMONIC_MAINNET: TEST_MNEMONIC };
       expect(new NetworkConfig(configWith(base)).isEnabled('mainnet')).toBe(false);
+      expect(new NetworkConfig(configWith({ VKEY_REF_MAINNET: 'b'.repeat(64) + '#3' })).isEnabled('mainnet')).toBe(false);
       expect(new NetworkConfig(configWith({ ...base, VKEY_REF_MAINNET: 'b'.repeat(64) + '#3' })).isEnabled('mainnet')).toBe(true);
       expect(new NetworkConfig(configWith({ ...base, VKEY_REF_MAINNET: 'b'.repeat(64) + '#3' })).vkeyRef('mainnet'))
         .toEqual({ txHash: 'b'.repeat(64), outputIndex: 3 });
