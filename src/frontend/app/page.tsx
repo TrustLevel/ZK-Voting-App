@@ -167,7 +167,7 @@ export default function Home() {
           </ul>
           <div className="mt-2.5 flex flex-wrap gap-3">
             <a href="/create" className="inline-flex min-h-11 items-center rounded-xl bg-ink px-4.5 py-3 text-[15px] font-semibold text-white transition hover:bg-black">Create an event</a>
-            <a href={`${GITHUB}/blob/preview/docs/guides/ORGANISER_GUIDE.md`} className="inline-flex min-h-11 items-center rounded-xl border-[1.5px] border-ink px-4.5 py-3 text-[15px] font-semibold text-ink transition hover:bg-ink hover:text-white">Organiser guide</a>
+            <a href={`${DOCS}/organiser-guide`} className="inline-flex min-h-11 items-center rounded-xl border-[1.5px] border-ink px-4.5 py-3 text-[15px] font-semibold text-ink transition hover:bg-ink hover:text-white">Organiser guide</a>
           </div>
         </div>
         <div id="voters" className="flex flex-col gap-4 rounded-[20px] border border-line bg-white p-8 md:p-9">
@@ -185,7 +185,7 @@ export default function Home() {
             <li>The transaction is submitted for you; your name or address never appears on-chain</li>
           </ul>
           <div className="mt-2.5 flex flex-wrap gap-3">
-            <OutlineLink href={`${GITHUB}/blob/preview/docs/guides/VOTER_GUIDE.md`}>Voter guide</OutlineLink>
+            <OutlineLink href={`${DOCS}/voter-guide`}>Voter guide</OutlineLink>
           </div>
         </div>
       </section>
