@@ -58,7 +58,7 @@ deposit) are signed and paid by the organiser:
 
 ---
 
-## For Organisers (Admins)
+## For Organisers
 
 You set up and run a voting event end to end.
 

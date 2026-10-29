@@ -53,7 +53,7 @@ invitation link and a browser.
 
 ## The four steps at a glance
 
-After you create an event, its admin dashboard shows four numbered steps across the top:
+After you create an event, its organiser dashboard shows four numbered steps across the top:
 
 | Step | Tab label | What happens there |
 |---|---|---|
@@ -83,7 +83,7 @@ After you create an event, its admin dashboard shows four numbered steps across 
    least 15 minutes ahead.
 5. Click **Create Event**.
 
-The browser moves to the **Admin Dashboard** of the new event.
+The browser moves to the **Organiser Dashboard** of the new event.
 
 `[screenshot: the Create New Voting Event form filled in, Weighted selected, three options]`
 
@@ -92,17 +92,17 @@ dates can no longer be changed after that.
 
 ---
 
-## Step 2: Keep the admin link
+## Step 2: Keep the organiser link
 
-At the top of the Admin Dashboard you see the line **Use this link to access your event
+At the top of the Organiser Dashboard you see the line **Use this link to access your event
 dashboard. Keep it secure.** with a **Copy** button.
 
-- This link contains the admin token for the event. Anyone who has it can invite and remove
+- This link contains the organiser token for the event. Anyone who has it can invite and remove
   participants and publish the event. Store it like a password.
 - There is no login and no password reset. If you lose the link, you lose access to the
   dashboard. The event itself stays intact on-chain.
 
-`[screenshot: Admin Dashboard header with the admin link and the Copy button]`
+`[screenshot: Organiser Dashboard header with the organiser link and the Copy button]`
 
 ---
 
@@ -260,7 +260,7 @@ Two limits are stated openly:
 
 | Message | Meaning | What to do |
 |---|---|---|
-| **Access Denied** / *Please use the admin link provided when you created the event.* | The URL has no valid admin token | Open the dashboard through the admin link you copied |
+| **Access Denied** / *Please use the organiser link provided when you created the event.* | The URL has no valid organiser token | Open the dashboard through the organiser link you copied |
 | **Wallet Not Connected** | The browser session lost the wallet connection | Click **Connect Wallet** and select your wallet again |
 | *No suitable collateral UTxO (need pure ADA ≥5 ADA)* | The wallet has no plain-ADA output of at least 5 ADA | Request test ADA from the faucet, wait for it to arrive, try again |
 | *Invitations Sent with Errors* with a list of addresses | Some e-mails could not be delivered | Check the addresses; removing and re-adding a participant is possible before publishing |

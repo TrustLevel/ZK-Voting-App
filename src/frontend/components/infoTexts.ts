@@ -50,7 +50,7 @@ export const INFO = {
     body: 'On Mainnet the voting service pays the blockchain fee of every vote, so your voters need no wallet. You prepay these fees before publishing: 1.3 ADA for each registered voter, sent from your wallet to the service\'s relay wallet. The deposit is the cost of running the event. An unused remainder is not refunded.',
   },
   adminLink: {
-    title: 'Your admin link',
+    title: 'Your organiser link',
     body: 'This link is the only key to this dashboard; there is no login. Anyone who has it can manage the event, invite participants and publish. Store it like a password.',
   },
   votingType: {

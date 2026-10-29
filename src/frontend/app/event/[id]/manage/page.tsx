@@ -219,7 +219,7 @@ export default function EventDashboard() {
     const validateToken = async () => {
       // Check if token exists in URL
       if (!adminToken) {
-        setTokenError('No admin token provided. Access denied.');
+        setTokenError('No organiser token provided. Access denied.');
         setIsAuthorized(false);
         setTokenValidating(false);
         return;
@@ -243,12 +243,12 @@ export default function EventDashboard() {
           setIsAuthorized(true);
           setTokenError(null);
         } else {
-          setTokenError(result.error || 'Invalid admin token');
+          setTokenError(result.error || 'Invalid organiser token');
           setIsAuthorized(false);
         }
       } catch (error) {
         console.error('Error validating token:', error);
-        setTokenError('Failed to validate admin token');
+        setTokenError('Failed to validate organiser token');
         setIsAuthorized(false);
       } finally {
         setTokenValidating(false);
@@ -1028,10 +1028,10 @@ export default function EventDashboard() {
       <AppShell width="sm" center>
         <Notice tone="danger" title="Access Denied">
           <p className="mt-1">
-            {tokenError || 'You need a valid admin token to access this event dashboard.'}
+            {tokenError || 'You need a valid organiser token to access this event dashboard.'}
           </p>
           <p className="mt-2 text-xs text-red-800/80">
-            Please use the admin link provided when you created the event.
+            Please use the organiser link provided when you created the event.
           </p>
           <LinkButton href="/" variant="dark" size="sm" className="mt-4">
             Back to Home
@@ -1064,11 +1064,11 @@ export default function EventDashboard() {
         className="mb-6"
       />
 
-      {/* Admin Link */}
+      {/* Organiser link */}
       <LinkBox
         className="mb-6"
         icon={<KeyIcon size={18} />}
-        title="Your admin link"
+        title="Your organiser link"
         info={<InfoButton text={INFO.adminLink} />}
         hint="Use this link to access your event dashboard. Keep it secure."
         url={createdEvent.adminLink ?? ''}
