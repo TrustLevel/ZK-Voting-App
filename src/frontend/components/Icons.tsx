@@ -49,6 +49,7 @@ export const BallotIcon = (p: IconProps) => <Svg {...p}><rect x="4" y="4" width=
 export const BoltIcon = (p: IconProps) => <Svg {...p}><path d="M13 3L4 14h7l-1 7 9-11h-7l1-7z" /></Svg>;
 export const KeyIcon = (p: IconProps) => <Svg {...p}><circle cx="8" cy="14" r="4" /><path d="M11 11l9-9M16 4l3 3M13 7l3 3" /></Svg>;
 export const ArrowLeftIcon = (p: IconProps) => <Svg {...p}><path d="M19 12H5M11 18l-6-6 6-6" /></Svg>;
+export const ArrowRightIcon = (p: IconProps) => <Svg {...p}><path d="M5 12h14M13 6l6 6-6 6" /></Svg>;
 export const LinkIcon = (p: IconProps) => <Svg {...p}><path d="M10 14a4 4 0 005.66 0l3-3a4 4 0 00-5.66-5.66l-1.5 1.5M14 10a4 4 0 00-5.66 0l-3 3a4 4 0 005.66 5.66l1.5-1.5" /></Svg>;
 
 /** Spinner for buttons and loading states. */

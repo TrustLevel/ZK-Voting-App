@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from './Button';
 
 const WALLETS = ['eternl', 'lace'];
@@ -10,6 +10,19 @@ const WALLETS = ['eternl', 'lace'];
  * the CIP-30 wallet name exactly as before; `onClose` for Cancel and Escape.
  */
 export function WalletModal({ open, subtitle, onSelect, onClose }: { open: boolean; subtitle: string; onSelect: (walletName: string) => void; onClose: () => void }) {
+  // Real logos: every CIP-30 extension publishes its icon (data URI) at window.cardano[name].icon.
+  const [icons, setIcons] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!open) return;
+    const cardano = (window as unknown as { cardano?: Record<string, { icon?: string }> }).cardano;
+    const found: Record<string, string> = {};
+    for (const name of WALLETS) {
+      const icon = cardano?.[name]?.icon;
+      if (typeof icon === 'string' && icon.startsWith('data:image/')) found[name] = icon;
+    }
+    setIcons(found);
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -34,9 +47,14 @@ export function WalletModal({ open, subtitle, onSelect, onClose }: { open: boole
               onClick={() => onSelect(walletName)}
               className="flex w-full items-center gap-3 rounded-xl border-[1.5px] border-line p-4 text-left transition hover:border-ink hover:bg-[#fafafa] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
-              <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-full bg-brand text-sm font-bold uppercase text-ink">
-                {walletName[0]}
-              </span>
+              {icons[walletName] ? (
+                // eslint-disable-next-line @next/next/no-img-element -- data URI from the extension, not an asset
+                <img src={icons[walletName]} alt="" aria-hidden="true" className="h-10 w-10 flex-none rounded-xl object-contain" />
+              ) : (
+                <span aria-hidden="true" className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-brand text-sm font-bold uppercase text-ink">
+                  {walletName[0]}
+                </span>
+              )}
               <span>
                 <span className="block font-semibold capitalize text-ink">{walletName}</span>
                 <span className="block text-sm text-muted">Connect with {walletName.charAt(0).toUpperCase() + walletName.slice(1)}</span>

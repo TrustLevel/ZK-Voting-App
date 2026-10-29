@@ -94,7 +94,7 @@ dates can no longer be changed after that.
 
 ## Step 2: Keep the organiser link
 
-At the top of the Organiser Dashboard you see the line **Use this link to access your event
+At the top of the Organiser Dashboard you see the line **Use this link to open your organiser
 dashboard. Keep it secure.** with a **Copy** button.
 
 - This link contains the organiser token for the event. Anyone who has it can invite and remove

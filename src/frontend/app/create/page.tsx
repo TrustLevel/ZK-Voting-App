@@ -344,7 +344,7 @@ export default function CreateEventForm() {
           active="parameters"
           steps={[
             { key: 'parameters', label: 'Step 1: Event parameters (this page)', done: false },
-            { key: 'dashboard', label: 'Step 2: Invite & publish (event dashboard)', done: false },
+            { key: 'dashboard', label: 'Step 2: Invite & publish (organiser dashboard)', done: false },
           ]}
           hints={[
             'Name, network, voting type, options and voting period. They cannot be changed once the event exists.',

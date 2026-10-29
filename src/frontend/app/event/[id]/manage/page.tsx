@@ -57,7 +57,7 @@ import { AppShell, PageIntro } from '@/components/AppShell';
 import { Button, LinkButton } from '@/components/Button';
 import { CardHeader, CodeBox, DataRow, Notice } from '@/components/Card';
 import { FieldLabel, inputClass } from '@/components/Field';
-import { BoltIcon, ChartIcon, CheckIcon, ClockIcon, ExternalIcon, KeyIcon, MailIcon, PlusIcon, RefreshIcon, SlidersIcon, Spinner, TrashIcon, UsersIcon, WalletIcon } from '@/components/Icons';
+import { ArrowRightIcon, BoltIcon, ChartIcon, CheckIcon, ClockIcon, ExternalIcon, KeyIcon, MailIcon, PlusIcon, RefreshIcon, SlidersIcon, Spinner, TrashIcon, UsersIcon, WalletIcon } from '@/components/Icons';
 import { InfoButton } from '@/components/InfoButton';
 import { INFO } from '@/components/infoTexts';
 import { ResultRow } from '@/components/ResultRow';
@@ -1028,7 +1028,7 @@ export default function EventDashboard() {
       <AppShell width="sm" center>
         <Notice tone="danger" title="Access Denied">
           <p className="mt-1">
-            {tokenError || 'You need a valid organiser token to access this event dashboard.'}
+            {tokenError || 'You need a valid organiser token to open the organiser dashboard.'}
           </p>
           <p className="mt-2 text-xs text-red-800/80">
             Please use the organiser link provided when you created the event.
@@ -1070,7 +1070,7 @@ export default function EventDashboard() {
         icon={<KeyIcon size={18} />}
         title="Your organiser link"
         info={<InfoButton text={INFO.adminLink} />}
-        hint="Use this link to access your event dashboard. Keep it secure."
+        hint="Use this link to open your organiser dashboard. Keep it secure."
         url={createdEvent.adminLink ?? ''}
         copied={copiedAdmin}
         onCopy={() => createdEvent.adminLink && copyToClipboard(createdEvent.adminLink)}
@@ -1145,6 +1145,13 @@ export default function EventDashboard() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="mt-8 flex justify-end">
+              <Button variant="dark" size="md" onClick={() => setActiveTab('participants')}>
+                Next: Invite participants
+                <ArrowRightIcon size={18} />
+              </Button>
             </div>
           </section>
         )}
@@ -1303,6 +1310,13 @@ export default function EventDashboard() {
                 )}
               </div>
             )}
+
+            <div className="mt-8 flex justify-end">
+              <Button variant="dark" size="md" onClick={() => setActiveTab('start')}>
+                Next: Start voting
+                <ArrowRightIcon size={18} />
+              </Button>
+            </div>
           </div>
         )}
 
