@@ -23,7 +23,7 @@ import { useRouter } from 'next/navigation';
 import { CardanoNetwork, NETWORK_ID, NETWORK_LABEL, NetworkInfo, fetchNetworks } from '@/lib/network';
 import { AppShell, PageIntro } from '@/components/AppShell';
 import { Steps } from '@/components/Steps';
-import { Button, LinkButton } from '@/components/Button';
+import { Button } from '@/components/Button';
 import { CardHeader, Notice } from '@/components/Card';
 import { FieldLabel, choiceTileClass, inputClass, inputErrorClass } from '@/components/Field';
 import { AlertIcon, CalendarIcon, PlusIcon, SlidersIcon, TrashIcon, WalletIcon } from '@/components/Icons';
@@ -557,7 +557,7 @@ export default function CreateEventForm() {
           <CardHeader
             icon={<WalletIcon size={20} />}
             title="Connect your wallet and create the event"
-            info={<InfoButton text={INFO.noWallet} label="Who needs a wallet?" />}
+            info={<InfoButton text={INFO.organiserWallet} />}
             description={`Connect the Cardano wallet you use on ${NETWORK_LABEL[network]}. It identifies you as the organiser and later signs the transactions that publish the event. Your voters need no wallet.`}
           />
 
@@ -589,21 +589,16 @@ export default function CreateEventForm() {
             </Notice>
           )}
 
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Button
-              type="submit"
-              variant={connected ? 'primary' : 'dark'}
-              size="lg"
-              disabled={!connected || isConnecting || isCreating}
-              loading={isCreating}
-              className="sm:flex-1"
-            >
-              {isCreating ? 'Creating Event...' : 'Create Event'}
-            </Button>
-            <LinkButton href="/" variant="outline" size="lg" className="sm:flex-1">
-              Cancel
-            </LinkButton>
-          </div>
+          <Button
+            type="submit"
+            variant={connected ? 'primary' : 'dark'}
+            size="lg"
+            disabled={!connected || isConnecting || isCreating}
+            loading={isCreating}
+            className="mt-6"
+          >
+            {isCreating ? 'Creating Event...' : 'Create Event'}
+          </Button>
           {!connected && (
             <p className="mt-3 text-center text-sm text-muted">Connect your wallet to create the event.</p>
           )}

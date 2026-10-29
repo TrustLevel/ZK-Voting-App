@@ -39,7 +39,11 @@ export const INFO = {
   },
   network: {
     title: 'Preprod or Mainnet',
-    body: 'Preprod is Cardano\'s public test network: it runs on free test ADA from the faucet, nothing of value is at stake, and it is the right place to try the system. Mainnet is the live Cardano network: publishing costs real ADA and you prepay your voters\' transaction fees. The network is fixed when the event is created.',
+    body: 'Preprod is Cardano\'s public test network: it runs on free test ADA from the faucet (one default faucet payment is enough), nothing of value is at stake, and it is the right place to try the system. Mainnet is the live Cardano network: publishing locks 15 ADA in the event contracts, costs about 1.5 ADA in fees, and you prepay your voters\' transaction fees (1.3 ADA per registered voter). Keep about 25 ADA plus that deposit in the wallet. The network is fixed when the event is created; your wallet must be on the same network when you publish.',
+  },
+  organiserWallet: {
+    title: 'Your wallet as organiser',
+    body: 'The wallet identifies you as the organiser now and signs the two transactions that publish the event later. Use a wallet on the network you chose above. It needs one plain-ADA output of at least 5 ADA as collateral plus the fees: on Preprod one faucet payment covers this, on Mainnet keep about 25 ADA plus the fee deposit (1.3 ADA per registered voter). Your voters need no wallet and no ADA.',
   },
   feeDeposit: {
     title: 'Fee deposit',
@@ -55,7 +59,7 @@ export const INFO = {
   },
   votingWindow: {
     title: 'Voting window',
-    body: 'Start and end are written to the blockchain when you publish. The smart contract accepts votes only inside this window; a vote outside it is rejected. Leave room between now and the start: publishing takes two transactions of about a minute each.',
+    body: 'Start and end are written to the blockchain when you publish; the smart contract accepts votes only inside this window. Rules: the start cannot be in the past, the end must be after the start, there is no minimum or maximum length. Before the start you still have to invite your participants, wait for them to register (invitation links are valid for seven days) and publish, which takes two transactions of one to two minutes and must finish at least 90 seconds before the start. So set the start days ahead, not minutes.',
   },
   noWallet: {
     title: 'Why you need no wallet',
