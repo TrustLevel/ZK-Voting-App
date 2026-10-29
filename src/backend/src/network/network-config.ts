@@ -55,7 +55,7 @@ export const DEFAULT_VKEY_REF: Record<CardanoNetwork, OutputRef | null> = {
 
 /**
  * Fee the organiser prepays per registered voter on fee-deposit networks.
- * Measured vote tx fee on Preprod: 1.07–1.09 ADA (docs/M4_TEST_REPORT.md);
+ * Measured vote tx fee on Preprod: 1.07–1.09 ADA (docs/testing/M4_TEST_REPORT.md);
  * 1.3 ADA leaves headroom for deeper MPF proofs in larger groups.
  */
 export const FEE_PER_VOTE_LOVELACE = 1_300_000n;

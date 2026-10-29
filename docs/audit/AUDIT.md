@@ -1229,7 +1229,7 @@ The M4 system test was a scripted end-to-end voting run on Cardano preprod again
 - **Main run** — event `3907417823`. Semaphore script `addr_test1wzedkt4d3jclzq363pl8rwpvngx9k7kktq4p842trsralcsfwuwjj`, Voting script `addr_test1wpdyadvg7f5fu3fc58yc09rv0uj9tu9rut0yqgrqje837dgfz3ugr`. 12 votes confirmed; final tally API = chain = expected (6/3/3). Double vote, replay, non-member, late registrant, and too-late vote were all correctly rejected. Identified F-APP-1 through F-APP-8, F-APP-11, F-APP-12.
 - **Dominik live test** — event `1869725828`, five independent users. Identified F-APP-6, F-APP-9, F-APP-10 from the user side.
 
-Full report with timeline, state trace, and explorer links: [`docs/M4_TEST_REPORT.md`](docs/M4_TEST_REPORT.md) (Part A; Part C is the re-run after the fixes).
+Full report with timeline, state trace, and explorer links: [`docs/testing/M4_TEST_REPORT.md`](../testing/M4_TEST_REPORT.md) (Part A; Part C is the re-run after the fixes).
 
 ---
 

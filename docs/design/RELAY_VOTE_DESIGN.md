@@ -277,7 +277,7 @@ Rejected: voters paying their own tx (breaks the relay anonymity, F4), a service
 (drainable, not sustainable with real ADA), per-event relay addresses derived from the mnemonic
 (cleaner ledger, more key-derivation surface — possible follow-up), automatic refunds
 (outbound payments from the hot wallet are a new attack surface). Operator steps for Mainnet:
-[MAINNET_SETUP.md](MAINNET_SETUP.md).
+[MAINNET_SETUP.md](../operations/MAINNET_SETUP.md).
 
 ## Security notes
 

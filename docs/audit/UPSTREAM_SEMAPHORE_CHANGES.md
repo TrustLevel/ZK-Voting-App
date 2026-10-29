@@ -181,7 +181,7 @@ After fixing F-SEM-1, `spend_signal_semaphore_1` will pass with `mpf_proof = []`
 
 ## Pending for Audit Document
 
-The following sections of `AUDIT_final.md` (in the consuming repo) still need to be completed once all upstream changes are applied and verified:
+The following sections of `docs/audit/AUDIT.md` (in the consuming repo) still need to be completed once all upstream changes are applied and verified:
 
 - **Changes Made** — add entries for each group/semaphore finding resolved
 - **Conclusions** — overall security posture, residual risks, what is trusted to the upstream dependency

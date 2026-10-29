@@ -2,7 +2,7 @@
 
 **Project:** ZK Voting App (Catalyst project 1200252) · **Network:** Cardano Preprod
 **Generated:** 2026-10-28 from the local run logs (`scripts/sim-run`, kept out of the repository)
-**Companion documents:** [User feedback](M4_USER_FEEDBACK.md) · [Audit report](../AUDIT_final.md) · [Submission](../MILESTONE4_SUBMISSION.md)
+**Companion documents:** [User feedback](../M4_USER_FEEDBACK.md) · [Audit report](../audit/AUDIT.md) · [Submission](../milestones/MILESTONE4_SUBMISSION.md)
 
 This report has three parts:
 
@@ -427,7 +427,7 @@ Order of requests the backend receives per vote (from this run's request log):
 The Merkle-proof request names the voter (`userId`); the nullifier and the signed tx follow seconds later from the
 same client. An operator logging request source and time can join userId → nullifier → vote tx → option.
 
-*(The findings list of this run is maintained with its current status in [M4_USER_FEEDBACK.md §4](M4_USER_FEEDBACK.md).)*
+*(The findings list of this run is maintained with its current status in [M4_USER_FEEDBACK.md §4](../M4_USER_FEEDBACK.md).)*
 
 
 ---
@@ -444,7 +444,7 @@ an Eternl wallet. Three votes were confirmed on-chain on the first attempt; two 
 | 2 | The second successful voter saw the running tally while others had not voted yet. | F9 (interim results) |
 | 3 | A vote was rejected on the first attempt and succeeded on the second — two votes within one block collided on the shared state UTxO. | F6 |
 
-All three findings are fixed in the Milestone 4 build (see [M4_USER_FEEDBACK.md](M4_USER_FEEDBACK.md) §4);
+All three findings are fixed in the Milestone 4 build (see [M4_USER_FEEDBACK.md](../M4_USER_FEEDBACK.md) §4);
 Part C shows the same scenarios passing against the deployed fixes.
 
 ---
@@ -881,5 +881,5 @@ Order of requests the backend receives per vote (from this run's request log):
 The Merkle-proof request names the voter (`userId`); the nullifier and the signed tx follow seconds later from the
 same client. An operator logging request source and time can join userId → nullifier → vote tx → option.
 
-*(The findings list of this run is maintained with its current status in [M4_USER_FEEDBACK.md §4](M4_USER_FEEDBACK.md).)*
+*(The findings list of this run is maintained with its current status in [M4_USER_FEEDBACK.md §4](../M4_USER_FEEDBACK.md).)*
 

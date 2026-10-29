@@ -2,8 +2,8 @@
 
 Purpose: the user tutorial for Milestone 5. Two parts that can be published as one video with
 chapters or as two short videos: the organiser part and the voter part. Screen recording
-with voice-over, no talking head needed. Follows the [Organiser guide](guides/ORGANISER_GUIDE.md)
-and the [Voter guide](guides/VOTER_GUIDE.md) exactly, so viewers can pause and read along.
+with voice-over, no talking head needed. Follows the [Organiser guide](../../guides/ORGANISER_GUIDE.md)
+and the [Voter guide](../../guides/VOTER_GUIDE.md) exactly, so viewers can pause and read along.
 
 Preparation:
 - Eternl on Preprod with test ADA from the faucet (one plain-ADA UTxO of at least 5 ADA).

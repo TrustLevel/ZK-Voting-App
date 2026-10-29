@@ -257,13 +257,13 @@ JWT_SECRET=
 CORS_ORIGIN=http://localhost:3002
 RELAY_WALLET_MNEMONIC=           # Preprod relay wallet, 24 words (legacy name; _PREPROD takes precedence)
 RELAY_WALLET_MNEMONIC_MAINNET=   # Mainnet relay wallet — separate hot wallet, real ADA
-VKEY_REF_MAINNET=                # <txhash>#<index> of the Mainnet VKey UTxO (docs/MAINNET_SETUP.md)
+VKEY_REF_MAINNET=                # <txhash>#<index> of the Mainnet VKey UTxO (docs/operations/MAINNET_SETUP.md)
 #FEE_DEPOSIT_NETWORKS=mainnet    # networks where organisers prepay the voters' fees (default mainnet)
 ```
 `BLOCKFROST_NETWORK` is no longer used — the network is a property of each event. The Docker
 deploy in `deploy/` runs the backend on port 3001 and sets these from `deploy/.env`; the frontend
 needs only `NEXT_PUBLIC_BACKEND_API_URL` (no Blockfrost key in the browser).
-Mainnet one-offs (VKey UTxO, relay funding) are described in `docs/MAINNET_SETUP.md`.
+Mainnet one-offs (VKey UTxO, relay funding) are described in `docs/operations/MAINNET_SETUP.md`.
 
 **TX module** (`src/tx/.env`, scripts only):
 ```

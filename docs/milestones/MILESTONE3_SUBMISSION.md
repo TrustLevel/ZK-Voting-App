@@ -63,7 +63,7 @@ Cardano **Preprod testnet** application, a successful vote requires the one-time
 the Learn More guide: select the **Preprod** testnet in your wallet, fund it with free test ADA
 from the faucet, and use a supported CIP-30 wallet (**Eternl recommended**). With these
 prerequisites met, the full create → register → vote → results flow completes successfully.
-- Learn More (setup & walkthrough): https://github.com/TrustLevel/ZK-Voting-App/blob/preview/LEARN_MORE.md
+- Learn More (setup & walkthrough): https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/guides/LEARN_MORE.md
 
 ---
 
@@ -135,7 +135,7 @@ design.
 - Live (hosted): https://api.vote.trustlevel.io
 - Source: https://github.com/TrustLevel/ZK-Voting-App/tree/preview/src/backend
 - Documentation: https://github.com/TrustLevel/ZK-Voting-App/blob/preview/src/backend/DOCS.md
-- Deployment guide: https://github.com/TrustLevel/ZK-Voting-App/blob/preview/DEPLOY.md
+- Deployment guide: https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/operations/DEPLOY.md
 
 ---
 
@@ -172,6 +172,6 @@ according to the Phase 1 design.
 - Primitives documentation: https://github.com/TrustLevel/ZK-Voting-App/blob/preview/src/zk/DOCS.md#cryptographic-primitives
 - ZK module source: https://github.com/TrustLevel/ZK-Voting-App/tree/preview/src/zk
 - On-chain Semaphore verifier docs: https://github.com/TrustLevel/ZK-Voting-App/blob/preview/src/on-chain/DOCS.md
-- Phase 1 design reference: https://github.com/TrustLevel/ZK-Voting-App/blob/preview/design/SMART_CONTRACT_SPECIFICATION.md
+- Phase 1 design reference: https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/design/SMART_CONTRACT_SPECIFICATION.md
 
 ---

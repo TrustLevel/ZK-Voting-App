@@ -34,7 +34,7 @@ BLOCKFROST_API_KEY=        # Blockfrost project ID for Preprod (legacy name; _PR
 BLOCKFROST_API_KEY_MAINNET=   # Blockfrost project ID for Mainnet (empty = Mainnet disabled)
 RELAY_WALLET_MNEMONIC=     # Preprod relay wallet (24 words)
 RELAY_WALLET_MNEMONIC_MAINNET=   # Mainnet relay wallet (separate hot wallet)
-VKEY_REF_MAINNET=          # <txhash>#<index> of the Mainnet VKey UTxO (docs/MAINNET_SETUP.md)
+VKEY_REF_MAINNET=          # <txhash>#<index> of the Mainnet VKey UTxO (docs/operations/MAINNET_SETUP.md)
 #FEE_DEPOSIT_NETWORKS=mainnet   # networks where organisers prepay the voters' fees
 DATABASE_PATH=db/voting-app.db
 JWT_SECRET=                # random secret for JWT signing
@@ -239,7 +239,7 @@ Copy `.env.example` to `.env` and fill in all values. Critical production settin
 | `CORS_ORIGIN` | Set to the deployed frontend URL (e.g. `https://app.yourdomain.com`) |
 | `DATABASE_PATH` | Path on a **persistent volume** — survives restarts and redeployments |
 | `JWT_SECRET` | Cryptographically random, at least 32 bytes |
-| `BLOCKFROST_API_KEY_MAINNET`, `RELAY_WALLET_MNEMONIC_MAINNET`, `VKEY_REF_MAINNET` | Set all three to enable Mainnet events (`docs/MAINNET_SETUP.md`); the network is chosen per event |
+| `BLOCKFROST_API_KEY_MAINNET`, `RELAY_WALLET_MNEMONIC_MAINNET`, `VKEY_REF_MAINNET` | Set all three to enable Mainnet events (`docs/operations/MAINNET_SETUP.md`); the network is chosen per event |
 
 ### Persistent storage
 

@@ -2,7 +2,7 @@
 
 **Project:** ZK Voting App (Catalyst project 1200252)
 **Period:** September – October 2026 · **Network:** Cardano Preprod
-**Companion documents:** [Audit report](../AUDIT_final.md) · [Test report](M4_TEST_REPORT.md) · [Submission](../MILESTONE4_SUBMISSION.md)
+**Companion documents:** [Audit report](audit/AUDIT.md) · [Test report](testing/M4_TEST_REPORT.md) · [Submission](milestones/MILESTONE4_SUBMISSION.md)
 
 Milestone 4 asked for prototype testing and feedback from at least three test users, and for the
 system to be optimized according to that feedback and the audit. This document collects the
@@ -22,11 +22,11 @@ feedback we received, where it came from, and what we changed in response. Items
 
 In addition to the human testers, we ran a **scripted system test** with 15 simulated voters
 against the hosted backend on Preprod (12 confirmed votes, concurrency and attack scenarios).
-That test is *our own* and is reported separately in the [test report](M4_TEST_REPORT.md); it is
+That test is *our own* and is reported separately in the [test report](testing/M4_TEST_REPORT.md); it is
 not counted as a test user, but several of the changes below come from it.
 
 The two questionnaire answers are reproduced verbatim in
-[`docs/Interviews/`](Interviews/).
+[`docs/Interviews/`](testing/interviews).
 
 ---
 
@@ -81,7 +81,7 @@ All four were addressed in the M3 resubmission and are included here for complet
 | Misleading "Insufficient funds" (live test #1) | Error classification reordered: a pending-input conflict now says *"Another vote is still being confirmed … wait about a minute and try again"*; fee problems are attributed to the service wallet, not the voter. | `classifySubmissionError` in the vote page |
 | "Moment of anxiety when it mints two tokens" (Sebastián) | Explained up front (see above); the mint flow itself keeps its step indicator. | manage page |
 | "Next iteration: automated sign up" (Rodrigo) | **Not changed.** Registration is deliberately a voter-side action: the Semaphore identity is generated in the voter's browser and only the commitment is sent, so nobody else can register on a voter's behalf. The registration step explains this and hands the voter their identity file. | — |
-| Voters needed a funded wallet to vote (M3 reviewers, all testers on Preprod) | **Relay design:** the backend builds, signs and submits the vote transaction from a service wallet. Voters need no wallet, no test ADA and no signature; their address never appears on-chain next to a vote. | `docs/RELAY_VOTE_DESIGN.md`, `POST /voting-event/:id/relay-vote` |
+| Voters needed a funded wallet to vote (M3 reviewers, all testers on Preprod) | **Relay design:** the backend builds, signs and submits the vote transaction from a service wallet. Voters need no wallet, no test ADA and no signature; their address never appears on-chain next to a vote. | `docs/design/RELAY_VOTE_DESIGN.md`, `POST /voting-event/:id/relay-vote` |
 
 ---
 
@@ -111,7 +111,7 @@ are swapped (F-APP-4 = backend correlation, F-APP-5 = on-chain wallet linkage).
 | F12 | Non-members got HTTP 500 instead of a clear message | Low | **Fixed** | 404 / 409 / 422 with an explanation |
 
 The detailed evidence (transaction hashes, request logs, before/after state) is in the
-[test report](M4_TEST_REPORT.md).
+[test report](testing/M4_TEST_REPORT.md).
 
 ---
 

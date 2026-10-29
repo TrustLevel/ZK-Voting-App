@@ -119,7 +119,7 @@ reach out directly.
 - Live application (Preprod): https://vote.trustlevel.io
 - Organiser guide: https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/guides/ORGANISER_GUIDE.md
 - Voter guide: https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/guides/VOTER_GUIDE.md
-- Audit report: https://github.com/TrustLevel/ZK-Voting-App/blob/preview/AUDIT_final.md
+- Audit report: https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/audit/AUDIT.md
 - Project on Catalyst: https://milestones.projectcatalyst.io/projects/1200252
 
 *This work was funded by Project Catalyst, Fund 12, Cardano Open: Developers.*

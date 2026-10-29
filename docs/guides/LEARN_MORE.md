@@ -62,7 +62,7 @@ deposit) are signed and paid by the organiser:
 
 ## For Organisers
 
-You set up and run a voting event end to end. The [organiser guide](docs/guides/ORGANISER_GUIDE.md)
+You set up and run a voting event end to end. The [organiser guide](ORGANISER_GUIDE.md)
 has every screen.
 
 1. **Create the event** at [vote.trustlevel.io](https://vote.trustlevel.io): name, network,
@@ -85,7 +85,7 @@ has every screen.
 
 ## For Voters (Participants)
 
-The [voter guide](docs/guides/VOTER_GUIDE.md) has every screen.
+The [voter guide](VOTER_GUIDE.md) has every screen.
 
 1. **Open your invitation link** in any modern browser, within seven days of receiving it. No
    wallet, no ADA, no signature.
@@ -113,9 +113,9 @@ The [voter guide](docs/guides/VOTER_GUIDE.md) has every screen.
 | Documentation (TrustLevel knowledge base) | https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app |
 | Source code (GitHub) | https://github.com/TrustLevel/ZK-Voting-App |
 | Testnet faucet (free test ADA, organisers) | https://docs.cardano.org/cardano-testnets/tools/faucet |
-| Organiser guide | [docs/guides/ORGANISER_GUIDE.md](docs/guides/ORGANISER_GUIDE.md) |
-| Voter guide | [docs/guides/VOTER_GUIDE.md](docs/guides/VOTER_GUIDE.md) |
-| Mainnet setup (operators) | [docs/MAINNET_SETUP.md](docs/MAINNET_SETUP.md) |
+| Organiser guide | [docs/guides/ORGANISER_GUIDE.md](ORGANISER_GUIDE.md) |
+| Voter guide | [docs/guides/VOTER_GUIDE.md](VOTER_GUIDE.md) |
+| Mainnet setup (operators) | [docs/operations/MAINNET_SETUP.md](../operations/MAINNET_SETUP.md) |
 | Semaphore protocol | https://semaphore.appliedzkp.org/ |
 
 ---
@@ -129,7 +129,7 @@ prepays the voters' fees as a deposit; voters still pay nothing and need no wall
 **Can the organiser see how I voted?** No. The zero-knowledge proof hides who voted, and no voter
 wallet appears in a vote transaction. The options' running totals are public on the blockchain
 (the application hides them until the event ends); what is protected is the link between a vote
-and a voter. Known limits: [docs/M4_USER_FEEDBACK.md](docs/M4_USER_FEEDBACK.md), section 5.
+and a voter. Known limits: [docs/M4_USER_FEEDBACK.md](../M4_USER_FEEDBACK.md), section 5.
 
 **Can I vote twice?** No. A one-time nullifier derived inside your zero-knowledge proof blocks any
 second vote, without ever revealing your identity.

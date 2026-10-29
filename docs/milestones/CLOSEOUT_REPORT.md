@@ -54,46 +54,46 @@ test run.
 
 ### Milestone 1: Architecture Documentation (53,250 ADA)
 
-- System design document: [design/SYSTEM_DESIGN.md](../design/SYSTEM_DESIGN.md)
-- Smart-contract specification: [design/SMART_CONTRACT_SPECIFICATION.md](../design/SMART_CONTRACT_SPECIFICATION.md)
-- Database schema design: [design/design_2.sql](../design/design_2.sql)
+- System design document: [docs/design/SYSTEM_DESIGN.md](../design/SYSTEM_DESIGN.md)
+- Smart-contract specification: [docs/design/SMART_CONTRACT_SPECIFICATION.md](../design/SMART_CONTRACT_SPECIFICATION.md)
+- Database schema design: [docs/archive/design_v2.sql](../archive/design_v2.sql)
 - `[verify: link to the M1 submission / interface prototypes as submitted in the portal]`
 
 ### Milestone 2: Development of an advanced ZK protocol (53,250 ADA)
 
-- Aiken (Plutus v3) validators for the voting event: [src/on-chain](../src/on-chain), with
+- Aiken (Plutus v3) validators for the voting event: [src/on-chain](../../src/on-chain), with
   the Semaphore and Group validators from `modulo-p/cardano-semaphore`
 - Semaphore circuit compiled for BLS12-381 with a 21-contributor trusted setup, and the
-  proof module: [src/zk](../src/zk)
-- Transaction builder for the mint and vote transactions: [src/tx](../src/tx)
+  proof module: [src/zk](../../src/zk)
+- Transaction builder for the mint and vote transactions: [src/tx](../../src/tx)
 - `[verify: link to the M2 submission and the testnet transactions submitted as evidence]`
 
 ### Milestone 3: Development of a hosted application (35,500 ADA)
 
 - Hosted frontend https://vote.trustlevel.io and backend https://api.vote.trustlevel.io
-- Submission document: [MILESTONE3_SUBMISSION.md](../MILESTONE3_SUBMISSION.md), with the
+- Submission document: [docs/milestones/MILESTONE3_SUBMISSION.md](MILESTONE3_SUBMISSION.md), with the
   on-chain evidence of a full vote on Preprod (Group mint, Semaphore and Voting mint, anonymous
   vote) and the component documentation per module
 - Walkthrough videos: simple voting https://youtu.be/b8HeAZMSW6s, weighted voting
   https://www.youtube.com/watch?v=EuaH2kGwe_0
-- Learn More guide: [LEARN_MORE.md](../LEARN_MORE.md)
+- Learn More guide: [docs/guides/LEARN_MORE.md](../guides/LEARN_MORE.md)
 
 ### Milestone 4: Testing and Advanced Development (8,875 ADA)
 
-- Audit report of the on-chain contracts: [AUDIT_final.md](../AUDIT_final.md). 42 findings
+- Audit report of the on-chain contracts: [docs/audit/AUDIT.md](../audit/AUDIT.md). 42 findings
   across three review phases, all contract findings resolved; 154 on-chain tests in the
   project and 40 in the Semaphore library pass after the fixes.
 - User feedback from two external organisers and voters (CHIL Stake Pool, Gimbalabs), a
   five-person live group vote and the Catalyst reviewers, with the changes made in response:
-  [docs/M4_USER_FEEDBACK.md](M4_USER_FEEDBACK.md)
+  [docs/M4_USER_FEEDBACK.md](../M4_USER_FEEDBACK.md)
 - Scripted system test with 15 voters, concurrency and attack scenarios, repeated after the
-  fixes: [docs/M4_TEST_REPORT.md](M4_TEST_REPORT.md)
-- Relay vote design (voters without wallets): [docs/RELAY_VOTE_DESIGN.md](RELAY_VOTE_DESIGN.md)
-- Submission document: [MILESTONE4_SUBMISSION.md](../MILESTONE4_SUBMISSION.md)
+  fixes: [docs/testing/M4_TEST_REPORT.md](../testing/M4_TEST_REPORT.md)
+- Relay vote design (voters without wallets): [docs/design/RELAY_VOTE_DESIGN.md](../design/RELAY_VOTE_DESIGN.md)
+- Submission document: [docs/milestones/MILESTONE4_SUBMISSION.md](MILESTONE4_SUBMISSION.md)
 
 ### Milestone 5: Close Out Report and Community Engagement (26,625 ADA)
 
-- User guides: [Organiser guide](guides/ORGANISER_GUIDE.md), [Voter guide](guides/VOTER_GUIDE.md)
+- User guides: [Organiser guide](../guides/ORGANISER_GUIDE.md), [Voter guide](../guides/VOTER_GUIDE.md)
 - This report
 - Close-out video: `[verify: link]`
 - Tutorial video: `[verify: link]`
@@ -112,7 +112,7 @@ ecosystem. The project contributes:
   Cardano: contracts, proof generation, transaction building, backend and frontend.
 - Fixes and tests contributed upstream to the `modulo-p/cardano-semaphore` library (versions
   0.9.3 to 0.9.5), documented in
-  [design/implementation/UPSTREAM_SEMAPHORE_CHANGES.md](../design/implementation/UPSTREAM_SEMAPHORE_CHANGES.md).
+  [docs/audit/UPSTREAM_SEMAPHORE_CHANGES.md](../audit/UPSTREAM_SEMAPHORE_CHANGES.md).
 - A property-based audit method for Aiken validators, written up in the audit report so that
   other projects can reuse it.
 
@@ -220,11 +220,11 @@ Tilman as committers. Decide who is named here.]`
 | Live application (Preprod) | https://vote.trustlevel.io |
 | Organiser guide | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/guides/ORGANISER_GUIDE.md |
 | Voter guide | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/guides/VOTER_GUIDE.md |
-| Audit report | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/AUDIT_final.md |
+| Audit report | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/audit/AUDIT.md |
 | User feedback (M4) | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/M4_USER_FEEDBACK.md |
-| Test report (M4) | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/M4_TEST_REPORT.md |
-| Milestone 3 submission | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/MILESTONE3_SUBMISSION.md |
-| Milestone 4 submission | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/MILESTONE4_SUBMISSION.md |
+| Test report (M4) | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/M4_TEST_REPORT.md |
+| Milestone 3 submission | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/milestones/MILESTONE3_SUBMISSION.md |
+| Milestone 4 submission | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/milestones/MILESTONE4_SUBMISSION.md |
 | TrustLevel knowledge base | https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app |
 | Walkthrough videos (M3) | https://youtu.be/b8HeAZMSW6s · https://www.youtube.com/watch?v=EuaH2kGwe_0 |
 | Close-out video | `[verify: link]` |

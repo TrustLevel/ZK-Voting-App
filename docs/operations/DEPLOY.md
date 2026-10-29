@@ -8,7 +8,7 @@ with **Caddy** (auto-HTTPS) in front of the NestJS backend and the Next.js front
 > wallet (voters never sign). The organiser's publish transactions (mint txs, fee
 > deposit) are also built, submitted and watched by the backend; the organiser's
 > wallet only signs. The browser holds no Blockfrost key. Mainnet is disabled until the operator completes
-> [docs/MAINNET_SETUP.md](docs/MAINNET_SETUP.md) (VKey UTxO, relay wallet, keys).
+> [docs/operations/MAINNET_SETUP.md](MAINNET_SETUP.md) (VKey UTxO, relay wallet, keys).
 
 ---
 
@@ -238,5 +238,5 @@ deploy/
   Caddyfile              # auto-HTTPS reverse proxy ({$DOMAIN}, {$API_DOMAIN})
   .env.example           # copy to .env and fill in
 .dockerignore            # (repo root) keeps node_modules/dist/state/secrets out of context
-DEPLOY.md                # this file
+docs/operations/DEPLOY.md                # this file
 ```

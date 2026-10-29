@@ -332,8 +332,8 @@ Two limits are stated openly:
 
 The application is open source (Apache 2.0): https://github.com/TrustLevel/ZK-Voting-App.
 The [README](../../README.md) describes local development and
-[DEPLOY.md](../../DEPLOY.md) the Docker-based deployment. A self-hosted instance needs a
+[docs/operations/DEPLOY.md](../operations/DEPLOY.md) the Docker-based deployment. A self-hosted instance needs a
 Blockfrost project per network, a relay wallet per network that pays the vote transactions on
 behalf of the voters, and an e-mail sender for the invitations. The Mainnet one-offs (VKey
 reference UTxO, relay wallet collateral) are described in
-[docs/MAINNET_SETUP.md](../MAINNET_SETUP.md).
+[docs/operations/MAINNET_SETUP.md](../operations/MAINNET_SETUP.md).

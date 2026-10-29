@@ -75,21 +75,21 @@ links each component to its source tree and documentation. The live deployment i
 | Frontend | [`src/frontend`](src/frontend) | [DOCS.md](src/frontend/DOCS.md) |
 | On-chain interaction layer | [`src/tx`](src/tx) · [`src/on-chain`](src/on-chain) | [tx/DOCS.md](src/tx/DOCS.md) · [on-chain/DOCS.md](src/on-chain/DOCS.md) |
 | Off-chain computations | [`src/zk`](src/zk) | [zk/DOCS.md](src/zk/DOCS.md) |
-| Backend server setup | [`src/backend`](src/backend) | [backend/DOCS.md](src/backend/DOCS.md) · [DEPLOY.md](DEPLOY.md) |
+| Backend server setup | [`src/backend`](src/backend) | [backend/DOCS.md](src/backend/DOCS.md) · [docs/operations/DEPLOY.md](docs/operations/DEPLOY.md) |
 | Database management | [`src/backend`](src/backend) (SQLite + LevelDB/MPF) | [backend/DOCS.md#database](src/backend/DOCS.md#database) |
 | Cryptographic primitives | [`src/zk`](src/zk) · [`src/on-chain`](src/on-chain) | [zk/DOCS.md#cryptographic-primitives](src/zk/DOCS.md#cryptographic-primitives) |
 
-Phase 1 design references: [SMART_CONTRACT_SPECIFICATION.md](design/SMART_CONTRACT_SPECIFICATION.md), [SYSTEM_DESIGN.md](design/SYSTEM_DESIGN.md).
+Phase 1 design references: [SMART_CONTRACT_SPECIFICATION.md](docs/design/SMART_CONTRACT_SPECIFICATION.md), [SYSTEM_DESIGN.md](docs/design/SYSTEM_DESIGN.md).
 
 ### Milestone 4 evidence (testing and advanced development)
 
 | Document | Where |
 |---|---|
-| Submission (acceptance criteria → evidence) | [MILESTONE4_SUBMISSION.md](MILESTONE4_SUBMISSION.md) |
-| Smart-contract audit report | [AUDIT_final.md](AUDIT_final.md) · [Upstream Semaphore changes](design/implementation/UPSTREAM_SEMAPHORE_CHANGES.md) |
-| User feedback and resulting changes | [docs/M4_USER_FEEDBACK.md](docs/M4_USER_FEEDBACK.md) · questionnaires in [docs/Interviews](docs/Interviews) |
-| Test report (scripted system tests 2026-10-05 and 2026-10-28, live group test) | [docs/M4_TEST_REPORT.md](docs/M4_TEST_REPORT.md) |
-| Relay vote design (voters need no wallet) | [docs/RELAY_VOTE_DESIGN.md](docs/RELAY_VOTE_DESIGN.md) |
+| Submission (acceptance criteria → evidence) | [docs/milestones/MILESTONE4_SUBMISSION.md](docs/milestones/MILESTONE4_SUBMISSION.md) |
+| Smart-contract audit report | [docs/audit/AUDIT.md](docs/audit/AUDIT.md) · [Upstream Semaphore changes](docs/audit/UPSTREAM_SEMAPHORE_CHANGES.md) |
+| User feedback and resulting changes | [docs/M4_USER_FEEDBACK.md](docs/M4_USER_FEEDBACK.md) · questionnaires in [docs/Interviews](docs/testing/interviews) |
+| Test report (scripted system tests 2026-10-05 and 2026-10-28, live group test) | [docs/testing/M4_TEST_REPORT.md](docs/testing/M4_TEST_REPORT.md) |
+| Relay vote design (voters need no wallet) | [docs/design/RELAY_VOTE_DESIGN.md](docs/design/RELAY_VOTE_DESIGN.md) |
 
 ---
 
@@ -108,7 +108,7 @@ Step-by-step guides against the hosted application, with the labels and messages
 - [Organiser guide](docs/guides/ORGANISER_GUIDE.md) — create an event, invite participants, publish it to the blockchain, read the results. Needs a Preprod wallet with test ADA.
 - [Voter guide](docs/guides/VOTER_GUIDE.md) — register, keep your identity file, cast a vote, check the result. No wallet and no ADA needed.
 
-Project close-out material for Catalyst Milestone 5 is in [`docs/CLOSEOUT_REPORT.md`](docs/CLOSEOUT_REPORT.md) and [`docs/community/`](docs/community/).
+Project close-out material for Catalyst Milestone 5 is in [`docs/milestones/CLOSEOUT_REPORT.md`](docs/milestones/CLOSEOUT_REPORT.md) and [`docs/community/`](docs/milestones/m5/community).
 
 ---
 
@@ -255,11 +255,11 @@ Set the same variables as `.env.example`. For production, pay attention to:
 | `DATABASE_PATH` | Point to a path on a **persistent volume** |
 | `JWT_SECRET` | Cryptographically random value, ≥ 32 bytes |
 | `BLOCKFROST_API_KEY` / `BLOCKFROST_API_KEY_MAINNET` | One Blockfrost key per network; a network without key, relay wallet and VKey UTxO is not offered to organisers |
-| `RELAY_WALLET_MNEMONIC` / `RELAY_WALLET_MNEMONIC_MAINNET` | Relay wallet per network (Mainnet: separate hot wallet, see `docs/MAINNET_SETUP.md`) |
+| `RELAY_WALLET_MNEMONIC` / `RELAY_WALLET_MNEMONIC_MAINNET` | Relay wallet per network (Mainnet: separate hot wallet, see `docs/operations/MAINNET_SETUP.md`) |
 | `VKEY_REF_MAINNET` | `<txhash>#<index>` of the Mainnet VKey UTxO, deployed once |
 
 The network (Preprod or Mainnet) is chosen per event by the organiser; one backend serves both.
-Mainnet one-off steps: [docs/MAINNET_SETUP.md](docs/MAINNET_SETUP.md).
+Mainnet one-off steps: [docs/operations/MAINNET_SETUP.md](docs/operations/MAINNET_SETUP.md).
 
 **Persistent storage requirements**
 
@@ -270,7 +270,7 @@ Two directories must be on a persistent volume:
 
 ### Smart contracts — no deployment step
 
-The Aiken validators are pre-compiled and their CBORs are embedded in `src/tx/src/validators.ts`. They are network-independent: each new voting event mints its own set of NFTs using these validators on the event's network. The only per-network one-off is the VKey reference UTxO (Preprod: already deployed; Mainnet: `docs/MAINNET_SETUP.md`).
+The Aiken validators are pre-compiled and their CBORs are embedded in `src/tx/src/validators.ts`. They are network-independent: each new voting event mints its own set of NFTs using these validators on the event's network. The only per-network one-off is the VKey reference UTxO (Preprod: already deployed; Mainnet: `docs/operations/MAINNET_SETUP.md`).
 
 To redeploy contracts after code changes:
 

@@ -191,7 +191,7 @@ Since no tokens under `policy_id` existed before this transaction, the only toke
 
 - `src/on-chain/validators/voting.ak`
 - `src/on-chain/lib/voting_utilities.ak`
-- `design/SMART_CONTRACT_SPECIFICATION.md`
+- `docs/design/SMART_CONTRACT_SPECIFICATION.md`
 - `modulo-p/cardano-semaphore` v0.9.4 (upstream, out of scope)
 
 
