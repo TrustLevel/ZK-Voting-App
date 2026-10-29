@@ -13,7 +13,7 @@ The tests of 2026-10-05 that produced the findings F0–F12 are the testers' own
 with their feedback:
 
 - the scripted system test by Talon (15 script-controlled voters, concurrency and attack
-  scenarios): [interviews/VotingAppFeedback_Pumbi.md](interviews/VotingAppFeedback_Pumbi.md);
+  scenarios): [interviews/VotingAppFeedback_Pumbiii.md](interviews/VotingAppFeedback_Pumbiii.md);
 - the live group test with five participants by pinusch:
   [interviews/VotingAppFeedback_Pinusch.md](interviews/VotingAppFeedback_Pinusch.md).
 

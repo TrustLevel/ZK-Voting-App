@@ -35,7 +35,7 @@ questionnaire (reproduced verbatim) and the testers' own write-ups.
   https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/M4_USER_FEEDBACK.md
 - Questionnaires: https://github.com/TrustLevel/ZK-Voting-App/tree/v1.0/docs/testing/interviews
 - The testers' own test write-ups (scripted system test, live group test):
-  https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/interviews/VotingAppFeedback_Pumbi.md ·
+  https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/interviews/VotingAppFeedback_Pumbiii.md ·
   https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/interviews/VotingAppFeedback_Pinusch.md
 - Regression run after the fixes (test report):
   https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/M4_TEST_REPORT.md

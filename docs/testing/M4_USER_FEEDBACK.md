@@ -17,7 +17,7 @@ feedback we received, who it came from, and what we changed in response. Items t
 |---|---|---|---|---|
 | 1 | Rodrigo Oyarzún, CHIL Stake Pool | SPO, community voting | Organiser (created and ran an event) and voter, Eternl | [Questionnaire](interviews/VotingAppFeedback_Rodrigo.md) |
 | 2 | Sebastián Pabón, Gimbalabs | Developer, runs blockchain projects | Organiser and voter, Eternl | [Questionnaire](interviews/VotingAppFeedback_Sebastián.md) |
-| 3 | Talon (GitHub: Pumbbii) | Developer | Scripted system test against the hosted backend: 15 script-controlled voters, real registrations and on-chain votes, concurrency and attack scenarios. Produced the findings F0–F12. | [Test write-up and questionnaire](interviews/VotingAppFeedback_Pumbi.md) |
+| 3 | Talon (GitHub: Pumbiii) | Developer | Scripted system test against the hosted backend: 15 script-controlled voters, real registrations and on-chain votes, concurrency and attack scenarios. Produced the findings F0–F12. | [Test write-up and questionnaire](interviews/VotingAppFeedback_Pumbiii.md) |
 | 4 | pinusch (GitHub: pinusch) | Community | Organised a live event with five participants who registered and voted from their browsers; 3 votes succeeded at first, 2 failed | [Test write-up and questionnaire](interviews/VotingAppFeedback_Pinusch.md) |
 | 5 | Independent reviewers (Catalyst milestone review of M3) | Milestone reviewers | Written review of the hosted application | — |
 
@@ -75,7 +75,7 @@ scenarios. 12 of 15 votes were confirmed on-chain. The headline findings:
   (F10).
 
 The full list with severities is section 4; the run itself, with transaction hashes and the
-on-chain state trace, is in his [write-up](interviews/VotingAppFeedback_Pumbi.md).
+on-chain state trace, is in his [write-up](interviews/VotingAppFeedback_Pumbiii.md).
 
 ### pinusch (live group test, five participants, 2026-10-05)
 
@@ -145,7 +145,7 @@ linkage). "Regression run" refers to the project's re-run of 2026-10-28 in the
 | F12 | Non-members got HTTP 500 instead of a clear message | Low | **Fixed** | 404 / 409 / 422 with an explanation |
 
 The detailed evidence of the original run (transaction hashes, request logs, on-chain state) is in
-Talon's [write-up](interviews/VotingAppFeedback_Pumbi.md); the evidence after the fixes is in the
+Talon's [write-up](interviews/VotingAppFeedback_Pumbiii.md); the evidence after the fixes is in the
 [test report](M4_TEST_REPORT.md).
 
 ---
