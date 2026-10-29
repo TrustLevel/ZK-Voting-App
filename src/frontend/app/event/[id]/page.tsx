@@ -29,7 +29,7 @@ import { asNetwork, explorerTxUrl } from '@/lib/network';
 import { NetworkBadge } from '@/components/NetworkBadge';
 import { AppShell, PageIntro } from '@/components/AppShell';
 import { Button, buttonClass } from '@/components/Button';
-import { Card, CardHeader, DataRow, Notice } from '@/components/Card';
+import { CardHeader, DataRow, Notice } from '@/components/Card';
 import { AlertIcon, BallotIcon, ChartIcon, CheckIcon, ClockIcon, ExternalIcon, KeyIcon, LinkIcon, PlusIcon, Spinner, UploadIcon } from '@/components/Icons';
 import { InfoButton } from '@/components/InfoButton';
 import { INFO } from '@/components/infoTexts';
@@ -990,7 +990,7 @@ export default function EventPage() {
       </Notice>
 
       {/* Tab Navigation */}
-      <Card className="mb-6 !p-4 md:!p-5">
+      <div className="mb-6 rounded-2xl border border-line bg-[#fafafa] px-3 py-3 sm:px-6">
         <Steps<Tab>
           label="Voting steps"
           active={activeTab}
@@ -1001,7 +1001,7 @@ export default function EventPage() {
             { key: 'results', label: 'Results', done: false },
           ]}
         />
-      </Card>
+      </div>
 
       {/* Tab Content */}
       <div>
@@ -1041,7 +1041,7 @@ export default function EventPage() {
                 )}
 
                 {/* Secure Registration Section */}
-                <Card>
+                <section className="border-t border-line pt-7">
                   <CardHeader
                     icon={<KeyIcon size={20} />}
                     title="Registration"
@@ -1114,7 +1114,7 @@ export default function EventPage() {
                       </div>
                     </>
                   ) : null}
-                </Card>
+                </section>
               </>
             )}
           </div>
@@ -1243,7 +1243,7 @@ export default function EventPage() {
 
             {/* Voting Options Section - Only show if not voted */}
             {!hasVoted && (
-              <Card>
+              <section className="border-t border-line pt-7">
                 <CardHeader
                   icon={<BallotIcon size={20} />}
                   title={isSimpleVote ? 'Select Your Choice' : `Distribute ${event.votingPower} Points`}
@@ -1351,7 +1351,7 @@ export default function EventPage() {
                     </p>
                   </Notice>
                 )}
-              </Card>
+              </section>
             )}
           </div>
         )}
@@ -1360,7 +1360,7 @@ export default function EventPage() {
         {activeTab === 'results' && (
           <div>
             {/* Voting Status */}
-            <Card soft className="mb-6">
+            <section className="mb-8 border-t border-line pt-7">
               <CardHeader
                 icon={votingEnded ? <CheckIcon size={20} /> : <ClockIcon size={20} />}
                 title={votingEnded ? 'Voting Ended' : 'Event Status'}
@@ -1369,10 +1369,10 @@ export default function EventPage() {
               />
               <DataRow label="Voting Period:">{formatDate(event.startingDate)} - {formatDate(event.endingDate)}</DataRow>
               <DataRow label="Voting Type:">{isSimpleVote ? 'Simple Vote' : `Weighted (${event.votingPower} points)`}</DataRow>
-            </Card>
+            </section>
 
             {/* Results */}
-            <Card>
+            <section className="border-t border-line pt-7">
               <CardHeader
                 icon={<ChartIcon size={20} />}
                 title="Voting Results"
@@ -1422,7 +1422,7 @@ export default function EventPage() {
                   })}
                 </div>
               )}
-            </Card>
+            </section>
           </div>
         )}
       </div>
