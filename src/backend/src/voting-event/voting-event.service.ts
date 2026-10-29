@@ -819,9 +819,10 @@ export class VotingEventService {
 
   // Polls Blockfrost until the tx is included and the Semaphore state UTxO it created is
   // indexed. Gives up after the timeout (the next vote then retries on its own).
-  // Both the Semaphore state UTxO AND the relay wallet's change output must be indexed: the
-  // index lags per address, and a vote built while the wallet still lists the inputs the
-  // previous vote spent fails with "unknown transaction input" (seen on Mainnet 2026-10-29).
+  // The Semaphore state UTxO, the Voting state UTxO AND the relay wallet's change output must
+  // all be indexed: the index lags per address, and a vote built while any of them still lists
+  // the inputs the previous vote spent fails with "unknown transaction input" (seen 2026-10-29
+  // on Mainnet for the wallet and on Preprod for the Voting UTxO).
   private async waitForVoteVisible(event: VotingEvent, txHash: string, relayAddress?: string, timeoutMs = 180_000): Promise<void> {
     const { base, headers } = this.blockfrost(event.network ?? 'preprod');
     const started = Date.now();
@@ -833,7 +834,8 @@ export class VotingEventService {
           if (tx.ok) included = true;
         }
         if (included) {
-          const addresses = [event.semaphoreAddress, ...(relayAddress ? [relayAddress] : [])];
+          // Every address the next vote reads: Semaphore state, Voting state and the relay wallet.
+          const addresses = [event.semaphoreAddress, event.votingValidatorAddress, relayAddress].filter((a): a is string => !!a);
           const seen = await Promise.all(addresses.map(async addr => {
             const res = await fetch(`${base}/addresses/${addr}/utxos`, { headers });
             if (!res.ok) return false;
