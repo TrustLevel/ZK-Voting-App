@@ -312,7 +312,9 @@ describe('VotingEventService', () => {
         adminToken: 'secret',
         invitedParticipants: '[{"email":"a@b.c"}]',
         groupLeafCommitments: '[{"userId":1,"commitment":"1"}]',
+        semaphoreLeafCommitments: '[{"userId":1,"commitment":"1"}]',
         nullifierLeafCommitments: '[]',
+        publishState: '{"step":"group"}',
       } as unknown as VotingEvent);
 
       const result = await service.getVotingEvent(1);

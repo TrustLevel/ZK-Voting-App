@@ -299,13 +299,13 @@ export class VotingEventService {
     return participants.map(p => p.userId);
   }
 
-  async getAllVotingEvents(): Promise<Omit<VotingEvent, 'adminToken' | 'invitedParticipants' | 'groupLeafCommitments' | 'nullifierLeafCommitments' | 'publishState'>[]> {
+  async getAllVotingEvents(): Promise<Omit<VotingEvent, 'adminToken' | 'invitedParticipants' | 'groupLeafCommitments' | 'semaphoreLeafCommitments' | 'nullifierLeafCommitments' | 'publishState'>[]> {
     const events = await this.votingEventRepository.find();
     return events.map(e => this.toPublic(e));
   }
 
   // Get voting event details
-  async getVotingEvent(eventId: number): Promise<Omit<VotingEvent, 'adminToken' | 'invitedParticipants' | 'groupLeafCommitments' | 'nullifierLeafCommitments' | 'publishState'>> {
+  async getVotingEvent(eventId: number): Promise<Omit<VotingEvent, 'adminToken' | 'invitedParticipants' | 'groupLeafCommitments' | 'semaphoreLeafCommitments' | 'nullifierLeafCommitments' | 'publishState'>> {
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
     if (!event) {
       throw new Error('Voting event not found');
@@ -314,9 +314,10 @@ export class VotingEventService {
   }
 
   private toPublic(event: VotingEvent) {
-    // F1: strip sensitive fields from every public response (publishState is the organiser's
-    // in-progress publish — internal to OrganiserTxService)
-    const { adminToken: _a, invitedParticipants: _i, groupLeafCommitments: _g, nullifierLeafCommitments: _n, publishState: _p, ...rest } = event;
+    // F1: strip sensitive fields from every public response — both leaf snapshots carry the
+    // userId → commitment map (publishState is the organiser's in-progress publish — internal
+    // to OrganiserTxService)
+    const { adminToken: _a, invitedParticipants: _i, groupLeafCommitments: _g, semaphoreLeafCommitments: _s, nullifierLeafCommitments: _n, publishState: _p, ...rest } = event;
     return rest;
   }
 
