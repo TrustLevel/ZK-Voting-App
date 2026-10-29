@@ -52,7 +52,7 @@ import { AppShell, PageIntro } from '@/components/AppShell';
 import { Button, LinkButton } from '@/components/Button';
 import { CardHeader, CodeBox, DataRow, Notice } from '@/components/Card';
 import { FieldLabel, inputClass } from '@/components/Field';
-import { BoltIcon, ChartIcon, CheckIcon, ClockIcon, ExternalIcon, KeyIcon, MailIcon, PlusIcon, SlidersIcon, Spinner, TrashIcon, UsersIcon, WalletIcon } from '@/components/Icons';
+import { BoltIcon, ChartIcon, CheckIcon, ClockIcon, ExternalIcon, KeyIcon, MailIcon, PlusIcon, RefreshIcon, SlidersIcon, Spinner, TrashIcon, UsersIcon, WalletIcon } from '@/components/Icons';
 import { InfoButton } from '@/components/InfoButton';
 import { INFO } from '@/components/infoTexts';
 import { ResultRow } from '@/components/ResultRow';
@@ -1418,12 +1418,19 @@ export default function EventDashboard() {
             {participants.length > 0 ? (
               <div>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="text-base font-bold text-ink">Participant List</h3>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusPill tone="neutral">{participants.length} Total</StatusPill>
-                    <StatusPill tone="success">{participants.filter(p => p.status === 'registered').length} Registered</StatusPill>
-                    <StatusPill tone="attention">{participants.filter(p => p.status === 'pending').length} Pending</StatusPill>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h3 className="text-base font-bold text-ink">Participant List</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusPill tone="neutral">{participants.length} Total</StatusPill>
+                      <StatusPill tone="success">{participants.filter(p => p.status === 'registered').length} Registered</StatusPill>
+                      <StatusPill tone="attention">{participants.filter(p => p.status === 'pending').length} Pending</StatusPill>
+                    </div>
                   </div>
+                  {/* Same loader as the readiness box on the Start Voting tab */}
+                  <Button variant="outline" size="sm" onClick={loadParticipants}>
+                    <RefreshIcon size={16} />
+                    Refresh
+                  </Button>
                 </div>
 
                 <ul className="space-y-2">
