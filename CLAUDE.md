@@ -168,9 +168,26 @@ The `VotingEvent` entity (`voting-event.entity.ts`) is the central DB record. It
   event, no refund of an unused remainder.
 - `GET /:eventId/results` — status, turnout, registered voters; per-option counts only after `endingDate`
 - `DELETE /:eventId/nullifier` — admin-only rollback (header `x-admin-token`)
+- Organiser transactions (admin, `OrganiserTxService`) — the browser never talks to Blockfrost:
+  - `POST /:eventId/build-group-mint-tx` — body `{ walletAddress, walletUtxos }` (as the CIP-30
+    wallet reports them); returns `{ unsignedTx, txHash, policyId, scriptAddress, mintUtxo }`.
+    Preconditions server-side: network enabled, fee deposit funded on fee-deposit networks (402),
+    event not yet on-chain (409). Remembers the wallet UTxOs (F11) in `publish_state`.
+  - `POST /:eventId/build-semaphore-voting-mint-tx` — body `{ walletAddress, startingDate, endingDate }`;
+    returns `{ unsignedTx, txHash, semaphorePolicyId, semaphoreScriptAddr, votingPolicyId,
+    votingScriptAddr, mintingOref, txValidityEndSlot }`. Spends only UTxOs created after the Group
+    mint; answers 409 with `code: GROUP_NFT_NOT_INDEXED | WALLET_UTXOS_NOT_INDEXED` while Blockfrost
+    lags (the frontend retries).
+  - `POST /:eventId/build-fee-deposit-tx` — body `{ walletAddress, walletUtxos }`; plain payment of the
+    missing deposit to the relay address (amount computed server-side).
+  - `POST /:eventId/submit-tx` — body `{ signedTx }`; submits only a transaction whose id matches one
+    the backend built for this event (evaluate-then-submit like votes), then persists the identifiers
+    it computed (Group NFT, Semaphore/Voting NFTs, minting oref, dates, Merkle snapshot).
+  - `GET /:eventId/tx/:txHash` — `{ confirmed, blockHeight }` for confirmation polling.
 - All organiser endpoints (PATCH event, invite/invited/send-invitations, remove participant,
-  save-blockchain-data, group update) require the event's admin token in the `x-admin-token` header
-  (`AdminTokenGuard`). There is no public nullifier insert and no raw signed-tx submit endpoint.
+  save-blockchain-data, group update, build-*-tx, submit-tx, tx status) require the event's admin
+  token in the `x-admin-token` header (`AdminTokenGuard`). There is no public nullifier insert and no
+  raw signed-tx submit endpoint; `submit-tx` accepts only transactions the backend built.
 
 **Dependencies:** `@aiken-lang/merkle-patricia-forestry` (MPF trie), `@noble/hashes` (blake2b)
 
@@ -194,8 +211,9 @@ Exports as `@src/tx`. Key exports:
 
 See `FRONTEND_BACKEND_SPLIT.md` for which functions are safe to call from the frontend.
 
-> **Note:** All transaction builder functions accept a `BlockfrostProvider` — on the frontend
-> this exposes the API key in the browser. See Known Improvements for the planned fix.
+> **Note:** All transaction builder functions accept a `BlockfrostProvider`, so they run on the
+> backend only (relay votes, organiser mints via `OrganiserTxService`). The frontend imports
+> `@src/tx/browser` solely for pure helpers; it holds no Blockfrost key.
 
 ### `src/zk` — ZK Proof Module
 
@@ -243,7 +261,7 @@ VKEY_REF_MAINNET=                # <txhash>#<index> of the Mainnet VKey UTxO (do
 ```
 `BLOCKFROST_NETWORK` is no longer used — the network is a property of each event. The Docker
 deploy in `deploy/` runs the backend on port 3001 and sets these from `deploy/.env`; the frontend
-additionally needs `NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET` for the organiser's Mainnet publish flow.
+needs only `NEXT_PUBLIC_BACKEND_API_URL` (no Blockfrost key in the browser).
 Mainnet one-offs (VKey UTxO, relay funding) are described in `docs/MAINNET_SETUP.md`.
 
 **TX module** (`src/tx/.env`, scripts only):
@@ -314,19 +332,17 @@ cd src/tx && npm run build:force
 ```
 After this, redeploy all contracts (new script CBORs → new policy IDs and script addresses).
 
-### Blockfrost API key exposure on frontend
-All transaction builder functions (`buildGroupMintTransaction`, `buildSemaphoreVotingMintTransaction`,
-`buildVoteTransaction`) accept a `BlockfrostProvider` and use it internally to fetch script UTxOs
-and evaluate transactions. Passing a Blockfrost API key directly to the frontend exposes it in
-the browser — anyone can extract it and exhaust the quota (critical on mainnet).
-
-Planned fix:
-- Add `GET /voting-event/:eventId/script-utxos` backend endpoint that fetches and returns the
-  current Semaphore UTxO, Voting UTxO, and VKey UTxO server-side.
-- Refactor `buildVoteTransaction` to accept pre-fetched UTxOs instead of a `provider`.
-  Evaluation can be removed — hardcoded execution units are already in the redeemer values
-  and the Ogmios error-catch pattern handles the failure gracefully.
-- Result: frontend needs zero Blockfrost access for vote transactions.
+### Blockfrost API key exposure on frontend (resolved)
+Formerly the organiser's publish flow created a `BlockfrostProvider` in the browser from
+`NEXT_PUBLIC_BLOCKFROST_API_KEY(_MAINNET)`, inlined into the JavaScript bundle. Resolved in two
+steps: votes are relayed by the backend (`relay-vote`), and the organiser's transactions (Group
+mint, Semaphore + Voting mint, fee deposit) are built, submitted and watched by the backend
+(`OrganiserTxService`, endpoints `build-*-tx` / `submit-tx` / `tx/:hash` above). The organiser's
+wallet only signs; `submit-tx` accepts only transactions the backend built (matched by tx id) and
+persists the on-chain identifiers it computed itself. The `NEXT_PUBLIC_BLOCKFROST_*` variables are
+gone from the Dockerfile, compose file and env examples; one Blockfrost key per network (backend)
+is enough. The publish progress lives in `VotingEvent.publishState` (JSON) and survives restarts;
+a rebuilt Group mint resets it, so a stale transaction never blocks a retry.
 
 ### MPF nullifier store resilience (`src/zk/src/mpf.ts`)
 The LevelDB store for the nullifier trie (`nullifiers-db/<eventId>`) is the off-chain

@@ -33,9 +33,9 @@ live events plus the collateral: keep nothing else on it.
 
 ## 2. Prerequisites
 
-- A **Blockfrost Mainnet project** (project id starts with `mainnet`). Create two: one for the
-  backend (`BLOCKFROST_API_KEY_MAINNET`) and one for the browser
-  (`NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET`), so they can be rotated independently.
+- A **Blockfrost Mainnet project** (project id starts with `mainnet`) for the backend
+  (`BLOCKFROST_API_KEY_MAINNET`). One key is enough: the browser never talks to Blockfrost,
+  the backend builds and submits the organiser's transactions and relays the votes.
 - A **fresh 24-word Mainnet wallet for the relay** (never the Preprod mnemonic, never a wallet
   that holds anything else). Note its first address (`addr1…`); the backend prints it as
   `relayAddress` in `GET /voting-event/networks` once configured.
@@ -101,12 +101,10 @@ Set the following in `deploy/.env` (or the backend `.env` for a local run), **in
 | `BLOCKFROST_API_KEY_MAINNET` | the backend's Mainnet Blockfrost project id (`mainnet…`) |
 | `RELAY_WALLET_MNEMONIC_MAINNET` | the 24 words of the Mainnet relay wallet |
 | `VKEY_REF_MAINNET` | `<txhash>#0` from section 3 |
-| `NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET` | the browser's Mainnet Blockfrost project id (frontend, inlined at build time) |
 | `FEE_DEPOSIT_NETWORKS` | leave unset (default `mainnet`) |
 
-The existing Preprod variables (`BLOCKFROST_API_KEY`, `NEXT_PUBLIC_BLOCKFROST_API_KEY`,
-`RELAY_WALLET_MNEMONIC`) stay as they are. Rebuild and restart (`NEXT_PUBLIC_*` values are
-baked into the frontend image):
+The existing Preprod variables (`BLOCKFROST_API_KEY`, `RELAY_WALLET_MNEMONIC`) stay as
+they are. Rebuild and restart:
 
 ```sh
 cd deploy && docker compose up -d --build

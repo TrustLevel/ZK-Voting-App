@@ -5,9 +5,9 @@ Hosting-agnostic deploy for the **preview** branch on **Cardano Preprod and Main
 with **Caddy** (auto-HTTPS) in front of the NestJS backend and the Next.js frontend.
 
 > **Architecture note.** Votes are built, paid and submitted by the backend's relay
-> wallet (voters never sign). The browser still holds a Blockfrost key for the
-> organiser's publish flow (mint txs, fee deposit); a leaked key only risks API quota,
-> never funds. Mainnet is disabled until the operator completes
+> wallet (voters never sign). The organiser's publish transactions (mint txs, fee
+> deposit) are also built, submitted and watched by the backend; the organiser's
+> wallet only signs. The browser holds no Blockfrost key. Mainnet is disabled until the operator completes
 > [docs/MAINNET_SETUP.md](docs/MAINNET_SETUP.md) (VKey UTxO, relay wallet, keys).
 
 ---
@@ -47,7 +47,7 @@ with **Caddy** (auto-HTTPS) in front of the NestJS backend and the Next.js front
      ```ts
      config.resolve.fallback = { ...config.resolve.fallback, fs: false };
      ```
-     Safe because this frontend uses Blockfrost, not the fs-backed code path.
+     Safe because the frontend never uses the fs-backed code path (transactions are built by the backend).
   2. **Build-blocking lint / strict-TS.** `next build` runs ESLint + `tsc` and
      fails on pre-existing `@typescript-eslint/no-explicit-any` errors. At the top
      of the `nextConfig` object add:
@@ -179,8 +179,6 @@ Set in **`deploy/.env`**:
 | `ACME_EMAIL` | Caddy | Let's Encrypt notices (optional). |
 | `BLOCKFROST_API_KEY` | backend | Server-side Preprod key. |
 | `BLOCKFROST_API_KEY_MAINNET` | backend | Server-side Mainnet key (empty = Mainnet disabled). |
-| `NEXT_PUBLIC_BLOCKFROST_API_KEY` | frontend (browser) | Preprod; baked at build; use a **separate** key. |
-| `NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET` | frontend (browser) | Mainnet; baked at build. |
 | `RELAY_WALLET_MNEMONIC` | backend | Preprod relay wallet (24 words). |
 | `RELAY_WALLET_MNEMONIC_MAINNET` | backend | Mainnet relay wallet — separate hot wallet, real ADA. |
 | `VKEY_REF_MAINNET` | backend | `<txhash>#<index>` of the Mainnet VKey UTxO. |
@@ -192,9 +190,9 @@ Set **authoritatively in `docker-compose.yml`** from `DOMAIN`/`API_DOMAIN` (do n
 duplicate in `.env`): `PORT=3001`, `DATABASE_PATH`, `CORS_ORIGIN`, `FRONTEND_URL`,
 `NEXT_PUBLIC_BACKEND_API_URL`. (`BLOCKFROST_NETWORK` is gone: the network is per event.)
 
-> **`NEXT_PUBLIC_*` are inlined at build time.** Changing `API_DOMAIN` or the
-> public Blockfrost key requires a **rebuild** (`docker compose up -d --build`),
-> not just a restart.
+> **`NEXT_PUBLIC_*` are inlined at build time.** Changing `API_DOMAIN` requires a
+> **rebuild** (`docker compose up -d --build`), not just a restart. Blockfrost keys
+> are backend-only and take effect on a restart.
 
 > **Resend sandbox caveat.** The default Resend sender only delivers to *your own*
 > Resend-account email. To send invitations to arbitrary recipients, verify a

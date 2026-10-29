@@ -192,7 +192,7 @@ cp src/backend/.env.example src/backend/.env
 
 # Frontend
 cp src/frontend/.env.example src/frontend/.env.local
-# Fill in: NEXT_PUBLIC_BACKEND_API_URL, NEXT_PUBLIC_BLOCKFROST_API_KEY
+# Fill in: NEXT_PUBLIC_BACKEND_API_URL (the frontend needs no Blockfrost key)
 ```
 
 ### 3. Start the backend
@@ -235,8 +235,6 @@ npm run build:force     # re-extracts validator CBORs from plutus.json
    | Variable | Value |
    |---|---|
    | `NEXT_PUBLIC_BACKEND_API_URL` | URL of the deployed backend, e.g. `https://api.yourdomain.com` |
-   | `NEXT_PUBLIC_BLOCKFROST_API_KEY` | Blockfrost project ID for Preprod (organiser publish flow) |
-   | `NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET` | Blockfrost project ID for Mainnet (only if the backend enables Mainnet) |
 
 4. Deploy — Vercel detects Next.js automatically and handles the build.
 

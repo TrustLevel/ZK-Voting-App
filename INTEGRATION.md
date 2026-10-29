@@ -107,11 +107,10 @@ Backend forwards the signed tx CBOR to Blockfrost for submission.
 
 ---
 
-## Known Limitation
+## No Blockfrost in the browser
 
-`buildVoteTransaction` uses `provider` internally to fetch the Semaphore and Voting UTxOs
-from script addresses. This requires a Blockfrost API key on the frontend.
-(The VKey UTxO is a hardcoded reference input — not fetched via the provider.)
-
-**Planned fix:** add `GET /voting-event/:id/script-utxos` so the backend fetches those UTxOs
-and the frontend can pass them directly, removing the Blockfrost dependency entirely.
+`buildVoteTransaction` and the mint builders use `provider` internally to fetch UTxOs, so they
+run on the backend only: votes go through `POST /voting-event/:id/relay-vote` (relay wallet) and
+the organiser's Group mint, Semaphore + Voting mint and fee deposit through
+`POST /voting-event/:id/build-*-tx` → CIP-30 `signTx` → `POST /voting-event/:id/submit-tx`
+(`src/backend/src/voting-event/organiser-tx.service.ts`). The frontend holds no Blockfrost key.

@@ -104,7 +104,7 @@ are swapped (F-APP-4 = backend correlation, F-APP-5 = on-chain wallet linkage).
 | F5 | Backend can correlate the Merkle-proof request with the vote | Medium | **Open (design)** | see §5 |
 | F6 | Concurrent votes collide on the shared state UTxO | Medium | **Mitigated — retry succeeds; queue does not yet wait for confirmation** | votes are serialised per event in the backend and a losing vote is rolled back automatically (no stuck voter, no trie desync); a vote submitted while another vote of the same event is still unconfirmed still needs one retry. Final run B1/B2: 3 votes within ~2 s → 1 confirmed, 2 rolled back, both confirmed on the first retry |
 | F7 | Concurrent registrations lost members silently | High | **Fixed** | per-event mutex around registration |
-| F8 | Blockfrost key shipped in the frontend bundle | Medium | **Partly addressed** | voters no longer need Blockfrost (relay design + backend endpoints); the organiser's mint flow still uses a frontend key — see §5 |
+| F8 | Blockfrost key shipped in the frontend bundle | Medium | **Fixed** | voters never needed a key after the relay design; the organiser's publish transactions (Group mint, Semaphore + Voting mint, fee deposit) are now built, submitted and watched by the backend (`build-*-tx` / `submit-tx` / `tx/:hash`, admin token); the organiser's wallet only signs. `NEXT_PUBLIC_BLOCKFROST_API_KEY*` is gone from the build |
 | F9 | Interim results visible while voting is open | Medium | **Fixed** | results gated in the backend until the end date |
 | F10 | Misleading error messages ("Insufficient funds") | Low | **Fixed** | reordered classification, actionable messages |
 | F11 | Event start could fail between the two mint transactions | Medium | **Fixed** | pre-mint UTxOs excluded when building the second mint |
@@ -130,8 +130,6 @@ The detailed evidence (transaction hashes, request logs, before/after state) is 
   The backend serialises votes per event and rolls the losing vote back automatically, so nothing is
   stuck and the trie stays consistent, but the queue does not yet wait for the previous transaction
   to confirm before building the next one (F6).
-- **The organiser's mint flow still uses a browser-side Blockfrost key.** Voting no longer needs
-  one. Moving the two mint transactions behind the backend is planned.
 - **The circuit was not changed in this milestone.** The audit and all test runs found no defect
   in the Semaphore circuit; the optimizations landed in the on-chain verifier and the signal
   handling (`cardano-semaphore` v0.9.3 → v0.9.5). Recompiling the circuit would invalidate the

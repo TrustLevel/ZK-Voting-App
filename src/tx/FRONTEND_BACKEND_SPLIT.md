@@ -2,6 +2,14 @@
 
 Analysis of which functions/code belong in frontend vs backend, with focus on API key exposure.
 
+> **Status (current code):** the split below is historical analysis. Today **no transaction is
+> built in the browser**: votes go through `POST /voting-event/:id/relay-vote` (backend relay
+> wallet) and the organiser's Group mint, Semaphore + Voting mint and fee deposit go through
+> `POST /voting-event/:id/build-*-tx` → CIP-30 `signTx` → `POST /voting-event/:id/submit-tx`
+> (`src/backend/src/voting-event/organiser-tx.service.ts`). The frontend holds no Blockfrost key;
+> it imports `@src/tx/browser` only for pure helpers. Every builder that takes a `BlockfrostProvider`
+> is backend-only.
+
 ## 🔴 BACKEND ONLY (Requires API Keys/Secrets)
 
 ### Functions that use Blockfrost API Key

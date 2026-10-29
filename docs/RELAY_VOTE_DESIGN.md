@@ -301,7 +301,26 @@ Rejected: voters paying their own tx (breaks the relay anonymity, F4), a service
 | `src/backend/src/voting-event/voting-event.controller.ts` | Add `POST /:eventId/relay-vote` endpoint |
 | `src/frontend/app/event/[id]/page.tsx` | Remove tx building / wallet signing; call `/relay-vote` |
 
-`POST /:eventId/vote` and `buildVoteTransaction` (browser) remain in place for the manage-page group-update flow and any admin transactions that still require CIP-30.
+`POST /:eventId/vote` is gone (F2). Admin transactions that require the organiser's CIP-30 signature use the pattern below.
+
+---
+
+## Organiser transactions (no Blockfrost in the browser)
+
+The organiser's publish flow follows the same principle as the relay: the backend owns every
+chain access, the browser only signs. `OrganiserTxService` (`src/backend/src/voting-event/organiser-tx.service.ts`):
+
+| Step | Endpoint (admin token) | Backend does |
+|---|---|---|
+| 1 | `POST build-group-mint-tx` `{ walletAddress, walletUtxos }` | validates address/UTxOs, derives the payment key hash, reads the Merkle root from the DB, checks network enabled / deposit funded (402) / not yet on-chain (409), builds the Group mint, stores the pending tx and the wallet's UTxO refs (F11) in `publish_state` |
+| 2 | `POST submit-tx` `{ signedTx }` | accepts only a tx whose id matches a pending one, evaluates then submits, persists `groupNft`, `groupValidatorAddress`, `groupValidatorCbor` |
+| 3 | `GET tx/:hash` | confirmation polling |
+| 4 | `POST build-semaphore-voting-mint-tx` `{ walletAddress, startingDate, endingDate }` | waits for the Group NFT UTxO to be indexed (409 `GROUP_NFT_NOT_INDEXED` → retry), spends only UTxOs created after the Group mint, derives the validity window and both datums, stores the pending tx |
+| 5 | `POST submit-tx` | persists Semaphore/Voting NFTs, minting oref, VKey ref, dates, the Merkle snapshot; clears `publish_state` |
+| Mainnet | `POST build-fee-deposit-tx` → `submit-tx` → `confirm-fee-deposit` | plain payment of the missing deposit (amount computed server-side) |
+
+A rebuilt Group mint replaces the whole `publish_state`, so a stale transaction id never blocks a
+retry; a fully published event (Voting NFT set) cannot be published again (409).
 
 ---
 
