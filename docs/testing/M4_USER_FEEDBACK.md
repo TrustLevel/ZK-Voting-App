@@ -136,7 +136,7 @@ linkage). "Regression run" refers to the project's re-run of 2026-10-28 in the
 | F3 | No rollback when the vote tx failed to build | Medium | **Fixed by design** | relay flow: the backend rolls back on any failure |
 | F4 | Vote option is public on-chain and was tied to the paying wallet | Medium | **Partly addressed** | the voter's wallet no longer appears in vote transactions (relay design); the option itself stays readable on-chain, a known limit, see §5 |
 | F5 | Backend can correlate the Merkle-proof request with the vote | Medium | **Open (design)** | see §5 |
-| F6 | Concurrent votes collide on the shared state UTxO | Medium | **Mitigated; fix deployed 2026-10-29, verification pending** | votes are serialised per network in the backend and a losing vote is rolled back automatically (no stuck voter, no trie desync). Regression run B1/B2: 3 votes within ~2 s → 1 confirmed, 2 rolled back, both confirmed on the first retry. Commit `69377fe` holds the queue until the previous vote's outputs are indexed, so the retry should no longer be needed; live since 2026-10-29, not yet exercised by a concurrent run |
+| F6 | Concurrent votes collide on the shared state UTxO | Medium | **Fixed, verified 2026-10-29** | votes are serialised per network in the backend and a losing vote is rolled back automatically (no stuck voter, no trie desync). Regression run B1/B2: 3 votes within ~2 s → 1 confirmed, 2 rolled back, both confirmed on the first retry. Commits `69377fe` and `7914ac0` hold the queue until the previous vote is indexed at every address the next vote reads (Semaphore state, Voting state, relay wallet); verified the same day with three voters submitting within two seconds: 3 of 3 confirmed on the first attempt (test report Part C) |
 | F7 | Concurrent registrations lost members silently | High | **Fixed** | per-event mutex around registration |
 | F8 | Blockfrost key shipped in the frontend bundle | Medium | **Fixed** | voters never needed a key after the relay design; the organiser's publish transactions (Group mint, Semaphore + Voting mint, fee deposit) are built, submitted and watched by the backend (`build-*-tx` / `submit-tx` / `tx/:hash`, admin token); the organiser's wallet only signs. `NEXT_PUBLIC_BLOCKFROST_API_KEY*` is gone from the build |
 | F9 | Interim results visible while voting is open | Medium | **Fixed** | results gated in the backend until the end date; turnout organiser-only |
@@ -162,10 +162,10 @@ Talon's [write-up](interviews/VotingAppFeedback_Pumbi.md); the evidence after th
   submitting through an uncorrelated channel, are the known mitigations.
 - **Two votes in the same block window.** Every vote spends the same two state UTxOs, so two votes
   built on the same state cannot both succeed. The backend serialises votes and rolls the losing
-  vote back automatically, so nothing is stuck and the trie stays consistent. Until 2026-10-29 a
-  vote submitted while the previous one was unconfirmed needed one retry; the fix that holds the
-  queue until the previous vote is indexed is deployed and awaits a concurrent run that confirms
-  it (F6).
+  vote back automatically, so nothing is stuck and the trie stays consistent. Since 2026-10-29 the
+  queue holds each vote until the previous one is on-chain and indexed at every address the next
+  vote reads, so concurrent voters wait 20–50 s instead of retrying; verified with three voters
+  submitting within two seconds (F6, test report Part C).
 - **The circuit was not changed in this milestone.** The audit and all test runs found no defect
   in the Semaphore circuit; the optimizations landed in the on-chain verifier and the signal
   handling (`cardano-semaphore` v0.9.3 → v0.9.5). Recompiling the circuit would invalidate the
