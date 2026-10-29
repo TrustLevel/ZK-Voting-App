@@ -1,6 +1,10 @@
 'use client';
 
 import { useEffect } from 'react';
+import { AppShell } from '@/components/AppShell';
+import { Spinner } from '@/components/Icons';
+
+const DOCS_URL = 'https://trustlevel.gitbook.io/knowledge-base/tools-and-apps/zk-voting-app';
 
 /**
  * INFO PAGE - Redirect to GitBook Documentation
@@ -9,15 +13,18 @@ import { useEffect } from 'react';
 export default function Info() {
   useEffect(() => {
     // Redirect to GitBook documentation
-    window.location.href = 'https://trustlevel.gitbook.io/knowledge-base/tools-and-apps/zk-voting-app';
+    window.location.href = DOCS_URL;
   }, []);
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin h-12 w-12 border-4 border-gray-900 border-t-transparent rounded-full mx-auto mb-4"></div>
-        <p className="text-gray-600">Redirecting to documentation...</p>
+    <AppShell width="sm" center>
+      <div className="flex flex-col items-center gap-4 text-center">
+        <Spinner size={40} className="text-ink" />
+        <p className="text-muted">Redirecting to documentation...</p>
+        <a href={DOCS_URL} className="inline-flex min-h-11 items-center text-sm font-semibold text-ink underline decoration-brand decoration-2 underline-offset-[3px]">
+          Open the documentation
+        </a>
       </div>
-    </div>
+    </AppShell>
   );
 }
