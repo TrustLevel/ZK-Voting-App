@@ -130,7 +130,7 @@ export default function EventPage() {
 
   // Results State
   const [results, setResults] = useState<VotingOption[] | null>(null);
-  const [resultsMeta, setResultsMeta] = useState<{ status: string; totalVotes: number; registeredVoters: number; resultsAvailable: boolean } | null>(null);
+  const [resultsMeta, setResultsMeta] = useState<{ status: string; totalVotes: number | null; registeredVoters: number | null; resultsAvailable: boolean } | null>(null);
   const [loadingResults, setLoadingResults] = useState(false);
 
   // File Upload State
@@ -882,7 +882,7 @@ export default function EventPage() {
       if (!response.ok) throw new Error('Failed to load results');
       const data = await response.json();
       setResults(data.options);
-      setResultsMeta({ status: data.status, totalVotes: data.totalVotes ?? 0, registeredVoters: data.registeredVoters ?? 0, resultsAvailable: !!data.resultsAvailable });
+      setResultsMeta({ status: data.status, totalVotes: data.totalVotes ?? null, registeredVoters: data.registeredVoters ?? null, resultsAvailable: !!data.resultsAvailable });
     } catch (err) {
       console.error('Failed to load results:', err);
       setResults(null);
@@ -1688,11 +1688,9 @@ export default function EventPage() {
                     </div>
                   ) : resultsMeta && !resultsMeta.resultsAvailable ? (
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
-                      <p className="text-gray-900 font-semibold mb-1">
-                        {resultsMeta.totalVotes} of {resultsMeta.registeredVoters} registered voters have voted so far.
-                      </p>
+                      <p className="text-gray-900 font-semibold mb-1">Results are not available yet.</p>
                       <p className="text-sm text-gray-600">
-                        The results per option are revealed once the voting period ends, so that nobody is influenced by interim counts.
+                        They are revealed once the voting period ends{event.endingDate ? ` (${formatDate(event.endingDate)})` : ''}.
                       </p>
                     </div>
                   ) : (

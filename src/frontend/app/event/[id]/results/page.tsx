@@ -18,8 +18,8 @@ interface ResultsData {
   eventName: string;
   startingDate: number | null;
   endingDate: number | null;
-  registeredVoters: number;
-  totalVotes: number;
+  registeredVoters: number | null; // null while voting is open (organiser-only)
+  totalVotes: number | null;
   resultsAvailable: boolean; // per-option counts are only revealed after the end
   options: ResultOption[];
 }
@@ -163,9 +163,11 @@ export default function ResultsPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="font-bold text-gray-900">Results by option</h2>
-              <p className="text-sm text-gray-500 mt-0.5">
-                {totalVotes} total vote{totalVotes !== 1 ? 's' : ''}
-              </p>
+              {data?.resultsAvailable && (
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {totalVotes} total vote{totalVotes !== 1 ? 's' : ''}
+                </p>
+              )}
             </div>
             <button
               onClick={() => fetchResults(true)}
@@ -190,8 +192,8 @@ export default function ResultsPage() {
             <p className="text-sm text-gray-400 text-center py-8">No data yet</p>
           ) : data && !data.resultsAvailable ? (
             <div className="text-center py-8">
-              <p className="text-gray-900 font-semibold">{totalVotes} of {data.registeredVoters} registered voters have voted so far.</p>
-              <p className="text-sm text-gray-500 mt-1">Results per option are revealed when the voting period ends.</p>
+              <p className="text-gray-900 font-semibold">Results are not available yet.</p>
+              <p className="text-sm text-gray-500 mt-1">They are revealed when the voting period ends.</p>
             </div>
           ) : (
             <div className="space-y-4">

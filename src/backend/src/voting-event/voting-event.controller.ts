@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Patch, Body, Param, Query, Headers, UseGuards } from '@nestjs/common';
 import { VotingEventService } from './voting-event.service';
 import { AdminTokenGuard } from './admin-token.guard';
 
@@ -173,9 +173,10 @@ export class VotingEventController {
     return await this.votingEventService.getOnChainGroupRoot(eventId);
   }
 
+  // Turnout while voting is open is only returned with the event's admin token.
   @Get(':eventId/results')
-  async getResults(@Param('eventId') eventId: number) {
-    return await this.votingEventService.getResults(eventId);
+  async getResults(@Param('eventId') eventId: number, @Headers('x-admin-token') adminToken?: string) {
+    return await this.votingEventService.getResults(eventId, adminToken);
   }
 
   @Post(':eventId/save-blockchain-data')

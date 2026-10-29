@@ -756,7 +756,12 @@ export class VotingEventService {
         });
 
         const signedTx: string = await relayWallet.signTx(unsignedTx, false);
-        return await this._submitVote(signedTx, eventId, nullifier);
+        const result = await this._submitVote(signedTx, eventId, nullifier);
+        // Hold the per-event lock until this vote is on-chain and the new state UTxOs are
+        // visible to Blockfrost; otherwise the next vote is built on inputs this one spent
+        // and fails with "unknown transaction input" (F6).
+        await this.waitForVoteVisible(event, result.txHash);
+        return result;
       } catch (err: any) {
         // Roll back the nullifier on ANY failure (build, sign, or submit).
         // _submitVote already rolls back on Blockfrost failure — the second
@@ -767,6 +772,39 @@ export class VotingEventService {
         throw new HttpException(`Relay vote failed: ${err?.message ?? err}`, HttpStatus.INTERNAL_SERVER_ERROR);
       }
     });
+  }
+
+  // Polls Blockfrost until the tx is included and the Semaphore state UTxO it created is
+  // indexed. Gives up after the timeout (the next vote then retries on its own).
+  private async waitForVoteVisible(event: VotingEvent, txHash: string, timeoutMs = 180_000): Promise<void> {
+    const apiKey = this.configService.get<string>('BLOCKFROST_API_KEY') ?? '';
+    const network = this.configService.get<string>('BLOCKFROST_NETWORK') ?? 'preprod';
+    const base = `https://cardano-${network}.blockfrost.io/api/v0`;
+    const headers = { project_id: apiKey };
+    const started = Date.now();
+    let included = false;
+    while (Date.now() - started < timeoutMs) {
+      try {
+        if (!included) {
+          const tx = await fetch(`${base}/txs/${txHash}`, { headers });
+          if (tx.ok) included = true;
+        }
+        if (included) {
+          const res = await fetch(`${base}/addresses/${event.semaphoreAddress}/utxos`, { headers });
+          if (res.ok) {
+            const utxos: any[] = await res.json();
+            if (utxos.some(u => u.tx_hash === txHash)) {
+              console.log(`[relayVote] vote ${txHash} confirmed and indexed after ${Math.round((Date.now() - started) / 1000)}s`);
+              return;
+            }
+          }
+        }
+      } catch (e: any) {
+        console.warn('[relayVote] waitForVoteVisible poll failed:', e?.message ?? e);
+      }
+      await new Promise(r => setTimeout(r, 5_000));
+    }
+    console.warn(`[relayVote] vote ${txHash} not visible after ${timeoutMs / 1000}s — releasing the vote lock`);
   }
 
   // Check admin token for /manage access
@@ -1041,18 +1079,21 @@ export class VotingEventService {
   // voting period has ended (F9); while it is open, only the turnout is reported so that
   // interim results cannot influence later voters. (The tally is public on-chain anyway —
   // this is the application's behaviour, not a cryptographic guarantee.)
-  async getResults(eventId: number): Promise<{
+  // While voting is open, turnout (totalVotes / registeredVoters) is reported only to the
+  // organiser (valid admin token); voters and the public get null until the end.
+  async getResults(eventId: number, adminToken?: string): Promise<{
     status: 'not_deployed' | 'upcoming' | 'live' | 'ended';
     eventName: string;
     startingDate: number | null;
     endingDate: number | null;
-    registeredVoters: number;
-    totalVotes: number;
+    registeredVoters: number | null;
+    totalVotes: number | null;
     resultsAvailable: boolean;
     options: Array<{ index: number; text: string; votes: number }>;
   }> {
     const event = await this.votingEventRepository.findOne({ where: { eventId } });
     if (!event) throw new HttpException('Voting event not found', HttpStatus.NOT_FOUND);
+    const isOrganiser = !!adminToken && (await this.validateAdminToken(eventId, adminToken)).valid;
 
     const dbOptions: Array<{ index: number; text: string }> = JSON.parse(event.options ?? '[]');
     const emptyOptions = dbOptions.map(o => ({ ...o, votes: 0 }));
@@ -1065,7 +1106,8 @@ export class VotingEventService {
       : 'ended';
     const base = { status, eventName: event.eventName, startingDate: event.startingDate, endingDate: event.endingDate, registeredVoters } as const;
 
-    if (!deployed) return { ...base, totalVotes: 0, resultsAvailable: false, options: emptyOptions };
+    const hidden = { registeredVoters: null, totalVotes: null };
+    if (!deployed) return { ...base, ...(isOrganiser ? { totalVotes: 0 } : hidden), resultsAvailable: false, options: emptyOptions };
 
     const onChain = await this.fetchOnChainTally(event);
     const merged = dbOptions.map(opt => {
@@ -1074,7 +1116,7 @@ export class VotingEventService {
     });
     const totalVotes = merged.reduce((sum, o) => sum + o.votes, 0);
     if (status !== 'ended') {
-      return { ...base, totalVotes, resultsAvailable: false, options: emptyOptions };
+      return { ...base, ...(isOrganiser ? { totalVotes } : hidden), resultsAvailable: false, options: emptyOptions };
     }
     return { ...base, totalVotes, resultsAvailable: onChain !== null, options: merged };
   }

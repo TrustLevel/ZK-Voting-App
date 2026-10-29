@@ -459,7 +459,7 @@ export default function EventDashboard() {
   const loadResults = async () => {
     setLoadingResults(true);
     try {
-      const response = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/results`);
+      const response = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/results`, { headers: adminHeaders });
       if (!response.ok) throw new Error('Failed to load results');
       const data = await response.json();
       setResults(data.options);

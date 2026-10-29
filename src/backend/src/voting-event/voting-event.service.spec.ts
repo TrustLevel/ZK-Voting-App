@@ -125,15 +125,26 @@ describe('VotingEventService', () => {
       jest.spyOn(service as any, 'fetchOnChainTally').mockResolvedValue(tally);
     });
 
-    it('reports only the turnout while voting is open', async () => {
+    it('hides turnout and per-option counts from the public while voting is open', async () => {
       const now = Math.floor(Date.now() / 1000);
-      votingEventRepo.findOne.mockResolvedValue({ ...base, startingDate: now - 100, endingDate: now + 1000 } as unknown as VotingEvent);
+      votingEventRepo.findOne.mockResolvedValue({ ...base, adminToken: 'tok', startingDate: now - 100, endingDate: now + 1000 } as unknown as VotingEvent);
       const r = await service.getResults(1);
       expect(r.status).toBe('live');
+      expect(r.totalVotes).toBeNull();
+      expect(r.registeredVoters).toBeNull();
+      expect(r.resultsAvailable).toBe(false);
+      expect(r.options.map(o => o.votes)).toEqual([0, 0]);
+    });
+
+    it('reports the turnout to the organiser while voting is open', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      votingEventRepo.findOne.mockResolvedValue({ ...base, adminToken: 'tok', startingDate: now - 100, endingDate: now + 1000 } as unknown as VotingEvent);
+      const r = await service.getResults(1, 'tok');
       expect(r.totalVotes).toBe(4);
       expect(r.registeredVoters).toBe(2);
       expect(r.resultsAvailable).toBe(false);
-      expect(r.options.map(o => o.votes)).toEqual([0, 0]);
+      const wrong = await service.getResults(1, 'nope');
+      expect(wrong.totalVotes).toBeNull();
     });
 
     it('reveals per-option results after the end', async () => {
@@ -146,10 +157,11 @@ describe('VotingEventService', () => {
     });
 
     it('marks an event without contracts as not deployed', async () => {
-      votingEventRepo.findOne.mockResolvedValue({ ...base, votingNft: null, votingValidatorAddress: null } as unknown as VotingEvent);
+      votingEventRepo.findOne.mockResolvedValue({ ...base, adminToken: 'tok', votingNft: null, votingValidatorAddress: null } as unknown as VotingEvent);
       const r = await service.getResults(1);
       expect(r.status).toBe('not_deployed');
-      expect(r.totalVotes).toBe(0);
+      expect(r.totalVotes).toBeNull();
+      expect((await service.getResults(1, 'tok')).totalVotes).toBe(0);
     });
   });
 
