@@ -803,7 +803,7 @@ export class VotingEventService {
         // Hold the per-event lock until this vote is on-chain and the new state UTxOs are
         // visible to Blockfrost; otherwise the next vote is built on inputs this one spent
         // and fails with "unknown transaction input" (F6).
-        await this.waitForVoteVisible(event, result.txHash);
+        await this.waitForVoteVisible(event, result.txHash, relayWalletAddress);
         return result;
       } catch (err: any) {
         // Roll back the nullifier on ANY failure (build, sign, or submit).
@@ -819,7 +819,10 @@ export class VotingEventService {
 
   // Polls Blockfrost until the tx is included and the Semaphore state UTxO it created is
   // indexed. Gives up after the timeout (the next vote then retries on its own).
-  private async waitForVoteVisible(event: VotingEvent, txHash: string, timeoutMs = 180_000): Promise<void> {
+  // Both the Semaphore state UTxO AND the relay wallet's change output must be indexed: the
+  // index lags per address, and a vote built while the wallet still lists the inputs the
+  // previous vote spent fails with "unknown transaction input" (seen on Mainnet 2026-10-29).
+  private async waitForVoteVisible(event: VotingEvent, txHash: string, relayAddress?: string, timeoutMs = 180_000): Promise<void> {
     const { base, headers } = this.blockfrost(event.network ?? 'preprod');
     const started = Date.now();
     let included = false;
@@ -830,13 +833,16 @@ export class VotingEventService {
           if (tx.ok) included = true;
         }
         if (included) {
-          const res = await fetch(`${base}/addresses/${event.semaphoreAddress}/utxos`, { headers });
-          if (res.ok) {
+          const addresses = [event.semaphoreAddress, ...(relayAddress ? [relayAddress] : [])];
+          const seen = await Promise.all(addresses.map(async addr => {
+            const res = await fetch(`${base}/addresses/${addr}/utxos`, { headers });
+            if (!res.ok) return false;
             const utxos: any[] = await res.json();
-            if (utxos.some(u => u.tx_hash === txHash)) {
-              console.log(`[relayVote] vote ${txHash} confirmed and indexed after ${Math.round((Date.now() - started) / 1000)}s`);
-              return;
-            }
+            return utxos.some(u => u.tx_hash === txHash);
+          }));
+          if (seen.every(Boolean)) {
+            console.log(`[relayVote] vote ${txHash} confirmed and indexed after ${Math.round((Date.now() - started) / 1000)}s`);
+            return;
           }
         }
       } catch (e: any) {
