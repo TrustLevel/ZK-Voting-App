@@ -906,13 +906,16 @@ export default function EventPage() {
   };
 
   /**
-   * Format POSIX timestamp to UTC string
+   * Format POSIX timestamp in the voter's local time, with the time zone named
+   * so that nobody mistakes it for UTC (Dominik, 2026-10-29).
    */
   const formatDate = (timestamp: number | null) => {
     if (!timestamp) return 'Not set';
-    // Convert POSIX timestamp (seconds) to milliseconds and format as UTC
     const date = new Date(timestamp * 1000);
-    return date.toUTCString().replace('GMT', 'UTC');
+    return date.toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+    });
   };
 
   // --------------------------------------------------------------------------
