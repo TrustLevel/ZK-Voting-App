@@ -98,7 +98,7 @@ export default function Home() {
         <div className="flex min-w-0 flex-[1_1_520px] flex-col gap-6">
           <div className="inline-flex items-center gap-2.5 self-start rounded-full border border-brand-dark bg-[#FFF4D1] px-3.5 py-1.5 text-[13px] font-semibold tracking-wide">
             <span aria-hidden="true" className="h-2 w-2 rounded-full bg-brand" />
-            {mainnetEnabled ? 'LIVE ON CARDANO MAINNET · PREPROD TESTNET FOR TRIALS' : 'LIVE ON CARDANO PREPROD TESTNET'}
+            {mainnetEnabled ? 'LIVE ON CARDANO MAINNET' : 'LIVE ON CARDANO PREPROD TESTNET'}
           </div>
           <h1 className="text-5xl font-bold leading-[1.05] tracking-[-0.025em] text-ink md:text-6xl">
             Anonymous, <span className="rounded-[10px] bg-brand px-2.5 text-ink [box-decoration-break:clone]">verifiable</span> voting on Cardano
