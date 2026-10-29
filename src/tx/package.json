@@ -6,6 +6,7 @@
   "types": "dist/index.d.ts",
   "type": "module",
   "private": true,
+  "license": "Apache-2.0",
   "scripts": {
     "extract-validators": "tsx scripts/extract-validators.ts",
     "check-validators": "tsx scripts/check-validators-fresh.ts",

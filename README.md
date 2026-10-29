@@ -299,4 +299,24 @@ npm run build:force         # re-extract CBORs from plutus.json
 
 ---
 
+## Contributing and security
+
+Issues, pull requests, forks and reports from self-hosted instances are welcome; the
+procedure and the checks to run are in [CONTRIBUTING.md](CONTRIBUTING.md). Security problems
+go through GitHub's private vulnerability reporting, not through public issues: see
+[SECURITY.md](SECURITY.md).
+
+## Licence
+
+Copyright 2025-2026 TrustLevel. Licensed under the [Apache License 2.0](LICENSE); you may use,
+modify, self-host and redistribute the software under its terms. Contributions are accepted
+under the same licence.
+
+Third-party components keep their own licences: `aiken-lang/stdlib`, `aiken-lang/fuzz`,
+`modulo-p/cardano-semaphore` and `modulo-p/ak-381` (Apache-2.0),
+`aiken-lang/merkle-patricia-forestry` (MPL-2.0), and the npm packages listed in each module's
+`package.json`. The TrustLevel name and logo are not covered by the licence.
+
+---
+
 See each module's `DOCS.md` for full configuration and component details.
