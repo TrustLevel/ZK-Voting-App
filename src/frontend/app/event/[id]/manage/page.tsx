@@ -50,7 +50,7 @@ import {
 import { NetworkBadge } from '@/components/NetworkBadge';
 import { AppShell, PageIntro } from '@/components/AppShell';
 import { Button, LinkButton } from '@/components/Button';
-import { Card, CardHeader, CodeBox, DataRow, Notice } from '@/components/Card';
+import { CardHeader, CodeBox, DataRow, Notice } from '@/components/Card';
 import { FieldLabel, inputClass } from '@/components/Field';
 import { BoltIcon, ChartIcon, CheckIcon, ClockIcon, ExternalIcon, KeyIcon, MailIcon, PlusIcon, SlidersIcon, Spinner, TrashIcon, UsersIcon, WalletIcon } from '@/components/Icons';
 import { InfoButton } from '@/components/InfoButton';
@@ -1314,7 +1314,7 @@ export default function EventDashboard() {
       </Notice>
 
       {/* Setup Steps */}
-      <Card className="mb-6 !p-4 md:!p-5">
+      <div className="mb-6 rounded-2xl border border-line bg-[#fafafa] px-3 py-3 sm:px-6">
         <Steps<Tab>
           label="Setup steps"
           active={activeTab}
@@ -1326,13 +1326,13 @@ export default function EventDashboard() {
             { key: 'results', label: 'Voting Results', done: false },
           ]}
         />
-      </Card>
+      </div>
 
       {/* Tab Content */}
       <div>
         {/* Parameters Tab */}
         {activeTab === 'parameters' && (
-          <Card>
+          <section className="border-t border-line pt-7">
             <CardHeader
               icon={<SlidersIcon size={20} />}
               title="Voting Configuration"
@@ -1383,14 +1383,14 @@ export default function EventDashboard() {
                 ))}
               </div>
             </div>
-          </Card>
+          </section>
         )}
 
         {/* Participants Tab */}
         {activeTab === 'participants' && (
           <div>
             {/* Invite Participants */}
-            <Card className="mb-6">
+            <section className="mb-8 border-t border-line pt-7">
               <CardHeader
                 icon={<MailIcon size={20} />}
                 title="Invite Participants"
@@ -1412,7 +1412,7 @@ export default function EventDashboard() {
                   Add Participant
                 </Button>
               </div>
-            </Card>
+            </section>
 
             {/* Participants List */}
             {participants.length > 0 ? (
@@ -1670,14 +1670,14 @@ export default function EventDashboard() {
                       <div>
                         <div className="mb-1 font-semibold text-muted">Starting Date</div>
                         <div className="rounded-lg border border-line bg-[#fafafa] px-3 py-2">
-                          <div className="font-medium">{new Date(publishedData.startingDate * 1000).toUTCString().replace('GMT', 'UTC')}</div>
+                          <div className="font-medium">{new Date(publishedData.startingDate * 1000).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}</div>
                           <div className="mt-1 font-mono text-[10px] text-muted">POSIX: {publishedData.startingDate}</div>
                         </div>
                       </div>
                       <div>
                         <div className="mb-1 font-semibold text-muted">Ending Date</div>
                         <div className="rounded-lg border border-line bg-[#fafafa] px-3 py-2">
-                          <div className="font-medium">{new Date(publishedData.endingDate * 1000).toUTCString().replace('GMT', 'UTC')}</div>
+                          <div className="font-medium">{new Date(publishedData.endingDate * 1000).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}</div>
                           <div className="mt-1 font-mono text-[10px] text-muted">POSIX: {publishedData.endingDate}</div>
                         </div>
                       </div>
@@ -1722,7 +1722,7 @@ export default function EventDashboard() {
               <>
                 {/* Blockchain Transaction Details */}
                 {startDate && endDate && (
-                  <Card soft className="mb-6">
+                  <section className="mb-6 border-t border-line pt-7">
                     <CardHeader
                       icon={<BoltIcon size={20} />}
                       title="Preview: Blockchain Transaction Data"
@@ -1736,7 +1736,7 @@ export default function EventDashboard() {
                         <DataRow label="Wallet Address:" mono>{walletAddress.slice(0, 20)}...{walletAddress.slice(-10)}</DataRow>
                       )}
                     </div>
-                  </Card>
+                  </section>
                 )}
 
                 {/* Readiness checklist — testers asked to see who is still missing before publishing */}
@@ -1933,7 +1933,7 @@ export default function EventDashboard() {
             ) : (
               <>
                 {/* Voting Statistics */}
-                <Card className="mb-6">
+                <section className="mb-8 border-t border-line pt-7">
                   <CardHeader
                     icon={<ChartIcon size={20} />}
                     title="Voting Statistics"
@@ -1959,13 +1959,13 @@ export default function EventDashboard() {
                       </div>
                     </div>
                   </div>
-                </Card>
+                </section>
               </>
             )}
 
             {/* Voting Results - Only show if voting has ended */}
             {votingEnded && (
-              <Card className="mb-6">
+              <section className="mb-6 border-t border-line pt-7">
                 <CardHeader
                   icon={<ChartIcon size={20} />}
                   title="Results by Option"
@@ -2005,7 +2005,7 @@ export default function EventDashboard() {
                     })}
                   </div>
                 )}
-              </Card>
+              </section>
             )}
 
             {/* Blockchain Verification */}
