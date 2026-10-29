@@ -63,6 +63,12 @@ The system supports two voting modes:
 
 ---
 
+## Branches and releases
+
+- **`main`** is the canonical branch: the hosted application at vote.trustlevel.io is deployed from it, and all documentation links point at it.
+- **Tags** freeze the state submitted to Project Catalyst: **`v1.0`** = Milestone 4 (Mainnet and Preprod, audited contracts, relay voting). Evidence links in the submission documents use the tag, so they keep showing exactly what was reviewed.
+- **`preview`** is the staging branch for work in progress; feature branches are merged there first.
+
 ## Component Evidence Index
 
 The application is delivered as six components, each independently documented. The table below

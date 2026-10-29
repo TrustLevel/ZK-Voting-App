@@ -2,7 +2,7 @@
 
 **Project:** ZK Voting App — Cardano-based zero-knowledge anonymous voting (Catalyst project 1200252)
 **Milestone 4:** Testing and Advanced Development
-**Repository:** https://github.com/TrustLevel/ZK-Voting-App (branch `preview`)
+**Repository:** https://github.com/TrustLevel/ZK-Voting-App — submitted state frozen as tag `v1.0` (branch `main`)
 
 ---
 
@@ -13,9 +13,9 @@
 | Hosted frontend | https://vote.trustlevel.io |
 | Hosted backend API | https://api.vote.trustlevel.io |
 | Source (this milestone) | https://github.com/TrustLevel/ZK-Voting-App/tree/preview |
-| Audit report | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/audit/AUDIT.md |
-| User feedback | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/M4_USER_FEEDBACK.md |
-| Test report | https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/M4_TEST_REPORT.md |
+| Audit report | https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/audit/AUDIT.md |
+| User feedback | https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/M4_USER_FEEDBACK.md |
+| Test report | https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/M4_TEST_REPORT.md |
 | TrustLevel Gitbook | [ZK Voting App](https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app) · [Audit report](https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app/audit-report-milestone-4) · [User feedback](https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app/user-feedback-milestone-4) · [Test report](https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app/test-report-milestone-4) |
 
 The milestone's outputs, acceptance criteria and evidence are addressed one by one below.
@@ -32,13 +32,13 @@ questionnaire (reproduced verbatim) and the testers' own write-ups.
 
 **Evidence.**
 - Feedback document (who tested, what they said, what changed):
-  https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/M4_USER_FEEDBACK.md
-- Questionnaires: https://github.com/TrustLevel/ZK-Voting-App/tree/preview/docs/testing/interviews
+  https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/M4_USER_FEEDBACK.md
+- Questionnaires: https://github.com/TrustLevel/ZK-Voting-App/tree/v1.0/docs/testing/interviews
 - The testers' own test write-ups (scripted system test, live group test):
-  https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/interviews/VotingAppFeedback_Pumbi.md ·
-  https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/interviews/VotingAppFeedback_pinisch.md
+  https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/interviews/VotingAppFeedback_Pumbi.md ·
+  https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/interviews/VotingAppFeedback_pinisch.md
 - Regression run after the fixes (test report):
-  https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/M4_TEST_REPORT.md
+  https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/M4_TEST_REPORT.md
 
 ---
 
@@ -61,9 +61,9 @@ The audit records the status of the application-level findings at audit time (7 
 commit `b2a86a6`; the feedback document (§4) gives the status as deployed for this milestone.
 
 **Evidence.**
-- Audit report: https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/audit/AUDIT.md
+- Audit report: https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/audit/AUDIT.md
 - Upstream changes to the Semaphore library:
-  https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/audit/UPSTREAM_SEMAPHORE_CHANGES.md
+  https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/audit/UPSTREAM_SEMAPHORE_CHANGES.md
 
 ---
 
@@ -130,7 +130,7 @@ vote) and attack scenarios against the hardened endpoints.
 https://api.vote.trustlevel.io; voting window 05:52–07:07 UTC; 15 script-controlled voters (13
 registered before publishing, one late registrant, one no-show). All 26 verdicts passed. Full detail,
 timeline and on-chain state trace: test report
-(https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/testing/M4_TEST_REPORT.md).
+(https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/M4_TEST_REPORT.md).
 
 | Scenario | Expected | Result |
 |---|---|---|
@@ -182,8 +182,8 @@ that an unauthenticated nullifier insert or delete blocked legitimate votes (F2)
 |---|---|
 | Complete audit report published on the TrustLevel Gitbook | https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app/audit-report-milestone-4 |
 | User feedback published on the TrustLevel Gitbook | https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app/user-feedback-milestone-4 |
-| Updated smart contracts on GitHub | https://github.com/TrustLevel/ZK-Voting-App/tree/preview/src/on-chain |
-| Documentation of the protocol on GitHub | [README](https://github.com/TrustLevel/ZK-Voting-App/blob/preview/README.md) · [System design](https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/design/SYSTEM_DESIGN.md) · [Smart-contract specification](https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/design/SMART_CONTRACT_SPECIFICATION.md) · [Relay vote design](https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/design/RELAY_VOTE_DESIGN.md) · [On-chain docs](https://github.com/TrustLevel/ZK-Voting-App/blob/preview/src/on-chain/DOCS.md) · [Upstream Semaphore changes](https://github.com/TrustLevel/ZK-Voting-App/blob/preview/docs/audit/UPSTREAM_SEMAPHORE_CHANGES.md) |
+| Updated smart contracts on GitHub | https://github.com/TrustLevel/ZK-Voting-App/tree/v1.0/src/on-chain |
+| Documentation of the protocol on GitHub | [README](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/README.md) · [System design](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/design/SYSTEM_DESIGN.md) · [Smart-contract specification](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/design/SMART_CONTRACT_SPECIFICATION.md) · [Relay vote design](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/design/RELAY_VOTE_DESIGN.md) · [On-chain docs](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/src/on-chain/DOCS.md) · [Upstream Semaphore changes](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/audit/UPSTREAM_SEMAPHORE_CHANGES.md) |
 
 ---
 
