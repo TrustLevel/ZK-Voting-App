@@ -14,8 +14,8 @@ with their feedback:
 
 - the scripted system test by Talon (15 script-controlled voters, concurrency and attack
   scenarios): [interviews/VotingAppFeedback_Pumbi.md](interviews/VotingAppFeedback_Pumbi.md);
-- the live group test with five participants by pinisch:
-  [interviews/VotingAppFeedback_pinisch.md](interviews/VotingAppFeedback_pinisch.md).
+- the live group test with five participants by pinusch:
+  [interviews/VotingAppFeedback_pinusch.md](interviews/VotingAppFeedback_pinusch.md).
 
 The findings list with its current status is section 4 of [M4_USER_FEEDBACK.md](M4_USER_FEEDBACK.md).
 

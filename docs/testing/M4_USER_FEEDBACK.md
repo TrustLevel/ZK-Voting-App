@@ -18,12 +18,12 @@ feedback we received, who it came from, and what we changed in response. Items t
 | 1 | Rodrigo Oyarzún, CHIL Stake Pool | SPO, community voting | Organiser (created and ran an event) and voter, Eternl | [Questionnaire](interviews/VotingAppFeedback_Rodrigo.md) |
 | 2 | Sebastián Pabón, Gimbalabs | Developer, runs blockchain projects | Organiser and voter, Eternl | [Questionnaire](interviews/VotingAppFeedback_Sebastián.md) |
 | 3 | Talon (GitHub: Pumbbii) | Developer | Scripted system test against the hosted backend: 15 script-controlled voters, real registrations and on-chain votes, concurrency and attack scenarios. Produced the findings F0–F12. | [Test write-up and questionnaire](interviews/VotingAppFeedback_Pumbi.md) |
-| 4 | pinisch (GitHub: pinisch) | Community | Organised a live event with five participants who registered and voted from their browsers; 3 votes succeeded at first, 2 failed | [Test write-up and questionnaire](interviews/VotingAppFeedback_pinisch.md) |
+| 4 | pinusch (GitHub: pinusch) | Community | Organised a live event with five participants who registered and voted from their browsers; 3 votes succeeded at first, 2 failed | [Test write-up and questionnaire](interviews/VotingAppFeedback_pinusch.md) |
 | 5 | Independent reviewers (Catalyst milestone review of M3) | Milestone reviewers | Written review of the hosted application | — |
 
 All tests ran on 2026-10-05 against the Milestone 3 deployment, Rodrigo's and Sebastián's in the
 weeks around it. The testers' questionnaires and write-ups are in
-[`docs/testing/interviews/`](interviews/); Talon and pinisch add their questionnaire answers to
+[`docs/testing/interviews/`](interviews/); Talon and pinusch add their questionnaire answers to
 their files themselves.
 
 After the fixes, the project re-ran Talon's scripted scenarios on 2026-10-28 against the
@@ -77,7 +77,7 @@ scenarios. 12 of 15 votes were confirmed on-chain. The headline findings:
 The full list with severities is section 4; the run itself, with transaction hashes and the
 on-chain state trace, is in his [write-up](interviews/VotingAppFeedback_Pumbi.md).
 
-### pinisch (live group test, five participants, 2026-10-05)
+### pinusch (live group test, five participants, 2026-10-05)
 
 Three of five votes went through on the first try. Observations:
 
@@ -101,9 +101,9 @@ All four were addressed in the M3 resubmission and are included here for complet
 |---|---|---|
 | "Check the participants before sending" / "checklist of whom have registered" (Rodrigo) | New **"Before you publish"** box on the Start Voting step: invited / registered / still-pending counts, the list of pending participants, a refresh button, and an explicit note that publishing freezes the voter group. Publishing is **blocked while nobody has registered**. | `src/frontend/app/event/[id]/manage/page.tsx` |
 | "Make the route more explicit" (Rodrigo) / "show what is happening during wallet interactions" (Sebastián) | The publish box explains the two wallet signatures (Group NFT, then Semaphore + Voting NFTs) and the confirmation times before the organiser clicks; the minting progress (Step 1/2, Step 2/2) sits right under the Publish button. During the vote, every step shows a one-line explanation (proof is generated in the browser, identity never leaves the device, no wallet needed to submit). Every term on the organiser and voter pages has an info button that explains it in place. | manage page, `src/frontend/app/event/[id]/page.tsx`, `src/frontend/components/infoTexts.ts` |
-| "Seeing from the administrator side how the voting goes" (Rodrigo) + interim results visible (pinisch, #2; Talon, F9) | While voting is open the organiser dashboard shows **turnout only** ("X of N registered voters"); voters and the public results page see neither counts nor turnout until the end date. Enforced in the backend, not just hidden in the UI. | `getResults` in `src/backend/src/voting-event/voting-event.service.ts`; organiser, voter and public results pages |
-| "Didn't get too much success while casting the votes" (Sebastián) + the failures in pinisch's live test + Talon's F0/F7/F11 | Root causes fixed: the nullifier-trie bug that broke every vote after one rolled-back attempt (F0), lost registrations under concurrency (F7), start-event failure between the two mint transactions (F11). Vote collisions (F6): votes are serialised in the backend and a losing vote is rolled back automatically, so the voter can simply retry; the fix for the remaining retry is deployed, verification pending (see §4). | backend, see the audit's F-APP findings |
-| Misleading "Insufficient funds" (pinisch, #1; Talon, F10) | Error classification reordered: a pending-input conflict now says *"Another vote is still being confirmed on the blockchain … please try again in a few minutes"*; fee problems are attributed to the service wallet, not the voter. | `classifySubmissionError` in the vote page |
+| "Seeing from the administrator side how the voting goes" (Rodrigo) + interim results visible (pinusch, #2; Talon, F9) | While voting is open the organiser dashboard shows **turnout only** ("X of N registered voters"); voters and the public results page see neither counts nor turnout until the end date. Enforced in the backend, not just hidden in the UI. | `getResults` in `src/backend/src/voting-event/voting-event.service.ts`; organiser, voter and public results pages |
+| "Didn't get too much success while casting the votes" (Sebastián) + the failures in pinusch's live test + Talon's F0/F7/F11 | Root causes fixed: the nullifier-trie bug that broke every vote after one rolled-back attempt (F0), lost registrations under concurrency (F7), start-event failure between the two mint transactions (F11). Vote collisions (F6): votes are serialised in the backend and a losing vote is rolled back automatically, so the voter can simply retry; the fix for the remaining retry is deployed, verification pending (see §4). | backend, see the audit's F-APP findings |
+| Misleading "Insufficient funds" (pinusch, #1; Talon, F10) | Error classification reordered: a pending-input conflict now says *"Another vote is still being confirmed on the blockchain … please try again in a few minutes"*; fee problems are attributed to the service wallet, not the voter. | `classifySubmissionError` in the vote page |
 | "Moment of anxiety when it mints two tokens" (Sebastián) | Explained up front (see above); the mint flow keeps its step indicator. | manage page |
 | Leaked admin data and open nullifier endpoints (Talon, F1/F2) | Public projection of the event without token, e-mails and commitment map; every organiser route behind the admin token; the nullifier is written only by the relay after the proof is verified server-side. | `admin-token.guard.ts`, `relayVote` |
 | "Next iteration: automated sign up" (Rodrigo) | **Not changed.** Registration is deliberately a voter-side action: the Semaphore identity is generated in the voter's browser and only the commitment is sent, so nobody else can register on a voter's behalf. The registration step explains this and hands the voter their identity file. | — |

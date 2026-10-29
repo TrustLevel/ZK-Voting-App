@@ -5,9 +5,9 @@
 
 ### Tester Information
 
-**Name:** pinisch
+**Name:** pinusch
 
-**GitHub:** pinisch
+**GitHub:** pinusch
 
 **Organization:**
 
