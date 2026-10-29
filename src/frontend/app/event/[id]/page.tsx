@@ -463,8 +463,10 @@ export default function EventPage() {
     if (status === 402) {
       return 'The organiser\'s fee budget for this event is used up, so no more votes can be recorded. Please contact the event organiser — nothing is required from you.';
     }
-    if (raw.includes('BadInputs') || raw.includes('UtxoFailure') || raw.includes('All inputs are spent')) {
-      return 'Another vote is still being confirmed on the blockchain. Please wait about a minute and try again — your vote was not counted yet.';
+    if (raw.includes('BadInputs') || raw.includes('UtxoFailure') || raw.includes('All inputs are spent') ||
+        raw.includes('Unknown transaction input') || raw.includes('missing from UTxO set') ||
+        raw.includes('CannotCreateEvaluationContext') || raw.includes('extraRedeemers')) {
+      return 'Another vote is still being confirmed on the blockchain. Your vote was not counted yet — please try again in a few minutes.';
     }
     if (raw.includes('OutsideValidityInterval') || raw.includes('ValidityInterval')) {
       return 'The voting period is not open right now (it has either not started or already ended).';
@@ -479,7 +481,7 @@ export default function EventPage() {
     if (process.env.NODE_ENV === 'development') {
       return `Blockchain rejection — raw error: ${raw}`;
     }
-    return 'The vote was rejected by the blockchain. Please try again or contact the event organiser.';
+    return 'The vote could not be recorded. Please try again in a few minutes.';
   };
 
   /**
