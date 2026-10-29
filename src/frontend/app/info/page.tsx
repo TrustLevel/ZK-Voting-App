@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { Spinner } from '@/components/Icons';
 
-const DOCS_URL = 'https://trustlevel.gitbook.io/knowledge-base/tools-and-apps/zk-voting-app';
+const DOCS_URL = 'https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app';
 
 /**
  * INFO PAGE - Redirect to GitBook Documentation

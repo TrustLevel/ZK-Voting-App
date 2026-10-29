@@ -368,8 +368,9 @@ export default function EventDashboard() {
    * Backend: GET /voting-event/:eventId/invited and /voting-event/:eventId/participants
    */
   useEffect(() => {
-    // The Start Voting tab shows the readiness checklist, so it needs the list too.
-    if ((activeTab === 'participants' || activeTab === 'start') && createdEvent) {
+    // The Start Voting tab shows the readiness checklist and the Results tab the
+    // registered-voter count, so both need the list too.
+    if ((activeTab === 'participants' || activeTab === 'start' || activeTab === 'results') && createdEvent) {
       loadParticipants();
     }
   }, [activeTab, createdEvent?.eventId]);
