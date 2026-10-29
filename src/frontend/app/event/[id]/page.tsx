@@ -31,7 +31,8 @@ import { LinkBox } from '@/components/LinkBox';
 import { formatLocalDateTime } from '@/lib/format';
 import { AppShell, PageIntro } from '@/components/AppShell';
 import { Button, buttonClass } from '@/components/Button';
-import { CardHeader, DataRow, Notice } from '@/components/Card';
+import { CardHeader, Notice } from '@/components/Card';
+import { EventFacts, eventPhase } from '@/components/EventFacts';
 import { AlertIcon, BallotIcon, ChartIcon, CheckIcon, ClockIcon, ExternalIcon, KeyIcon, LinkIcon, PlusIcon, Spinner, UploadIcon } from '@/components/Icons';
 import { InfoButton } from '@/components/InfoButton';
 import { INFO } from '@/components/infoTexts';
@@ -943,7 +944,6 @@ export default function EventPage() {
   }
 
   const isSimpleVote = event.votingPower === 1;
-  const votingEnded = !!event.endingDate && Date.now() > event.endingDate * 1000;
 
   // Show error page if token is invalid
   if (tokenError) {
@@ -963,11 +963,15 @@ export default function EventPage() {
   return (
     <AppShell aside={<NetworkBadge network={asNetwork(event.network)} />}>
       {/* Header with Event Info */}
-      <PageIntro
-        eyebrow="VOTING EVENT"
-        title={event.eventName}
-        lede={`${formatDate(event.startingDate)} - ${formatDate(event.endingDate)}`}
+      <PageIntro eyebrow="VOTING EVENT" title={event.eventName} className="mb-5" />
+
+      {/* Period, type and status at a glance */}
+      <EventFacts
         className="mb-6"
+        startingDate={event.startingDate}
+        endingDate={event.endingDate}
+        votingPower={event.votingPower}
+        phase={eventPhase(event.startingDate, event.endingDate, !!event.votingNft)}
       />
 
       {/* Event Access Link */}
@@ -1345,18 +1349,6 @@ export default function EventPage() {
         {/* Results Tab */}
         {activeTab === 'results' && (
           <div>
-            {/* Voting Status */}
-            <section className="mb-8 border-t border-line pt-7">
-              <CardHeader
-                icon={votingEnded ? <CheckIcon size={20} /> : <ClockIcon size={20} />}
-                title={votingEnded ? 'Voting Ended' : 'Event Status'}
-                info={!votingEnded ? <InfoButton text={INFO.resultsTiming} /> : undefined}
-                className="mb-2"
-              />
-              <DataRow label="Voting Period:">{formatDate(event.startingDate)} - {formatDate(event.endingDate)}</DataRow>
-              <DataRow label="Voting Type:">{isSimpleVote ? 'Simple Vote' : `Weighted (${event.votingPower} points)`}</DataRow>
-            </section>
-
             {/* Results */}
             <section className="border-t border-line pt-7">
               <CardHeader
@@ -1399,7 +1391,7 @@ export default function EventPage() {
                         percent={totalVotes > 0 ? Number(percentage) : 0}
                         value={
                           <>
-                            <div className="font-bold tabular-nums text-ink">{option.votes || 0} vote{(option.votes || 0) !== 1 ? 's' : ''}</div>
+                            <div className="font-bold tabular-nums text-ink">{option.votes || 0} {isSimpleVote ? 'vote' : 'point'}{(option.votes || 0) !== 1 ? 's' : ''}</div>
                             <div className="text-sm font-normal tabular-nums text-muted">{percentage}%</div>
                           </>
                         }

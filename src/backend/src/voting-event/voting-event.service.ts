@@ -1252,14 +1252,19 @@ export class VotingEventService {
   // this is the application's behaviour, not a cryptographic guarantee.)
   // While voting is open, turnout (totalVotes / registeredVoters) is reported only to the
   // organiser (valid admin token); voters and the public get null until the end.
+  // The on-chain tally counts points: in a weighted event every ballot distributes exactly
+  // `votingPower` points (check_weight), so totalVotes = points / votingPower is the number
+  // of ballots cast; options[].votes and totalPoints stay in points.
   async getResults(eventId: number, adminToken?: string): Promise<{
     status: 'not_deployed' | 'upcoming' | 'live' | 'ended';
     eventName: string;
     network: CardanoNetwork;
     startingDate: number | null;
     endingDate: number | null;
+    votingPower: number;
     registeredVoters: number | null;
     totalVotes: number | null;
+    totalPoints: number | null;
     resultsAvailable: boolean;
     options: Array<{ index: number; text: string; votes: number }>;
   }> {
@@ -1276,21 +1281,23 @@ export class VotingEventService {
       : event.startingDate && now < event.startingDate ? 'upcoming'
       : event.endingDate && now < event.endingDate ? 'live'
       : 'ended';
-    const base = { status, eventName: event.eventName, network: (event.network ?? 'preprod') as CardanoNetwork, startingDate: event.startingDate, endingDate: event.endingDate, registeredVoters } as const;
+    const votingPower = Math.max(1, Number(event.votingPower) || 1);
+    const base = { status, eventName: event.eventName, network: (event.network ?? 'preprod') as CardanoNetwork, startingDate: event.startingDate, endingDate: event.endingDate, votingPower, registeredVoters } as const;
 
-    const hidden = { registeredVoters: null, totalVotes: null };
-    if (!deployed) return { ...base, ...(isOrganiser ? { totalVotes: 0 } : hidden), resultsAvailable: false, options: emptyOptions };
+    const hidden = { registeredVoters: null, totalVotes: null, totalPoints: null };
+    if (!deployed) return { ...base, ...(isOrganiser ? { totalVotes: 0, totalPoints: 0 } : hidden), resultsAvailable: false, options: emptyOptions };
 
     const onChain = await this.fetchOnChainTally(event);
     const merged = dbOptions.map(opt => {
       const hit = onChain?.find(([idx]) => idx === opt.index);
       return { index: opt.index, text: opt.text, votes: hit ? hit[1] : 0 };
     });
-    const totalVotes = merged.reduce((sum, o) => sum + o.votes, 0);
+    const totalPoints = merged.reduce((sum, o) => sum + o.votes, 0);
+    const totalVotes = Math.floor(totalPoints / votingPower);
     if (status !== 'ended') {
-      return { ...base, ...(isOrganiser ? { totalVotes } : hidden), resultsAvailable: false, options: emptyOptions };
+      return { ...base, ...(isOrganiser ? { totalVotes, totalPoints } : hidden), resultsAvailable: false, options: emptyOptions };
     }
-    return { ...base, totalVotes, resultsAvailable: onChain !== null, options: merged };
+    return { ...base, totalVotes, totalPoints, resultsAvailable: onChain !== null, options: merged };
   }
 
   // Reads the UrnaDatum tally from the Voting UTxO; null when it cannot be read.

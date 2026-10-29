@@ -1732,9 +1732,9 @@ export default function EventDashboard() {
                       </div>
                     </div>
                     <div className="rounded-xl border border-line bg-[#fafafa] px-4 py-3">
-                      <div className="text-xs text-muted">Total Votes</div>
+                      <div className="text-xs text-muted">Votes Cast</div>
                       <div className="mt-1 text-2xl font-bold tabular-nums text-ink">
-                        {results ? results.reduce((sum, opt) => sum + (opt.votes || 0), 0) : '—'}
+                        {resultsMeta ? resultsMeta.totalVotes : '—'}
                       </div>
                     </div>
                     <div className="rounded-xl border border-line bg-[#fafafa] px-4 py-3">

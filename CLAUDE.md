@@ -166,7 +166,8 @@ The `VotingEvent` entity (`voting-event.entity.ts`) is the central DB record. It
   at least the missing amount to the relay address and books it as the event's budget (404 while the
   tx is not indexed yet, 409 if the hash was used before). Decision: the deposit is the cost of the
   event, no refund of an unused remainder.
-- `GET /:eventId/results` — status, turnout, registered voters; per-option counts only after `endingDate`
+- `GET /:eventId/results` — status, `votingPower`, turnout (`totalVotes` = ballots cast, `totalPoints` = sum of the
+  on-chain tally; identical in a simple vote), registered voters; per-option counts (points) only after `endingDate`
 - `DELETE /:eventId/nullifier` — admin-only rollback (header `x-admin-token`)
 - Organiser transactions (admin, `OrganiserTxService`) — the browser never talks to Blockfrost:
   - `POST /:eventId/build-group-mint-tx` — body `{ walletAddress, walletUtxos }` (as the CIP-30

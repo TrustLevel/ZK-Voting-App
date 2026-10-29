@@ -29,8 +29,10 @@ interface ResultsData {
   network?: 'mainnet' | 'preprod';
   startingDate: number | null;
   endingDate: number | null;
+  votingPower: number;             // 1 = simple vote; > 1 = points each voter distributes
   registeredVoters: number | null; // null while voting is open (organiser-only)
-  totalVotes: number | null;
+  totalVotes: number | null;       // ballots cast
+  totalPoints: number | null;      // sum of options[].votes (equals totalVotes in a simple vote)
   resultsAvailable: boolean; // per-option counts are only revealed after the end
   options: ResultOption[];
 }
@@ -77,7 +79,10 @@ export default function ResultsPage() {
     return () => clearInterval(id);
   }, [data?.status, fetchResults]);
 
+  const weighted = (data?.votingPower ?? 1) > 1;
   const totalVotes = data?.totalVotes ?? 0;
+  const totalPoints = data?.totalPoints ?? data?.options.reduce((sum, o) => sum + o.votes, 0) ?? 0;
+  const unit = (n: number) => (weighted ? `${n} point${n !== 1 ? 's' : ''}` : `${n} vote${n !== 1 ? 's' : ''}`);
   const sorted = data ? [...data.options].sort((a, b) => b.votes - a.votes) : [];
 
   if (loading) {
@@ -160,7 +165,7 @@ export default function ResultsPage() {
           icon={<ChartIcon size={20} />}
           title="Results by option"
           info={<InfoButton text={data?.resultsAvailable ? INFO.onChainResults : INFO.resultsTiming} />}
-          description={data?.resultsAvailable ? `${totalVotes} total vote${totalVotes !== 1 ? 's' : ''}` : undefined}
+          description={data?.resultsAvailable ? (weighted ? `${totalVotes} voter${totalVotes !== 1 ? 's' : ''} · ${totalPoints} points distributed` : `${totalVotes} total vote${totalVotes !== 1 ? 's' : ''}`) : undefined}
           action={
             <Button variant="outline" size="sm" onClick={() => fetchResults(true)} disabled={refreshing}>
               {refreshing ? <Spinner size={16} /> : <RefreshIcon size={16} />}
@@ -179,7 +184,7 @@ export default function ResultsPage() {
         ) : (
           <div className="space-y-3">
             {sorted.map((opt, rank) => {
-              const pct = totalVotes > 0 ? Math.round((opt.votes / totalVotes) * 100) : 0;
+              const pct = totalPoints > 0 ? Math.round((opt.votes / totalPoints) * 100) : 0;
               const isWinner = rank === 0 && opt.votes > 0 && data?.status === 'ended';
               return (
                 <ResultRow
@@ -188,7 +193,7 @@ export default function ResultsPage() {
                   text={opt.text}
                   percent={pct}
                   highlight={isWinner}
-                  value={<span className="tabular-nums">{opt.votes} vote{opt.votes !== 1 ? 's' : ''} · {pct}%</span>}
+                  value={<span className="tabular-nums">{unit(opt.votes)} · {pct}%</span>}
                 />
               );
             })}

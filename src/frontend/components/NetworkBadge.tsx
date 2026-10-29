@@ -18,7 +18,7 @@ export function NetworkBadge({ network, className = '' }: { network: CardanoNetw
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-semibold whitespace-nowrap ${style} ${className}`}
     >
       <span className={`w-1.5 h-1.5 rounded-full ${network === 'mainnet' ? 'bg-amber-500' : 'bg-gray-400'}`} />
-      {NETWORK_LABEL[network]}
+      Cardano {NETWORK_LABEL[network]}
     </span>
   );
 }

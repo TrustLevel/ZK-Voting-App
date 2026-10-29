@@ -405,6 +405,21 @@ describe('VotingEventService', () => {
       expect(wrong.totalVotes).toBeNull();
     });
 
+    it('counts ballots, not points, as turnout in a weighted event', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      jest.spyOn(service as any, 'fetchOnChainTally').mockResolvedValue([[0, 150], [1, 50]]);
+      votingEventRepo.findOne.mockResolvedValue({ ...base, adminToken: 'tok', votingPower: 100, startingDate: now - 100, endingDate: now + 1000 } as unknown as VotingEvent);
+      const live = await service.getResults(1, 'tok');
+      expect(live.votingPower).toBe(100);
+      expect(live.totalVotes).toBe(2);
+      expect(live.totalPoints).toBe(200);
+      expect((await service.getResults(1)).totalPoints).toBeNull();
+      votingEventRepo.findOne.mockResolvedValue({ ...base, votingPower: 100, startingDate: now - 1000, endingDate: now - 10 } as unknown as VotingEvent);
+      const ended = await service.getResults(1);
+      expect(ended.totalVotes).toBe(2);
+      expect(ended.options.map(o => o.votes)).toEqual([150, 50]);
+    });
+
     it('reveals per-option results after the end', async () => {
       const now = Math.floor(Date.now() / 1000);
       votingEventRepo.findOne.mockResolvedValue({ ...base, startingDate: now - 1000, endingDate: now - 10 } as unknown as VotingEvent);
