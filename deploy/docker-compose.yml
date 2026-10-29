@@ -1,4 +1,4 @@
-# ZK-Voting-App — preview branch deploy (Cardano preprod, Catalyst milestone).
+# ZK-Voting-App — preview branch deploy (Cardano Preprod + Mainnet side by side).
 # Single VPS: Caddy (auto-HTTPS) reverse-proxies the frontend + backend; both
 # stateful stores (SQLite + LevelDB nullifier trie) live on named volumes.
 #
@@ -19,12 +19,12 @@ services:
     # 2026-06-24 miner ran with no limit and OOM-starved the co-located motti/
     # whisper services). Backend is a light NestJS process — 1g is ample.
     mem_limit: 1g
-    # Loads ./.env (BLOCKFROST_API_KEY, JWT_SECRET, RESEND_*, etc.) into the container.
+    # Loads ./.env (BLOCKFROST_API_KEY[_MAINNET], RELAY_WALLET_MNEMONIC[_MAINNET],
+    # VKEY_REF_MAINNET, FEE_DEPOSIT_NETWORKS, JWT_SECRET, RESEND_*, etc.) into the container.
     env_file: .env
     environment:
       # Authoritative values — override anything in .env so the deploy stays consistent.
       PORT: 3001                              # NOT 3000 (CLAUDE.md is outdated)
-      BLOCKFROST_NETWORK: preprod
       DB_SYNCHRONIZE: "true"                  # opt-in TypeORM schema sync (no migrations in this POC)
       DATABASE_PATH: db/voting-app.db
       CORS_ORIGIN: "https://${DOMAIN}"        # must equal the deployed frontend origin
@@ -45,6 +45,7 @@ services:
         # Changing these requires a rebuild (`up -d --build`), not just a restart.
         NEXT_PUBLIC_BACKEND_API_URL: "https://${API_DOMAIN}"
         NEXT_PUBLIC_BLOCKFROST_API_KEY: "${NEXT_PUBLIC_BLOCKFROST_API_KEY}"
+        NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: "${NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET:-}"
     restart: unless-stopped
     # Cap RAM (see backend note). This is the public-facing surface that was
     # exploited in 2026-06-24 — the limit is the safety net against a repeat

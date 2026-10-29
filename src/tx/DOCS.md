@@ -59,7 +59,8 @@ The most complex transaction builder — assembles the complete vote transaction
 - Fetches the live **Semaphore UTxO** and **Voting UTxO** from the chain internally using the provided `BlockfrostProvider`.
 - Re-derives the parameterised validator CBORs from `mintingOrefTxHash` / `mintingOrefIndex` via `applyOrefParamToScript()`.
 - Constructs the `Signal` redeemer with the ZK proof, MPF proof steps, nullifier, signal hash, and signal message.
-- Attaches the **VKey UTxO** as a hardcoded read-only reference input (constants `VKEY_REF_TX_HASH` / `VKEY_REF_OUTPUT_INDEX`) — never fetched, never consumed.
+- Attaches the **VKey UTxO** of the network as a read-only reference input (`params.vkeyRef`, default `VKEY_REF[network]` from `src/network.ts`) — never fetched, never consumed.
+- `params.network` (`'mainnet' | 'preprod'`, default `preprod`) selects the MeshSDK network, the Shelley slot config for the validity interval (`posixMsToSlot`) and the default VKey UTxO. All mint and update builders take the same `network` parameter.
 - Outputs the updated `SemaphoreDatum` (new MPF root) and `UrnaDatum` (incremented vote tally).
 
 Returns an unsigned transaction hex string ready for CIP-30 signing.

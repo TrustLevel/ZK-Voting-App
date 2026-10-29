@@ -5,7 +5,9 @@ invite participants, publish it to the Cardano blockchain, and read the results.
 the hosted application at https://vote.trustlevel.io step by step, using the labels you will
 see on screen.
 
-The application runs on the **Cardano Preprod testnet**. No real money is involved.
+The application runs on the **Cardano Preprod testnet** and on **Cardano Mainnet**. You choose
+the network when you create the event. On Preprod no real money is involved; on Mainnet you pay
+real ADA for publishing and prepay your voters' transaction fees (see *Mainnet events* below).
 
 Companion guide for your participants: [Voter guide](VOTER_GUIDE.md).
 
@@ -17,18 +19,33 @@ You need four things:
 
 1. **A browser with a Cardano wallet extension.** Eternl, Lace or Yoroi. Eternl is the wallet
    all testers used so far.
-2. **The wallet switched to the Preprod network.** In Eternl: Settings, Network, Preprod.
-   A wallet on Mainnet will not work with this application.
-3. **Free test ADA in that wallet.** Request it from the
+2. **The wallet switched to the network of your event.** For a Preprod event, in Eternl:
+   Settings, Network, Preprod. For a Mainnet event, Mainnet. The application refuses a wallet
+   on the wrong network when you send the deposit or publish.
+3. **ADA in that wallet.** Preprod: request free test ADA from the
    [Cardano testnet faucet](https://docs.cardano.org/cardano-testnets/tools/faucet) with your
-   Preprod address. Publishing an event sends two transactions. The wallet must hold one
-   plain-ADA UTxO of at least 5 ADA (used as collateral) plus the fees for both transactions.
-   Requesting the faucet's default amount once is enough.
+   Preprod address; the faucet's default amount once is enough. Mainnet: about 25 ADA plus the
+   fee deposit (1.3 ADA per registered voter). Publishing sends two transactions; the wallet
+   must hold one plain-ADA UTxO of at least 5 ADA (used as collateral) plus the fees for both.
 4. **The e-mail addresses of your participants.** Each participant receives a personal
    invitation link by e-mail.
 
-Your participants need **no wallet and no test ADA**. They only need the invitation link and a
-browser.
+Your participants need **no wallet and no ADA** on either network. They only need the
+invitation link and a browser.
+
+### Mainnet events
+
+- The choice of network is made on the create form and **cannot be changed afterwards**; every
+  page shows a **Mainnet** or **Preprod testnet** badge next to the event name.
+- Publishing locks 5 ADA in each of the three event contracts (15 ADA stay there) and costs
+  about 1.5 ADA in fees.
+- Before you can publish, the Start Voting tab asks for a **fee deposit** of
+  **1.3 ADA per registered voter**, sent from your wallet to the voting service. It covers your
+  voters' transaction fees and is the cost of running the event; **any unused remainder is not
+  refunded**. If more participants register after the deposit, the tab shows the missing amount
+  and lets you top it up.
+- Mainnet must be enabled by the operator of the instance; if it is greyed out on the create
+  form, the instance serves Preprod only.
 
 `[screenshot: Eternl settings with the Preprod network selected]`
 
@@ -125,6 +142,12 @@ Open the tab **Start Voting** when you want to publish. The page shows:
   **Refresh** button, and the folded list **Who is still pending**. The box explains:
   *Publishing freezes the voter group on-chain. Only participants who have registered by now
   can vote.* Anyone still pending will not be able to vote, even if they register later.
+  On Mainnet it also states the real-ADA costs.
+- **Fee deposit** (Mainnet events only): *Fee deposit: N ADA (registered voters × 1.3 ADA).
+  This covers your voters' transaction fees and is the cost of running this event; any unused
+  remainder is not refunded.* Click **Send fee deposit**, confirm the amount, sign in your
+  wallet, and wait until the box turns green (*Funded*). The deposit is verified on the
+  blockchain by the service; this takes about a minute.
 - **What happens when you click Publish**: your wallet asks for two signatures, first the
   **Group NFT** that carries the registered voter list, then the **Semaphore + Voting NFTs**
   that hold the ballot. Each needs one to two minutes to confirm.
@@ -132,7 +155,8 @@ Open the tab **Start Voting** when you want to publish. The page shows:
   in a fresh browser session.
 
 The button **Publish Voting Event to Blockchain** stays disabled until the dates are set, the
-wallet is connected and **at least one participant has registered**. If nobody has registered
+wallet is connected, **at least one participant has registered** and, on Mainnet, the fee
+deposit is funded. If nobody has registered
 yet, the red line *No participant has registered yet. Send the invitations and wait until at
 least one participant has registered.* tells you so.
 
@@ -159,7 +183,7 @@ Participants who open their link see the vote as soon as the start time is reach
 
 If something fails, a browser message *Failed to start voting event* shows the reason, and the
 status card returns to its initial state. If you rejected the first signature, nothing has been
-published; fix the cause (usually wallet or test ADA) and click Publish again. If the failure
+published; fix the cause (usually the wallet, its network, or missing ADA) and click Publish again. If the failure
 happened after the first transaction was already confirmed, do not simply retry: note the
 error and contact the operator of the instance, because a retry would start a new set of
 transactions.

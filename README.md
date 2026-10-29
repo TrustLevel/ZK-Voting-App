@@ -235,7 +235,8 @@ npm run build:force     # re-extracts validator CBORs from plutus.json
    | Variable | Value |
    |---|---|
    | `NEXT_PUBLIC_BACKEND_API_URL` | URL of the deployed backend, e.g. `https://api.yourdomain.com` |
-   | `NEXT_PUBLIC_BLOCKFROST_API_KEY` | Blockfrost project ID (Preprod or Mainnet) |
+   | `NEXT_PUBLIC_BLOCKFROST_API_KEY` | Blockfrost project ID for Preprod (organiser publish flow) |
+   | `NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET` | Blockfrost project ID for Mainnet (only if the backend enables Mainnet) |
 
 4. Deploy — Vercel detects Next.js automatically and handles the build.
 
@@ -255,7 +256,12 @@ Set the same variables as `.env.example`. For production, pay attention to:
 | `CORS_ORIGIN` | Must match the deployed frontend URL exactly |
 | `DATABASE_PATH` | Point to a path on a **persistent volume** |
 | `JWT_SECRET` | Cryptographically random value, ≥ 32 bytes |
-| `BLOCKFROST_NETWORK` | `preprod` for Preprod Testnet, `mainnet` for Mainnet |
+| `BLOCKFROST_API_KEY` / `BLOCKFROST_API_KEY_MAINNET` | One Blockfrost key per network; a network without key, relay wallet and VKey UTxO is not offered to organisers |
+| `RELAY_WALLET_MNEMONIC` / `RELAY_WALLET_MNEMONIC_MAINNET` | Relay wallet per network (Mainnet: separate hot wallet, see `docs/MAINNET_SETUP.md`) |
+| `VKEY_REF_MAINNET` | `<txhash>#<index>` of the Mainnet VKey UTxO, deployed once |
+
+The network (Preprod or Mainnet) is chosen per event by the organiser; one backend serves both.
+Mainnet one-off steps: [docs/MAINNET_SETUP.md](docs/MAINNET_SETUP.md).
 
 **Persistent storage requirements**
 
@@ -264,9 +270,9 @@ Two directories must be on a persistent volume:
 - `DATABASE_PATH` — SQLite database (default `db/voting-app.db`). Create `db/` in advance.
 - `nullifiers-db/` — LevelDB store for nullifier tries, relative to the backend working directory. This directory is created automatically on first use but must survive restarts and redeployments.
 
-### Smart contracts — already deployed on Preprod Testnet
+### Smart contracts — no deployment step
 
-The Aiken validators are pre-compiled and their CBORs are embedded in `src/tx/src/validators.ts`. No on-chain deployment step is needed to run the application — each new voting event mints its own set of NFTs using these validators.
+The Aiken validators are pre-compiled and their CBORs are embedded in `src/tx/src/validators.ts`. They are network-independent: each new voting event mints its own set of NFTs using these validators on the event's network. The only per-network one-off is the VKey reference UTxO (Preprod: already deployed; Mainnet: `docs/MAINNET_SETUP.md`).
 
 To redeploy contracts after code changes:
 

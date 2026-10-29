@@ -128,6 +128,11 @@ Key modules: `AuthModule`, `UsersModule`, `VotingEventModule`
 
 The `VotingEvent` entity (`voting-event.entity.ts`) is the central DB record. It stores:
 - Event metadata (name, dates, options)
+- `network` — `'mainnet' | 'preprod'`, chosen at creation and immutable; every Blockfrost call,
+  the relay wallet, the VKey reference UTxO and every tx builder for the event follow it
+  (`NetworkConfig` in `src/backend/src/network/`). Existing rows default to `preprod`.
+- `feeDepositTxHash` / `feeBudgetLovelace` / `feeSpentLovelace` — the organiser's prepaid vote-fee
+  budget on fee-deposit networks (Mainnet by default, `FEE_DEPOSIT_NETWORKS`)
 - Group NFT / Semaphore NFT / Voting NFT policy IDs and addresses
 - Off-chain Merkle tree state (`groupMerkleRootHash`, `groupLeafCommitments`)
 - Nullifier tracking (`nullifierMerkleTree`, `nullifierLeafCommitments`)
@@ -142,13 +147,25 @@ The `VotingEvent` entity (`voting-event.entity.ts`) is the central DB record. It
 
 **Key API endpoints** (`/voting-event`):
 - `GET /` — list all events
-- `GET /:eventId` — get single event
+- `GET /networks` — which networks this server serves: `{ network, enabled, networkId, relayAddress,
+  feeDepositRequired, feePerVoteLovelace, vkeyRef, explorerBaseUrl }[]`; the frontend takes the VKey
+  reference for the mint datum and the deposit address from here
+- `POST /` — create an event; body includes `network` (`mainnet` | `preprod`, default `preprod`);
+  refused (400) when the network is not enabled on the server
+- `GET /:eventId` — get single event (includes `network`)
 - `GET /:eventId/merkle-proof/:userId` — Semaphore group Merkle proof for ZK circuit witness
 - `GET /:eventId/on-chain-group-root` — group Merkle root from the on-chain Semaphore datum
 - `POST /:eventId/relay-vote` — body `{ piA, piB, piC, publicSignals, signalMessage }`; the backend
   verifies the Groth16 proof against the on-chain group root, inserts the nullifier into the MPF
-  trie, builds/signs/submits the vote tx with the relay wallet (`RELAY_WALLET_MNEMONIC`), rolls
-  back on failure; returns `{ txHash }` (409 if the nullifier was already used)
+  trie, builds/signs/submits the vote tx with the relay wallet of the event's network, rolls
+  back on failure; returns `{ txHash }` (409 if the nullifier was already used, 402 when a
+  fee-deposit network event has no deposit or its budget is exhausted)
+- `GET /:eventId/fee-deposit` (admin) — required amount (registered voters × 1.3 ADA), relay address,
+  deposited budget, spent amount, `funded`
+- `POST /:eventId/confirm-fee-deposit` (admin) — body `{ txHash }`; verifies on-chain that the tx paid
+  at least the missing amount to the relay address and books it as the event's budget (404 while the
+  tx is not indexed yet, 409 if the hash was used before). Decision: the deposit is the cost of the
+  event, no refund of an unused remainder.
 - `GET /:eventId/results` — status, turnout, registered voters; per-option counts only after `endingDate`
 - `DELETE /:eventId/nullifier` — admin-only rollback (header `x-admin-token`)
 - All organiser endpoints (PATCH event, invite/invited/send-invitations, remove participant,
@@ -164,8 +181,14 @@ Exports as `@src/tx`. Key exports:
 - `buildSemaphoreVotingMintTransaction()` — unsigned Semaphore + Voting NFT mint TX
 - `buildVoteTransaction(params: BuildVoteTransactionParams)` — unsigned vote TX; accepts
   pre-computed ZK proof, MPF proof steps, and signal data; fetches Semaphore and Voting
-  UTxOs from chain internally via the passed `provider`; VKey UTxO is a hardcoded reference input
-- `VKEY_REF_TX_HASH` / `VKEY_REF_OUTPUT_INDEX` — permanent VKey UTxO constants
+  UTxOs from chain internally via the passed `provider`; VKey UTxO is a read-only reference input
+- Every builder takes `network: 'mainnet' | 'preprod'` (default `preprod`, byte-identical to the
+  old behaviour) and the vote builders an optional `vkeyRef`; `src/network.ts` holds `NETWORK_ID`,
+  `SLOT_CONFIG` (Shelley slot config per network, verified against MeshSDK `resolveSlotNo`),
+  `VKEY_REF` and `ALWAYS_FALSE_ADDRESS` per network
+- `VKEY_REF_TX_HASH` / `VKEY_REF_OUTPUT_INDEX` — the Preprod VKey UTxO constants (legacy names)
+- `getTxFeeLovelace(txHex)` — fee declared in a tx body (used for the fee-deposit accounting)
+- `scripts/deploy-vkey.ts` / `scripts/verify-vkey.ts` — one-off VKey UTxO per network
 - Pure utility functions: datum creators, `applyOrefParamToScript()`, `textToHex()`, etc.
 - `VALIDATORS` object with compiled script CBORs (auto-extracted from `src/on-chain/plutus.json`)
 
@@ -208,27 +231,34 @@ MPF trie data is stored in `nullifiers-db/<eventId>/` (LevelDB) per voting event
 **Backend** (`src/backend/.env`):
 ```
 PORT=3000
-BLOCKFROST_API_KEY=
-BLOCKFROST_NETWORK=preprod
+BLOCKFROST_API_KEY=              # Preprod key (legacy name; BLOCKFROST_API_KEY_PREPROD takes precedence)
+BLOCKFROST_API_KEY_MAINNET=      # Mainnet key — empty = Mainnet disabled
 DATABASE_PATH=db/voting-app.db
 JWT_SECRET=
 CORS_ORIGIN=http://localhost:3002
-RELAY_WALLET_MNEMONIC=   # 24 words; pays vote tx fees/collateral (relay design)
+RELAY_WALLET_MNEMONIC=           # Preprod relay wallet, 24 words (legacy name; _PREPROD takes precedence)
+RELAY_WALLET_MNEMONIC_MAINNET=   # Mainnet relay wallet — separate hot wallet, real ADA
+VKEY_REF_MAINNET=                # <txhash>#<index> of the Mainnet VKey UTxO (docs/MAINNET_SETUP.md)
+#FEE_DEPOSIT_NETWORKS=mainnet    # networks where organisers prepay the voters' fees (default mainnet)
 ```
-(The Docker deploy in `deploy/` runs the backend on port 3001 and sets these from `deploy/.env`.)
+`BLOCKFROST_NETWORK` is no longer used — the network is a property of each event. The Docker
+deploy in `deploy/` runs the backend on port 3001 and sets these from `deploy/.env`; the frontend
+additionally needs `NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET` for the organiser's Mainnet publish flow.
+Mainnet one-offs (VKey UTxO, relay funding) are described in `docs/MAINNET_SETUP.md`.
 
-**TX module** (`src/tx/.env`):
+**TX module** (`src/tx/.env`, scripts only):
 ```
-NETWORK=testnet
+NETWORK=preprod   # preprod | mainnet (scripts/deploy-vkey.ts, scripts/verify-vkey.ts, node/mint-*.ts)
 SECRET_KEY=       # wallet mnemonic (backend only)
-API_KEY=          # Blockfrost API key (backend only)
+API_KEY=          # Blockfrost API key of that network (backend only)
 ```
 
 ---
 
 ## Configuration
 
-- Network: Cardano Preprod Testnet (network_id = 41 in aiken.toml)
+- Networks: Cardano Preprod Testnet and Mainnet, chosen per event (aiken.toml network_id = 41 is
+  only the Aiken project setting; the compiled validators are network-independent)
 - Plutus version: v3
 - BLS12-381 curve (Semaphore circuit uses `--prime bls12381`)
 - Collateral UTxO hardcoded in mint scripts — update before deploying to a new wallet

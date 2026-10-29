@@ -243,6 +243,42 @@ Ensure the relay wallet (the wallet whose mnemonic is in `RELAY_WALLET_MNEMONIC`
 
 ---
 
+## Networks and the fee model (Mainnet)
+
+The backend serves Preprod and Mainnet side by side. Each event carries its `network`
+(chosen at creation, immutable); `relayVote` uses the Blockfrost key, relay wallet, network id
+and VKey reference UTxO of that network (`NetworkConfig`, `src/backend/src/network/`).
+
+On Mainnet the relay wallet pays real ADA for every vote, from a hot wallet on the server.
+Anyone can create an event and invite arbitrary addresses, so without a budget an attacker
+could register N identities and drain the relay. The ZK group is frozen when the event is
+published and each member votes at most once, so `registered voters × fee per vote` is a hard
+upper bound on what an event can cost. That bound is what the organiser prepays:
+
+1. **Fee deposit before publishing.** On fee-deposit networks (`FEE_DEPOSIT_NETWORKS`, default
+   `mainnet`) the Start Voting tab asks the organiser's wallet to send
+   `registered voters × 1.3 ADA` (`FEE_PER_VOTE_LOVELACE`; the measured vote fee on Preprod is
+   1.07–1.09 ADA) to the relay wallet address of the network. The deposit is the cost of the
+   event; an unused remainder is not refunded (stated in the UI before the wallet opens).
+2. **On-chain verification.** `POST /:eventId/confirm-fee-deposit { txHash }` (admin token)
+   fetches the tx with the backend's own Blockfrost key, sums the outputs to the relay address,
+   requires at least the still-missing amount, refuses a hash that was used before, and books
+   the amount as `feeBudgetLovelace`. Voters who register between the deposit and the publish
+   raise the required amount; a further deposit tops the budget up.
+3. **Budget check per vote.** `relayVote` answers HTTP 402 before verifying the proof when the
+   event has no deposit or `feeSpentLovelace + FEE_PER_VOTE_LOVELACE > feeBudgetLovelace`.
+   After a successful submit the actual fee of the signed tx (`getTxFeeLovelace`) is added to
+   `feeSpentLovelace`.
+4. **Preprod stays free.** No deposit, no budget check; setting
+   `FEE_DEPOSIT_NETWORKS=mainnet,preprod` on a test deployment exercises the deposit path
+   with test ADA.
+
+Rejected: voters paying their own tx (breaks the relay anonymity, F4), a service-funded cap
+(drainable, not sustainable with real ADA), per-event relay addresses derived from the mnemonic
+(cleaner ledger, more key-derivation surface — possible follow-up), automatic refunds
+(outbound payments from the hot wallet are a new attack surface). Operator steps for Mainnet:
+[MAINNET_SETUP.md](MAINNET_SETUP.md).
+
 ## Security notes
 
 | Concern | Mitigation |
