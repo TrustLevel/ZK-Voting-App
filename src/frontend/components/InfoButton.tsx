@@ -122,11 +122,6 @@ export function InfoButton({ text, label, className = '' }: { text: InfoText; la
             </button>
           </div>
           <p className="mt-2 text-[13px] leading-relaxed text-gray-700">{text.body}</p>
-          {text.more && (
-            <a href={text.more.href} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-11 items-center text-[13px] font-semibold text-ink underline decoration-brand decoration-2 underline-offset-[3px] hover:decoration-brand-dark">
-              {text.more.label}
-            </a>
-          )}
         </div>,
         document.body,
       )}

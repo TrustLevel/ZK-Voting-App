@@ -1072,11 +1072,11 @@ export default function EventPage() {
                       <div className="space-y-4">
                         {/* Combined: Download Success + Warnings */}
                         <Notice tone="attention" icon={<CheckIcon size={20} />} title={<>Identity File Downloaded <InfoButton text={INFO.identityFile} /></>}>
-                          <div className="mt-2 flex items-start gap-2 border-t border-brand-dark/40 pt-3">
+                          <div className="mt-2 flex items-start gap-2 border-t border-line pt-3">
                             <AlertIcon size={18} className="mt-0.5 flex-none text-brand-dark" />
                             <div className="flex-1">
                               <p className="mb-1 font-semibold">Keep this file safe!</p>
-                              <ul className="list-inside list-disc space-y-1 text-xs text-[#3a2f08]">
+                              <ul className="list-inside list-disc space-y-1 text-xs text-gray-700">
                                 <li>You&apos;ll need it to vote later</li>
                                 <li>Never share your identity file with anyone</li>
                                 <li>If you lose this file, you cannot vote</li>
@@ -1147,8 +1147,8 @@ export default function EventPage() {
                 </p>
 
                 {uploadError && (
-                  <div className="mb-3 rounded-lg border border-brand-dark bg-[#FFF4D1] p-3">
-                    <p className="text-xs text-[#3a2f08]">{uploadError}</p>
+                  <div className="mb-3 rounded-lg border border-line border-l-4 border-l-red-600 bg-white p-3">
+                    <p className="text-xs text-red-800">{uploadError}</p>
                   </div>
                 )}
 
@@ -1256,9 +1256,9 @@ export default function EventPage() {
                     {options.map((option) => (
                       <label
                         key={option.index}
-                        className={`flex min-h-14 cursor-pointer items-center rounded-xl border-[1.5px] p-4 transition has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60 ${
+                        className={`flex min-h-14 cursor-pointer items-center rounded-xl border-2 p-4 transition has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60 ${
                           selectedOption === option.index
-                            ? 'border-ink bg-[#FFF4D1]'
+                            ? 'border-ink'
                             : 'border-line hover:border-gray-400'
                         }`}
                       >

@@ -2,9 +2,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
-const GITHUB = 'https://github.com/TrustLevel/ZK-Voting-App';
-const DOCS = 'https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app';
-
 /**
  * Page frame for the organiser and voter pages: one white box on a quiet
  * ground (app feel), the TrustLevel logo centred at the top of the box, the
@@ -46,17 +43,12 @@ export function AppShell({
         </main>
 
         {/* Footer inside the box */}
-        <footer className="mt-12 flex flex-col items-center gap-3 border-t border-line pt-6 text-sm text-muted">
+        <footer className="mt-12 flex justify-center border-t border-line pt-6 text-sm text-muted">
           <div className="flex items-center gap-2">
             <span>Powered by</span>
             <Image src="/cf-logo.svg" alt="" width={20} height={20} />
             <span className="font-semibold text-ink">Cardano</span>
           </div>
-          <nav aria-label="Footer" className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-[13px]">
-            <Link href="/" className="inline-flex min-h-11 items-center hover:text-ink">Home</Link>
-            <a href={DOCS} className="inline-flex min-h-11 items-center hover:text-ink">Documentation</a>
-            <a href={GITHUB} className="inline-flex min-h-11 items-center hover:text-ink">GitHub</a>
-          </nav>
         </footer>
       </div>
     </div>

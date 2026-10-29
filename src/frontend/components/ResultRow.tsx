@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
  */
 export function ResultRow({ rank, text, value, percent, highlight = false }: { rank: number; text: ReactNode; value: ReactNode; percent: number; highlight?: boolean }) {
   return (
-    <div className={`rounded-xl border p-4 ${highlight ? 'border-brand-dark bg-[#FFF4D1]' : 'border-line bg-white'}`}>
+    <div className={`rounded-xl border p-4 ${highlight ? 'border-2 border-ink bg-white' : 'border-line bg-white'}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className={`flex h-7 w-7 flex-none items-center justify-center rounded-full text-xs font-bold ${highlight ? 'bg-ink text-white' : 'bg-[#fafafa] border border-line text-ink'}`}>

@@ -350,38 +350,6 @@ export default function CreateEventForm() {
         />
       </div>
 
-      {/* Connect Wallet Section */}
-      {!connected ? (
-        <Notice
-          tone="attention"
-          icon={<WalletIcon size={20} />}
-          className="mb-8"
-          title={<>Connect your Cardano wallet <InfoButton text={INFO.noWallet} label="Who needs a wallet?" /></>}
-          action={
-            <Button variant="dark" size="md" onClick={() => setShowWalletModal(true)} disabled={isConnecting}>
-              {isConnecting ? 'Connecting...' : 'Connect Wallet'}
-            </Button>
-          }
-        >
-          <p className="text-[#3a2f08]">The wallet identifies you as the organiser and later signs the transactions that publish the event. Your voters need no wallet.</p>
-        </Notice>
-      ) : (
-        <Notice
-          tone="success"
-          className="mb-8"
-          title="Wallet Connected"
-          action={
-            <Button variant="danger" size="sm" onClick={() => disconnect()}>
-              Disconnect
-            </Button>
-          }
-        >
-          <p className="font-mono text-xs text-emerald-900/80">
-            {walletAddress.slice(0, 12)}...{walletAddress.slice(-8)}
-          </p>
-        </Notice>
-      )}
-
       <form onSubmit={handleCreateEvent} className="space-y-8">
         {/* Voting Configuration */}
         <section className="border-t border-line pt-7">
@@ -421,7 +389,7 @@ export default function CreateEventForm() {
                 return (
                   <label
                     key={n}
-                    className={`relative flex min-h-[72px] items-center justify-center rounded-xl border-[1.5px] p-4 text-center transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink/30 ${choiceTileClass(network === n, !enabled)}`}
+                    className={`relative flex min-h-[72px] items-center justify-center rounded-xl border-2 p-4 text-center transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink/30 ${choiceTileClass(network === n, !enabled)}`}
                   >
                     <input
                       type="radio"
@@ -450,19 +418,13 @@ export default function CreateEventForm() {
                 ? ' On Mainnet, publishing locks about 15 ADA in the event contracts, costs about 1.5 ADA in fees, and you prepay the voters\' transaction fees (1.3 ADA per registered voter) before publishing.'
                 : ' Preprod is the free test network: you need a Preprod wallet with test ADA from the faucet to publish.'}
             </p>
-            {connected && walletNetworkId !== null && walletNetworkId !== NETWORK_ID[network] && (
-              <Notice tone="attention" className="mt-3" icon={null}>
-                Your connected wallet is on {walletNetworkId === 1 ? 'Mainnet' : 'a testnet'}, but you chose {NETWORK_LABEL[network]}.
-                You can still create the event, but to publish it you will need a wallet on {NETWORK_LABEL[network]}.
-              </Notice>
-            )}
           </div>
 
           {/* Voting Power */}
           <div className="mb-6">
             <FieldLabel info={<InfoButton text={INFO.votingType} />}>Voting Type</FieldLabel>
             <div className="grid grid-cols-2 gap-3">
-              <label className={`relative flex min-h-[72px] items-center justify-center rounded-xl border-[1.5px] p-4 text-center transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink/30 ${choiceTileClass(votingPower === 1)}`}>
+              <label className={`relative flex min-h-[72px] items-center justify-center rounded-xl border-2 p-4 text-center transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink/30 ${choiceTileClass(votingPower === 1)}`}>
                 <input
                   type="radio"
                   name="voting-type"
@@ -475,7 +437,7 @@ export default function CreateEventForm() {
                   <span className="block text-sm text-muted">1 vote per person</span>
                 </span>
               </label>
-              <label className={`relative flex min-h-[72px] items-center justify-center rounded-xl border-[1.5px] p-4 text-center transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink/30 ${choiceTileClass(votingPower > 1)}`}>
+              <label className={`relative flex min-h-[72px] items-center justify-center rounded-xl border-2 p-4 text-center transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink/30 ${choiceTileClass(votingPower > 1)}`}>
                 <input
                   type="radio"
                   name="voting-type"
@@ -590,25 +552,62 @@ export default function CreateEventForm() {
           </div>
         </section>
 
-        {/* Submit */}
-        <div className="flex flex-col gap-3 border-t border-line pt-7 sm:flex-row">
-          <Button
-            type="submit"
-            variant="primary"
-            size="lg"
-            disabled={!connected || isConnecting || isCreating}
-            loading={isCreating}
-            className="sm:flex-1"
-          >
-            {isCreating ? 'Creating Event...' : 'Create Event'}
-          </Button>
-          <LinkButton href="/" variant="outline" size="lg" className="sm:flex-1">
-            Cancel
-          </LinkButton>
-        </div>
-        {!connected && (
-          <p className="text-center text-sm text-muted">Connect your wallet above to create the event.</p>
-        )}
+        {/* Wallet + Submit: the wallet comes last because it should match the network chosen above */}
+        <section className="border-t border-line pt-7">
+          <CardHeader
+            icon={<WalletIcon size={20} />}
+            title="Connect your wallet and create the event"
+            info={<InfoButton text={INFO.noWallet} label="Who needs a wallet?" />}
+            description={`Connect the Cardano wallet you use on ${NETWORK_LABEL[network]}. It identifies you as the organiser and later signs the transactions that publish the event. Your voters need no wallet.`}
+          />
+
+          {!connected ? (
+            <Button variant="primary" size="lg" onClick={() => setShowWalletModal(true)} disabled={isConnecting} loading={isConnecting}>
+              {isConnecting ? 'Connecting...' : (<><WalletIcon size={18} /> Connect Wallet</>)}
+            </Button>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
+                <div>
+                  <div className="text-sm font-semibold text-ink">Wallet Connected</div>
+                  <div className="font-mono text-xs text-muted">
+                    {walletAddress.slice(0, 12)}...{walletAddress.slice(-8)}
+                  </div>
+                </div>
+              </div>
+              <Button variant="danger" size="sm" onClick={() => disconnect()}>
+                Disconnect
+              </Button>
+            </div>
+          )}
+
+          {connected && walletNetworkId !== null && walletNetworkId !== NETWORK_ID[network] && (
+            <Notice tone="attention" className="mt-3" icon={null}>
+              Your connected wallet is on {walletNetworkId === 1 ? 'Mainnet' : 'a testnet'}, but you chose {NETWORK_LABEL[network]}.
+              You can still create the event, but to publish it you will need a wallet on {NETWORK_LABEL[network]}.
+            </Notice>
+          )}
+
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <Button
+              type="submit"
+              variant={connected ? 'primary' : 'dark'}
+              size="lg"
+              disabled={!connected || isConnecting || isCreating}
+              loading={isCreating}
+              className="sm:flex-1"
+            >
+              {isCreating ? 'Creating Event...' : 'Create Event'}
+            </Button>
+            <LinkButton href="/" variant="outline" size="lg" className="sm:flex-1">
+              Cancel
+            </LinkButton>
+          </div>
+          {!connected && (
+            <p className="mt-3 text-center text-sm text-muted">Connect your wallet to create the event.</p>
+          )}
+        </section>
       </form>
 
       {/* Wallet Selection Modal */}

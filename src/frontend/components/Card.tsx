@@ -54,12 +54,13 @@ export function CardHeader({
 
 export type NoticeTone = 'neutral' | 'attention' | 'success' | 'danger' | 'progress';
 
+// White boxes; the tone shows in a left stripe and the icon, not in a tinted fill.
 const toneClass: Record<NoticeTone, string> = {
   neutral: 'border-line bg-[#fafafa] text-ink',
-  attention: 'border-brand-dark bg-[#FFF4D1] text-ink',
-  success: 'border-emerald-200 bg-emerald-50 text-emerald-950',
-  danger: 'border-red-200 bg-red-50 text-red-900',
-  progress: 'border-line bg-white text-ink',
+  attention: 'border-line border-l-4 border-l-brand bg-white text-ink',
+  success: 'border-line border-l-4 border-l-emerald-600 bg-white text-ink',
+  danger: 'border-line border-l-4 border-l-red-600 bg-white text-ink',
+  progress: 'border-line border-l-4 border-l-ink bg-white text-ink',
 };
 
 const toneIcon: Record<NoticeTone, ReactNode> = {

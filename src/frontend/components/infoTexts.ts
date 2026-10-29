@@ -6,18 +6,12 @@
 export interface InfoText {
   title: string;
   body: string;
-  more?: { href: string; label: string };
 }
-
-const GITHUB = 'https://github.com/TrustLevel/ZK-Voting-App';
-const VOTER_GUIDE = `${GITHUB}/blob/preview/docs/guides/VOTER_GUIDE.md`;
-const ORGANISER_GUIDE = `${GITHUB}/blob/preview/docs/guides/ORGANISER_GUIDE.md`;
 
 export const INFO = {
   identityFile: {
     title: 'Your identity file',
     body: 'When you register, your browser creates two random secret numbers: your voting identity. They are kept in this browser and downloaded as a JSON file. The proof that you may vote is computed from these secrets, so you need them again when you vote. Keep the file until the vote has ended and never share it: whoever has it can vote in your place. If you lose the file and this browser\'s data, you cannot vote. The secrets never leave your device.',
-    more: { href: VOTER_GUIDE, label: 'Voter guide' },
   },
   commitment: {
     title: 'Commitment ID',
@@ -34,12 +28,10 @@ export const INFO = {
   inviteValidity: {
     title: 'Invitation links',
     body: 'Each participant receives a personal link by e-mail. It is valid for seven days after sending and must not be forwarded. Participants have to register within that time and before you publish; invitations can be sent only once.',
-    more: { href: ORGANISER_GUIDE, label: 'Organiser guide' },
   },
   publish: {
     title: 'What publishing does',
     body: 'Publishing sends two transactions from your wallet. They write the voter group and the ballot (options, voting type, voting window) to the Cardano blockchain. From then on the voter group, the options and the dates are fixed. Participants who register after publishing cannot vote in this event.',
-    more: { href: ORGANISER_GUIDE, label: 'Organiser guide' },
   },
   twoSignatures: {
     title: 'Two wallet signatures',
@@ -52,7 +44,6 @@ export const INFO = {
   feeDeposit: {
     title: 'Fee deposit',
     body: 'On Mainnet the voting service pays the blockchain fee of every vote, so your voters need no wallet. You prepay these fees before publishing: 1.3 ADA for each registered voter, sent from your wallet to the service\'s relay wallet. The deposit is the cost of running the event. An unused remainder is not refunded.',
-    more: { href: ORGANISER_GUIDE, label: 'Organiser guide' },
   },
   adminLink: {
     title: 'Your admin link',

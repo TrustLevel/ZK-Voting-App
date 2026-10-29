@@ -5,8 +5,8 @@ export type PillTone = 'neutral' | 'success' | 'attention' | 'live' | 'danger' |
 const tones: Record<PillTone, string> = {
   neutral: 'border-line bg-white text-gray-700',
   success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-  attention: 'border-brand-dark bg-[#FFF4D1] text-[#3a2f08]',
-  live: 'border-brand-dark bg-[#FFF4D1] text-[#3a2f08]',
+  attention: 'border-line bg-white text-ink',
+  live: 'border-line bg-white text-ink',
   danger: 'border-red-200 bg-red-50 text-red-900',
   ink: 'border-ink bg-ink text-white',
 };
@@ -14,8 +14,8 @@ const tones: Record<PillTone, string> = {
 const dots: Record<PillTone, string> = {
   neutral: 'bg-gray-400',
   success: 'bg-emerald-600',
-  attention: 'bg-brand-dark',
-  live: 'bg-brand-dark animate-pulse',
+  attention: 'bg-brand',
+  live: 'bg-brand animate-pulse',
   danger: 'bg-red-600',
   ink: 'bg-brand',
 };

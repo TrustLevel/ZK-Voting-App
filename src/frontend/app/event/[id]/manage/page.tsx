@@ -1789,7 +1789,7 @@ export default function EventDashboard() {
                           <li>Both need to confirm on-chain (1–2 minutes each). Keep this window open; the page shows each step.</li>
                         </ol>
                         {createdEvent.network === 'mainnet' && (
-                          <p className="mt-2 rounded-lg border border-brand-dark bg-white px-3 py-2 text-xs text-ink">
+                          <p className="mt-2 rounded-lg border border-line border-l-4 border-l-brand bg-white px-3 py-2 text-xs text-ink">
                             <strong>Mainnet — real ADA.</strong> The two transactions lock 5 ADA in each of the three event contracts (15 ADA stay there) and cost about 1.5 ADA in fees.
                             Your wallet also needs one plain-ADA output of at least 5 ADA as collateral. Keep about 25 ADA plus the fee deposit available.
                           </p>

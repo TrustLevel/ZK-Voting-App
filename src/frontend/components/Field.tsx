@@ -24,6 +24,6 @@ export function FieldLabel({ htmlFor, children, info, hint, className = '' }: { 
 export function choiceTileClass(selected: boolean, disabled = false) {
   if (disabled) return 'border-line bg-gray-50 text-muted cursor-not-allowed opacity-60';
   return selected
-    ? 'border-ink bg-[#FFF4D1] cursor-pointer'
+    ? 'border-ink bg-white cursor-pointer'
     : 'border-line bg-white hover:border-gray-400 cursor-pointer';
 }
