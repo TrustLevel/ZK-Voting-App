@@ -18,10 +18,17 @@
  */
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { useWallet } from '@meshsdk/react';
 import { useRouter } from 'next/navigation';
 import { CardanoNetwork, NETWORK_ID, NETWORK_LABEL, NetworkInfo, fetchNetworks } from '@/lib/network';
+import { AppShell, PageIntro } from '@/components/AppShell';
+import { Button, LinkButton } from '@/components/Button';
+import { Card, CardHeader, Notice } from '@/components/Card';
+import { FieldLabel, choiceTileClass, inputClass, inputErrorClass } from '@/components/Field';
+import { AlertIcon, CalendarIcon, PlusIcon, SlidersIcon, TrashIcon, WalletIcon } from '@/components/Icons';
+import { InfoButton } from '@/components/InfoButton';
+import { INFO } from '@/components/infoTexts';
+import { WalletModal } from '@/components/WalletModal';
 
 // ============================================================================
 // CONSTANTS
@@ -318,380 +325,283 @@ export default function CreateEventForm() {
   // RENDER / UI
   // --------------------------------------------------------------------------
 
+  const nameError = error && !error.includes('date') && !error.includes('Date') ? error : '';
+  const dateError = error && (error.includes('date') || error.includes('Date')) ? error : '';
+
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 via-blue-50 to-indigo-100 p-8">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-10 border border-gray-100">
-          {/* Logo */}
-          <div className="text-center mb-4">
-            <a href="/" className="inline-block">
-              <Image
-                src="/TrustLevel_JPG_LOGO.jpg"
-                alt="TrustLevel"
-                width={400}
-                height={400}
-                className="mx-auto"
-              />
-            </a>
-          </div>
+    <AppShell>
+      <PageIntro
+        eyebrow="ORGANISER"
+        title="Create New Voting Event"
+        lede="Configure your voting event parameters. Inviting participants and publishing to the blockchain follow on the event dashboard."
+      />
 
-          {/* Header Section */}
-          <div className="mb-12">
-            <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-200">
-              <div className="flex items-center justify-center gap-3">
-                <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center shrink-0">
-                  <svg className="w-7 h-7 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                  </svg>
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900">Create New Voting Event</h1>
-                  <p className="text-sm text-gray-600">Configure your voting event parameters</p>
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* Connect Wallet Section */}
+      {!connected ? (
+        <Card className="mb-6">
+          <CardHeader
+            icon={<WalletIcon size={20} />}
+            title="Connect your Cardano wallet"
+            info={<InfoButton text={INFO.noWallet} label="Who needs a wallet?" />}
+            description="The wallet identifies you as the organiser and later signs the transactions that publish the event. Your voters need no wallet."
+          />
+          <Button variant="dark" size="lg" onClick={() => setShowWalletModal(true)} disabled={isConnecting} className="sm:w-auto">
+            {isConnecting ? 'Connecting...' : 'Connect Wallet'}
+          </Button>
+        </Card>
+      ) : (
+        <Notice
+          tone="success"
+          className="mb-6"
+          title="Wallet Connected"
+          action={
+            <Button variant="danger" size="sm" onClick={() => disconnect()}>
+              Disconnect
+            </Button>
+          }
+        >
+          <p className="font-mono text-xs text-emerald-900/80">
+            {walletAddress.slice(0, 12)}...{walletAddress.slice(-8)}
+          </p>
+        </Notice>
+      )}
 
-          {/* Connect Wallet Section */}
-          {!connected ? (
-            <div className="mb-8">
-              <div className="bg-white rounded-2xl p-6 border border-gray-200">
-                <div className="flex items-center gap-2 mb-4">
-                  <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                  </svg>
-                  <h3 className="font-bold text-gray-900">Connect your Cardano wallet</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowWalletModal(true)}
-                  disabled={isConnecting}
-                  className="w-full bg-gray-900 text-white py-3 px-6 rounded-xl hover:bg-gray-800 transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isConnecting ? 'Connecting...' : 'Connect Wallet'}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="mb-8">
-              <div className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">Wallet Connected</div>
-                    <div className="text-xs text-gray-600 font-mono">
-                      {walletAddress.slice(0, 12)}...{walletAddress.slice(-8)}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => disconnect()}
-                  className="text-sm text-red-600 hover:text-red-700 font-medium"
-                >
-                  Disconnect
-                </button>
-              </div>
-            </div>
-          )}
+      <form onSubmit={handleCreateEvent} className="space-y-6">
+        {/* Voting Configuration */}
+        <Card>
+          <CardHeader
+            icon={<SlidersIcon size={20} />}
+            title="Voting Configuration"
+            info={<InfoButton text={INFO.createdEventFixed} label="What can still change later?" />}
+          />
 
-          <form onSubmit={handleCreateEvent} className="space-y-6">
-            {/* Voting Configuration */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-200">
-              <div className="flex items-center gap-2 mb-4">
-                <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                </svg>
-                <h3 className="font-bold text-gray-900">Voting Configuration</h3>
-              </div>
-
-              {/* Event Name */}
-              <div className="mb-6">
-                <label className="block text-sm font-semibold text-gray-900 mb-2">Event Name</label>
-                <input
-                  type="text"
-                  value={eventName}
-                  onChange={(e) => setEventName(e.target.value)}
-                  className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-2 focus:border-transparent transition text-gray-900 placeholder:text-gray-500 ${
-                    error && !error.includes('date') && !error.includes('Date') ? 'border-red-500 focus:ring-red-500' : 'border-gray-200 focus:ring-gray-900'
-                  }`}
-                  placeholder="e.g., Q1 2025 Community Feature Voting"
-                />
-                {error && !error.includes('date') && !error.includes('Date') && (
-                  <p className="mt-2 text-sm text-red-700 flex items-center gap-1">
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                    {error}
-                  </p>
-                )}
-              </div>
-
-              {/* Network — fixed for the lifetime of the event */}
-              <div className="mb-6">
-                <label className="block text-sm font-semibold text-gray-900 mb-3">Cardano Network</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {(['preprod', 'mainnet'] as CardanoNetwork[]).map(n => {
-                    const info = networks?.find(i => i.network === n);
-                    const enabled = networks === null ? n === 'preprod' : !!info?.enabled;
-                    return (
-                      <label
-                        key={n}
-                        className={`relative flex items-center justify-center p-4 border-2 rounded-xl transition ${
-                          !enabled ? 'border-gray-200 bg-gray-100 cursor-not-allowed opacity-60'
-                          : network === n ? 'border-gray-900 bg-gray-50 cursor-pointer' : 'border-gray-300 hover:border-gray-400 cursor-pointer'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="network"
-                          checked={network === n}
-                          disabled={!enabled}
-                          onChange={() => setNetwork(n)}
-                          className="sr-only"
-                        />
-                        <div className="text-center">
-                          <div className="font-semibold text-gray-900">{NETWORK_LABEL[n]}</div>
-                          <div className="text-sm text-gray-600">
-                            {n === 'mainnet' ? 'Real ADA — real costs' : 'Free test ADA'}
-                          </div>
-                          {!enabled && networks !== null && (
-                            <div className="text-xs text-gray-500 mt-1">Not available on this server</div>
-                          )}
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-                <p className="mt-2 text-xs text-gray-600">
-                  The network cannot be changed after the event is created.
-                  {network === 'mainnet'
-                    ? ' On Mainnet, publishing locks about 15 ADA in the event contracts, costs about 1.5 ADA in fees, and you prepay the voters\' transaction fees (1.3 ADA per registered voter) before publishing.'
-                    : ' Preprod is the free test network: you need a Preprod wallet with test ADA from the faucet to publish.'}
-                </p>
-                {connected && walletNetworkId !== null && walletNetworkId !== NETWORK_ID[network] && (
-                  <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    Your connected wallet is on {walletNetworkId === 1 ? 'Mainnet' : 'a testnet'}, but you chose {NETWORK_LABEL[network]}.
-                    You can still create the event, but to publish it you will need a wallet on {NETWORK_LABEL[network]}.
-                  </p>
-                )}
-              </div>
-
-              {/* Voting Power */}
-              <div className="mb-6">
-                <label className="block text-sm font-semibold text-gray-900 mb-3">Voting Type</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className={`relative flex items-center justify-center p-4 border-2 rounded-xl cursor-pointer transition ${
-                    votingPower === 1 ? 'border-gray-900 bg-gray-50' : 'border-gray-300 hover:border-gray-400'
-                  }`}>
-                    <input
-                      type="radio"
-                      checked={votingPower === 1}
-                      onChange={() => setVotingPower(1)}
-                      className="sr-only"
-                    />
-                    <div className="text-center">
-                      <div className="font-semibold text-gray-900">Simple</div>
-                      <div className="text-sm text-gray-600">1 vote per person</div>
-                    </div>
-                  </label>
-                  <label className={`relative flex items-center justify-center p-4 border-2 rounded-xl cursor-pointer transition ${
-                    votingPower > 1 ? 'border-gray-900 bg-gray-50' : 'border-gray-300 hover:border-gray-400'
-                  }`}>
-                    <input
-                      type="radio"
-                      checked={votingPower > 1}
-                      onChange={() => setVotingPower(100)}
-                      className="sr-only"
-                    />
-                    <div className="text-center">
-                      <div className="font-semibold text-gray-900">Weighted</div>
-                      <div className="text-sm text-gray-600">Distribute voting power</div>
-                    </div>
-                  </label>
-                </div>
-
-                {/* Voting Power Input (shown for weighted voting) */}
-                {votingPower > 1 && (
-                  <div className="mt-3">
-                    <label className="block text-sm font-semibold text-gray-900 mb-2">
-                      Total Voting Power
-                    </label>
-                    <input
-                      type="number"
-                      value={votingPower}
-                      onChange={(e) => setVotingPower(parseInt(e.target.value) || 1)}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition text-gray-900"
-                      min="2"
-                      placeholder="e.g., 100"
-                    />
-                    <p className="mt-2 text-xs text-gray-600">
-                      Voters can distribute these {votingPower} points across multiple options.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Voting Options */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-900 mb-2">
-                  Voting Options (minimum 2 required)
-                </label>
-                <div className="space-y-3">
-                  {options.map((option, index) => (
-                    <div key={index} className="flex gap-2">
-                      <input
-                        type="text"
-                        value={option}
-                        onChange={(e) => updateOption(index, e.target.value)}
-                        className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition text-gray-900 placeholder:text-gray-500"
-                        placeholder={`Option ${index + 1}`}
-                      />
-                      {options.length > 2 && (
-                        <button
-                          type="button"
-                          onClick={() => removeOption(index)}
-                          className="px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition border-2 border-red-200"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={addOption}
-                  className="mt-3 text-gray-900 hover:text-gray-700 font-medium flex items-center gap-2"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Option
-                </button>
-              </div>
-            </div>
-
-            {/* Voting Period */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-200">
-              <div className="flex items-center gap-2 mb-2">
-                <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <h3 className="font-bold text-gray-900">Voting Period</h3>
-              </div>
-              <p className="text-sm text-gray-600 mb-4">
-                Set the planned start and end dates for your voting event (your local time).
+          {/* Event Name */}
+          <div className="mb-6">
+            <FieldLabel htmlFor="event-name">Event Name</FieldLabel>
+            <input
+              id="event-name"
+              type="text"
+              value={eventName}
+              onChange={(e) => setEventName(e.target.value)}
+              aria-invalid={!!nameError}
+              className={`${inputClass} ${nameError ? inputErrorClass : ''}`}
+              placeholder="e.g., Q1 2025 Community Feature Voting"
+            />
+            {nameError && (
+              <p role="alert" className="mt-2 flex items-center gap-1.5 text-sm text-red-700">
+                <AlertIcon size={16} />
+                {nameError}
               </p>
+            )}
+          </div>
 
-              {error && (error.includes('date') || error.includes('Date')) && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
-                  <p className="text-sm text-red-700 flex items-center gap-1">
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                    {error}
-                  </p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                {/* Start Date */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-2">
-                    Start Date & Time
+          {/* Network — fixed for the lifetime of the event */}
+          <div className="mb-6">
+            <FieldLabel info={<InfoButton text={INFO.network} />}>Cardano Network</FieldLabel>
+            <div className="grid grid-cols-2 gap-3">
+              {(['preprod', 'mainnet'] as CardanoNetwork[]).map(n => {
+                const info = networks?.find(i => i.network === n);
+                const enabled = networks === null ? n === 'preprod' : !!info?.enabled;
+                return (
+                  <label
+                    key={n}
+                    className={`relative flex min-h-[72px] items-center justify-center rounded-xl border-[1.5px] p-4 text-center transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink/30 ${choiceTileClass(network === n, !enabled)}`}
+                  >
+                    <input
+                      type="radio"
+                      name="network"
+                      checked={network === n}
+                      disabled={!enabled}
+                      onChange={() => setNetwork(n)}
+                      className="sr-only"
+                    />
+                    <span>
+                      <span className="block font-semibold text-ink">{NETWORK_LABEL[n]}</span>
+                      <span className="block text-sm text-muted">
+                        {n === 'mainnet' ? 'Real ADA — real costs' : 'Free test ADA'}
+                      </span>
+                      {!enabled && networks !== null && (
+                        <span className="mt-1 block text-xs text-muted">Not available on this server</span>
+                      )}
+                    </span>
                   </label>
-                  <input
-                    type="datetime-local"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition text-gray-900"
-                  />
-                </div>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-muted">
+              The network cannot be changed after the event is created.
+              {network === 'mainnet'
+                ? ' On Mainnet, publishing locks about 15 ADA in the event contracts, costs about 1.5 ADA in fees, and you prepay the voters\' transaction fees (1.3 ADA per registered voter) before publishing.'
+                : ' Preprod is the free test network: you need a Preprod wallet with test ADA from the faucet to publish.'}
+            </p>
+            {connected && walletNetworkId !== null && walletNetworkId !== NETWORK_ID[network] && (
+              <Notice tone="attention" className="mt-3" icon={null}>
+                Your connected wallet is on {walletNetworkId === 1 ? 'Mainnet' : 'a testnet'}, but you chose {NETWORK_LABEL[network]}.
+                You can still create the event, but to publish it you will need a wallet on {NETWORK_LABEL[network]}.
+              </Notice>
+            )}
+          </div>
 
-                {/* End Date */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-2">
-                    End Date & Time
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition text-gray-900"
-                  />
-                </div>
+          {/* Voting Power */}
+          <div className="mb-6">
+            <FieldLabel info={<InfoButton text={INFO.votingType} />}>Voting Type</FieldLabel>
+            <div className="grid grid-cols-2 gap-3">
+              <label className={`relative flex min-h-[72px] items-center justify-center rounded-xl border-[1.5px] p-4 text-center transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink/30 ${choiceTileClass(votingPower === 1)}`}>
+                <input
+                  type="radio"
+                  name="voting-type"
+                  checked={votingPower === 1}
+                  onChange={() => setVotingPower(1)}
+                  className="sr-only"
+                />
+                <span>
+                  <span className="block font-semibold text-ink">Simple</span>
+                  <span className="block text-sm text-muted">1 vote per person</span>
+                </span>
+              </label>
+              <label className={`relative flex min-h-[72px] items-center justify-center rounded-xl border-[1.5px] p-4 text-center transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink/30 ${choiceTileClass(votingPower > 1)}`}>
+                <input
+                  type="radio"
+                  name="voting-type"
+                  checked={votingPower > 1}
+                  onChange={() => setVotingPower(100)}
+                  className="sr-only"
+                />
+                <span>
+                  <span className="block font-semibold text-ink">Weighted</span>
+                  <span className="block text-sm text-muted">Distribute voting power</span>
+                </span>
+              </label>
+            </div>
+
+            {/* Voting Power Input (shown for weighted voting) */}
+            {votingPower > 1 && (
+              <div className="mt-3">
+                <FieldLabel htmlFor="voting-power">Total Voting Power</FieldLabel>
+                <input
+                  id="voting-power"
+                  type="number"
+                  value={votingPower}
+                  onChange={(e) => setVotingPower(parseInt(e.target.value) || 1)}
+                  className={inputClass}
+                  min="2"
+                  placeholder="e.g., 100"
+                />
+                <p className="mt-2 text-xs text-muted">
+                  Voters can distribute these {votingPower} points across multiple options.
+                </p>
               </div>
-            </div>
+            )}
+          </div>
 
-            {/* Submit */}
-            <div className="flex gap-4 pt-4">
-              <button
-                type="submit"
-                disabled={!connected || isConnecting || isCreating}
-                className="flex-1 bg-gray-900 text-white py-4 px-6 rounded-xl hover:bg-gray-800 transition-all font-semibold border border-gray-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isCreating ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Creating Event...
-                  </>
-                ) : (
-                  'Create Event'
-                )}
-              </button>
-              <a
-                href="/"
-                className="flex-1 text-center bg-white text-gray-900 py-4 px-6 rounded-xl hover:bg-gray-50 transition-all font-semibold border-2 border-gray-300"
-              >
-                Cancel
-              </a>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      {/* Wallet Selection Modal */}
-      {showWalletModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Connect Your Wallet</h2>
-            <p className="text-gray-600 mb-6">Choose a wallet to create your voting event</p>
-
+          {/* Voting Options */}
+          <div>
+            <FieldLabel>Voting Options (minimum 2 required)</FieldLabel>
             <div className="space-y-3">
-              {['eternl', 'lace', 'yoroi'].map((walletName) => (
-                <button
-                  key={walletName}
-                  onClick={() => connectWalletByName(walletName)}
-                  className="w-full p-4 border-2 border-gray-300 rounded-xl hover:border-gray-900 hover:bg-gray-50 transition-all text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-                      <span className="text-gray-700 font-semibold text-sm uppercase">{walletName[0]}</span>
-                    </div>
-                    <div>
-                      <div className="font-semibold text-gray-900 capitalize">{walletName}</div>
-                      <div className="text-sm text-gray-600">Connect with {walletName.charAt(0).toUpperCase() + walletName.slice(1)}</div>
-                    </div>
-                  </div>
-                </button>
+              {options.map((option, index) => (
+                <div key={index} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={option}
+                    onChange={(e) => updateOption(index, e.target.value)}
+                    className={`${inputClass} flex-1`}
+                    placeholder={`Option ${index + 1}`}
+                    aria-label={`Option ${index + 1}`}
+                  />
+                  {options.length > 2 && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => removeOption(index)}
+                      aria-label={`Remove option ${index + 1}`}
+                      className="min-h-12 border-[1.5px] border-red-200 px-3"
+                    >
+                      <TrashIcon size={18} />
+                    </Button>
+                  )}
+                </div>
               ))}
             </div>
-
-            <button
-              onClick={() => setShowWalletModal(false)}
-              className="w-full mt-4 py-3 text-gray-600 hover:text-gray-900 font-medium"
-            >
-              Cancel
-            </button>
+            <Button variant="ghost" size="sm" onClick={addOption} className="mt-3 -ml-2">
+              <PlusIcon size={18} />
+              Add Option
+            </Button>
           </div>
+        </Card>
+
+        {/* Voting Period */}
+        <Card>
+          <CardHeader
+            icon={<CalendarIcon size={20} />}
+            title="Voting Period"
+            info={<InfoButton text={INFO.votingWindow} />}
+            description="Set the planned start and end dates for your voting event (your local time)."
+          />
+
+          {dateError && (
+            <Notice tone="danger" className="mb-4" icon={null}>
+              <p role="alert" className="flex items-center gap-1.5 font-medium">
+                <AlertIcon size={16} />
+                {dateError}
+              </p>
+            </Notice>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Start Date */}
+            <div>
+              <FieldLabel htmlFor="start-date">Start Date & Time</FieldLabel>
+              <input
+                id="start-date"
+                type="datetime-local"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+
+            {/* End Date */}
+            <div>
+              <FieldLabel htmlFor="end-date">End Date & Time</FieldLabel>
+              <input
+                id="end-date"
+                type="datetime-local"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+          </div>
+        </Card>
+
+        {/* Submit */}
+        <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            disabled={!connected || isConnecting || isCreating}
+            loading={isCreating}
+            className="sm:flex-1"
+          >
+            {isCreating ? 'Creating Event...' : 'Create Event'}
+          </Button>
+          <LinkButton href="/" variant="outline" size="lg" className="sm:flex-1">
+            Cancel
+          </LinkButton>
         </div>
-      )}
-    </div>
+        {!connected && (
+          <p className="text-center text-sm text-muted">Connect your wallet above to create the event.</p>
+        )}
+      </form>
+
+      {/* Wallet Selection Modal */}
+      <WalletModal
+        open={showWalletModal}
+        subtitle="Choose a wallet to create your voting event"
+        onSelect={connectWalletByName}
+        onClose={() => setShowWalletModal(false)}
+      />
+    </AppShell>
   );
 }
