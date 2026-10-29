@@ -1492,8 +1492,15 @@ export default function EventDashboard() {
                       description="The following data will be signed with your wallet and published to the Cardano blockchain:"
                     />
                     <div className="rounded-xl border border-line bg-white px-4 py-1">
-                      <DataRow label="Starting Date (POSIX):" mono>{Math.floor(new Date(startDate + ':00.000Z').getTime() / 1000)}</DataRow>
-                      <DataRow label="Ending Date (POSIX):" mono>{Math.floor(new Date(endDate + ':00.000Z').getTime() / 1000)}</DataRow>
+                      {([['Starting Date:', startDate], ['Ending Date:', endDate]] as const).map(([label, value]) => {
+                        const posix = Math.floor(new Date(value + ':00.000Z').getTime() / 1000);
+                        return (
+                          <DataRow key={label} label={label}>
+                            {formatLocalDateTime(posix)}
+                            <span className="ml-2 font-mono text-[10px] font-normal text-muted">POSIX {posix}</span>
+                          </DataRow>
+                        );
+                      })}
                       {walletAddress && (
                         <DataRow label="Wallet Address:" mono>{walletAddress.slice(0, 20)}...{walletAddress.slice(-10)}</DataRow>
                       )}
