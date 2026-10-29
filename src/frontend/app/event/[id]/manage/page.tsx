@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * ADMIN DASHBOARD PAGE (MANAGE EVENT)
+ * ORGANISER DASHBOARD PAGE (MANAGE EVENT)
  *
  * This page allows event administrators to manage their voting event.
  *
@@ -1055,9 +1055,9 @@ export default function EventDashboard() {
 
   return (
     <AppShell aside={<NetworkBadge network={createdEvent.network} />}>
-      {/* Dashboard Header with Admin Access */}
+      {/* Dashboard header */}
       <PageIntro
-        eyebrow="ADMIN DASHBOARD"
+        eyebrow="ORGANISER DASHBOARD"
         title={createdEvent.eventName}
         className="mb-6"
       />
@@ -1195,7 +1195,7 @@ export default function EventDashboard() {
                     <h3 className="text-base font-bold text-ink">Participant List</h3>
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusPill tone="neutral">{participants.length} Total</StatusPill>
-                      <StatusPill tone="success">{participants.filter(p => p.status === 'registered').length} Registered</StatusPill>
+                      <StatusPill tone="neutral">{participants.filter(p => p.status === 'registered').length} Registered</StatusPill>
                       <StatusPill tone="attention">{participants.filter(p => p.status === 'pending').length} Pending</StatusPill>
                     </div>
                   </div>
@@ -1224,7 +1224,7 @@ export default function EventDashboard() {
                             {participant.email || `User #${participant.userId}`}
                           </p>
                           {participant.status === 'registered' ? (
-                            <StatusPill tone="success">Registered</StatusPill>
+                            <StatusPill tone="neutral">Registered</StatusPill>
                           ) : (
                             <StatusPill tone="attention">Pending</StatusPill>
                           )}
@@ -1232,7 +1232,7 @@ export default function EventDashboard() {
                       </div>
 
                       {/* Remove Button */}
-                      <Button variant="danger" size="sm" onClick={() => removeParticipant(participant.userId, participant.email)} className="flex-none">
+                      <Button variant="ghost" size="sm" onClick={() => removeParticipant(participant.userId, participant.email)} className="flex-none">
                         <TrashIcon size={16} />
                         <span className="hidden sm:inline">Remove</span>
                         <span className="sr-only sm:hidden">Remove {participant.email || `User #${participant.userId}`}</span>

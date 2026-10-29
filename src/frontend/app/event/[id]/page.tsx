@@ -230,7 +230,7 @@ export default function EventPage() {
 
       } catch (err) {
         console.error('Error validating token:', err);
-        setTokenError('Failed to validate invitation token. Please contact the event organizer.');
+        setTokenError('Failed to validate invitation token. Please contact the event organiser.');
       } finally {
         setValidatingToken(false);
       }
@@ -439,7 +439,7 @@ export default function EventPage() {
 
     } catch (err) {
       console.error('Error registering commitment to backend:', err);
-      setError('Failed to register. Please try again or contact the event organizer.');
+      setError('Failed to register. Please try again or contact the event organiser.');
     }
   };
 
@@ -453,13 +453,13 @@ export default function EventPage() {
   const classifySubmissionError = (status: number, errData: any): string => {
     const raw = typeof errData?.message === 'string' ? errData.message : JSON.stringify(errData);
     if (status === 400 && raw.startsWith('Invalid vote proof')) {
-      return 'Your vote could not be verified for this event. Please reload the page and try again; if it keeps failing, contact the event organizer.';
+      return 'Your vote could not be verified for this event. Please reload the page and try again; if it keeps failing, contact the event organiser.';
     }
     if (status === 503) {
       return 'The voting service is temporarily unavailable. Please try again in a few minutes.';
     }
     if (status === 402) {
-      return 'The organiser\'s fee budget for this event is used up, so no more votes can be recorded. Please contact the event organizer — nothing is required from you.';
+      return 'The organiser\'s fee budget for this event is used up, so no more votes can be recorded. Please contact the event organiser — nothing is required from you.';
     }
     if (raw.includes('BadInputs') || raw.includes('UtxoFailure') || raw.includes('All inputs are spent')) {
       return 'Another vote is still being confirmed on the blockchain. Please wait about a minute and try again — your vote was not counted yet.';
@@ -468,16 +468,16 @@ export default function EventPage() {
       return 'The voting period is not open right now (it has either not started or already ended).';
     }
     if (raw.includes('PlutusFailure') || raw.includes('ValidationTagMismatch')) {
-      return 'The vote was rejected by the on-chain validator. This happens when the voting period is closed or the proof does not match the current voter group. Please contact the event organizer.';
+      return 'The vote was rejected by the on-chain validator. This happens when the voting period is closed or the proof does not match the current voter group. Please contact the event organiser.';
     }
     if (raw.includes('ValueNotConserved') || raw.includes('FeeTooSmall') || raw.includes('InsufficientFunds')) {
-      return 'The voting service could not pay the transaction fee. Please contact the event organizer — nothing is required from your wallet.';
+      return 'The voting service could not pay the transaction fee. Please contact the event organiser — nothing is required from your wallet.';
     }
     // Surface the raw backend message in dev so we can diagnose blockchain rejections.
     if (process.env.NODE_ENV === 'development') {
       return `Blockchain rejection — raw error: ${raw}`;
     }
-    return 'The vote was rejected by the blockchain. Please try again or contact the event organizer.';
+    return 'The vote was rejected by the blockchain. Please try again or contact the event organiser.';
   };
 
   /**
@@ -496,7 +496,7 @@ export default function EventPage() {
         throw new Error('Event data not loaded.');
       }
       if (!event.semaphoreAddress) {
-        throw new Error('Voting not yet available — the event organizer has not completed the blockchain setup.');
+        throw new Error('Voting not yet available — the event organiser has not completed the blockchain setup.');
       }
       // Load stored identity
       const storedIdentityStr = localStorage.getItem(`identity_${eventId}_${validatedToken}`);
@@ -592,7 +592,7 @@ export default function EventPage() {
       if (submitResponse.status === 409) {
         throw new Error(
           'Your vote identity has already been used in a previous attempt. ' +
-          'If that transaction was never confirmed on-chain, please contact the event organizer.'
+          'If that transaction was never confirmed on-chain, please contact the event organiser.'
         );
       }
       if (!submitResponse.ok) {
@@ -954,7 +954,7 @@ export default function EventPage() {
       <AppShell width="sm" center>
         <Notice tone="danger" title="Invalid Invitation">
           <p className="mt-1">{tokenError}</p>
-          <p className="mt-2 text-xs text-red-800/80">Invitation links are valid for seven days after they were sent. If yours has expired, ask the event organizer for a new one.</p>
+          <p className="mt-2 text-xs text-red-800/80">Invitation links are valid for seven days after they were sent. If yours has expired, ask the event organiser for a new one.</p>
           <Button variant="dark" size="sm" onClick={() => router.push('/')} className="mt-4">
             Go Home
           </Button>
@@ -1129,7 +1129,7 @@ export default function EventPage() {
             {/* Blockchain not ready */}
             {!event.semaphoreAddress && (
               <Notice tone="neutral" icon={<ClockIcon size={20} />} title="Voting Not Yet Available" className="mb-6">
-                <p className="text-gray-700">The event organizer has not completed the blockchain setup.</p>
+                <p className="text-gray-700">The event organiser has not completed the blockchain setup.</p>
               </Notice>
             )}
 
