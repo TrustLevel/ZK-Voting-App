@@ -6,7 +6,8 @@ export { buildUpdateGroupTransaction } from './node/update-group.js';
 export { buildSemaphoreVotingMintTransaction } from './node/mint-sv.js';
 export { buildVoteTransaction, VKEY_REF_TX_HASH, VKEY_REF_OUTPUT_INDEX } from './browser/vote-browser.js';
 export type { BuildVoteTransactionParams } from './browser/vote-browser.js';
-export { buildRelayVoteTransaction, applyOrefParamToScriptNode, getTxFeeLovelace } from './node/relay-vote.js';
+export { buildRelayVoteTransaction, applyOrefParamToScriptNode, getTxFeeLovelace, getTxHash } from './node/relay-vote.js';
+export { buildPaymentTransaction } from './browser/payment.js';
 export type { BuildRelayVoteTransactionParams } from './node/relay-vote.js';
 export { selectUtxoForCollateral } from './browser/utils-browser.js';
 

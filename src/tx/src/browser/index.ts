@@ -12,6 +12,7 @@ export type { BuildVoteTransactionParams } from './vote-browser.js';
 
 export { buildGroupMintTransaction } from './mint-group-browser.js';
 export { buildSemaphoreVotingMintTransaction } from './mint-sv-browser.js';
+export { buildPaymentTransaction } from './payment.js';
 
 export {
   createOutputReference,

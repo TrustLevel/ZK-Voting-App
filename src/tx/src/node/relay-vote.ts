@@ -54,6 +54,15 @@ export function getTxFeeLovelace(txHex: string): bigint {
   return BigInt(tx.body().fee().to_str());
 }
 
+/**
+ * Transaction id (blake2b-256 of the body) of a signed or unsigned transaction hex.
+ * CIP-30 signing only adds witnesses, so the id of the unsigned tx the backend built
+ * equals the id of the signed tx the organiser returns — submit-tx relies on that.
+ */
+export function getTxHash(txHex: string): string {
+  return csl.FixedTransaction.from_hex(txHex).transaction_hash().to_hex();
+}
+
 // ── CBOR serialization ─────────────────────────────────────────────────────────
 //
 // CardanoSDKSerializer (Scala.js, used by MeshTxBuilder) cannot handle JavaScript BigInt
