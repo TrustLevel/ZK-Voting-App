@@ -110,6 +110,7 @@ The [voter guide](docs/guides/VOTER_GUIDE.md) has every screen.
 | | |
 |---|---|
 | Live application | https://vote.trustlevel.io |
+| Documentation (TrustLevel knowledge base) | https://trustlevel.gitbook.io/knowledge-base/products/zk-voting-app |
 | Source code (GitHub) | https://github.com/TrustLevel/ZK-Voting-App |
 | Testnet faucet (free test ADA, organisers) | https://docs.cardano.org/cardano-testnets/tools/faucet |
 | Organiser guide | [docs/guides/ORGANISER_GUIDE.md](docs/guides/ORGANISER_GUIDE.md) |
