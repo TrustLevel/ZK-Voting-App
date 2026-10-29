@@ -21,18 +21,23 @@
  * - DELETE /voting-event/:eventId/participants/:userId     (remove participant from event)
  * - POST   /voting-event/:eventId/send-invitations         (send invitations to all participants)
  * - POST   /voting-event/:eventId/mark-invitations-sent    (persist invitation state)
- * - POST   /voting-event/:eventId/save-blockchain-data     (persist blockchain data)
+ * - POST   /voting-event/:eventId/build-group-mint-tx      (unsigned Group NFT mint for CIP-30 signing)
+ * - POST   /voting-event/:eventId/build-semaphore-voting-mint-tx (unsigned Semaphore + Voting mint)
+ * - POST   /voting-event/:eventId/build-fee-deposit-tx     (unsigned fee-deposit payment, Mainnet)
+ * - POST   /voting-event/:eventId/submit-tx                (backend submits a tx it built; persists ids)
+ * - GET    /voting-event/:eventId/tx/:txHash               (confirmation polling)
+ *
+ * The browser never talks to Blockfrost: the backend builds, submits and watches every
+ * transaction with its own key for the event's network; the organiser's wallet only signs.
  */
 
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useWallet } from '@meshsdk/react';
-import { BlockfrostProvider, MeshTxBuilder, deserializeAddress } from '@meshsdk/core';
 import {
-  buildAndSubmitGroupMintTx,
-  buildAndSubmitSemaphoreVotingMintTx,
-  getWalletUtxos,
-  selectUtxoAndCreateOutputReference,
+  mintGroupNft,
+  mintSemaphoreVotingNfts,
+  sendFeeDeposit,
   waitForTxConfirmation,
 } from '@/lib/blockchain-helpers';
 import {
@@ -41,8 +46,6 @@ import {
   NetworkInfo,
   asNetwork,
   assertWalletNetwork,
-  blockfrostKeyEnvName,
-  blockfrostKeyFor,
   explorerTxUrl,
   fetchNetworks,
   lovelaceToAda,
@@ -121,6 +124,8 @@ export default function EventDashboard() {
   const adminToken = searchParams.get('token');
   // Admin-only backend endpoints check this header against the event's admin token.
   const adminHeaders = { 'Content-Type': 'application/json', 'x-admin-token': adminToken ?? '' };
+  // Organiser transaction endpoints (build / submit / tx status) — same admin token.
+  const organiserApi = { backendApiUrl: BACKEND_API_URL, eventId, adminToken: adminToken ?? '' };
   const { connect, connected, wallet, disconnect } = useWallet();
 
   // --------------------------------------------------------------------------
@@ -752,9 +757,9 @@ export default function EventDashboard() {
    */
   /**
    * Fee deposit (Mainnet): the organiser prepays the voters' transaction fees.
-   * Builds a plain payment of the missing amount to the relay wallet address, has the
-   * organiser's wallet sign and submit it, then asks the backend to verify it on-chain.
-   * Backend: POST /voting-event/:eventId/confirm-fee-deposit { txHash }
+   * The backend builds a plain payment of the missing amount to the relay wallet address
+   * (POST build-fee-deposit-tx), the organiser's wallet signs it, the backend submits it
+   * (POST submit-tx) and then verifies it on-chain (POST confirm-fee-deposit).
    */
   const handleSendFeeDeposit = async () => {
     if (!feeDeposit?.required || feeDeposit.funded || !feeDeposit.relayAddress) return;
@@ -776,23 +781,8 @@ export default function EventDashboard() {
     try {
       await assertWalletNetwork(wallet, network);
 
-      const blockfrostApiKey = blockfrostKeyFor(network);
-      if (!blockfrostApiKey) throw new Error(`Blockfrost API key for ${NETWORK_LABEL[network]} not configured (${blockfrostKeyEnvName(network)}).`);
-      const provider = new BlockfrostProvider(blockfrostApiKey);
-
       setDepositStatus('Building the deposit transaction...');
-      const walletUtxos = await getWalletUtxos(wallet);
-      const txBuilder = new MeshTxBuilder({ fetcher: provider, verbose: false });
-      const unsignedTx = await txBuilder
-        .setNetwork(network)
-        .txOut(feeDeposit.relayAddress, [{ unit: 'lovelace', quantity: amount }])
-        .selectUtxosFrom(walletUtxos)
-        .changeAddress(walletAddress)
-        .complete();
-
-      setDepositStatus('Please sign the deposit in your wallet...');
-      const signedTx = await wallet.signTx(unsignedTx, false);
-      const txHash = await wallet.submitTx(signedTx);
+      const { txHash } = await sendFeeDeposit(organiserApi, wallet, { walletAddress }, setDepositStatus);
       console.log('Fee deposit submitted:', txHash);
 
       // The backend verifies the tx itself; it answers 404 until Blockfrost has indexed it.
@@ -890,7 +880,8 @@ export default function EventDashboard() {
       return;
     }
 
-    // Fee-deposit networks (Mainnet): the voters' fees must be prepaid before publishing.
+    // Fee-deposit networks (Mainnet): the voters' fees must be prepaid before publishing
+    // (the backend enforces this too and answers 402).
     if (feeDeposit?.required && !feeDeposit.funded) {
       alert(`Send the fee deposit first (${lovelaceToAda(feeDeposit.missingLovelace)} ADA still missing). It prepays your voters' transaction fees.`);
       return;
@@ -906,82 +897,15 @@ export default function EventDashboard() {
       const endingDate = Math.floor(end.getTime() / 1000);
 
       // ═══════════════════════════════════════════════════════════════════════
-      // B. FETCH EVENT DATA FROM BACKEND
+      // B. TRANSACTION 1: MINT GROUP NFT
       // ═══════════════════════════════════════════════════════════════════════
-
-      setTxStatus('Loading event data from backend...');
-
-      const eventResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}`);
-      if (!eventResponse.ok) {
-        throw new Error('Failed to load event data');
-      }
-      const eventData = await eventResponse.json();
-
-      // Extract merkle root and options
-      const merkleRoot = BigInt(eventData.groupMerkleRootHash || '0');
-      const optionsArray = eventData.options ? JSON.parse(eventData.options) : options;
-
-      console.log('Event data loaded:', {
-        merkleRoot,
-        optionsCount: optionsArray.length,
-        startingDate,
-        endingDate,
-      });
-
-      // ═══════════════════════════════════════════════════════════════════════
-      // C. INITIALIZE BLOCKFROST PROVIDER
-      // ═══════════════════════════════════════════════════════════════════════
-
-      // Per-network key: NEXT_PUBLIC_BLOCKFROST_API_KEY (Preprod) / NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET.
-      const blockfrostApiKey = blockfrostKeyFor(network);
-      if (!blockfrostApiKey) {
-        throw new Error(`Blockfrost API key for ${NETWORK_LABEL[network]} not configured (${blockfrostKeyEnvName(network)}).`);
-      }
-      if (!blockfrostApiKey.startsWith(network)) {
-        throw new Error(`${blockfrostKeyEnvName(network)} is not a ${network} Blockfrost key.`);
-      }
-      console.log(`Blockfrost provider for ${network}`);
-
-      const provider = new BlockfrostProvider(blockfrostApiKey);
-
-      // Get payment key hash from wallet address
-      const addressInfo = deserializeAddress(walletAddress);
-      const paymentKeyHash = addressInfo.pubKeyHash;
-
-      console.log('Blockfrost provider initialized');
-      console.log('Payment Key Hash:', paymentKeyHash);
-
-      // ═══════════════════════════════════════════════════════════════════════
-      // D. TRANSACTION 1: MINT GROUP NFT
-      // ═══════════════════════════════════════════════════════════════════════
+      // The backend builds the tx from the wallet's UTxOs and the event's Merkle root,
+      // the wallet signs it, the backend submits it and records the Group NFT.
 
       setMintingStep('group');
       setTxStatus('Step 1/2: Minting Group NFT with participant merkle tree...');
 
-      // Get wallet UTxOs
-      const walletUtxos = await getWalletUtxos(wallet);
-      console.log('Available wallet UTxOs:', walletUtxos.length);
-
-      // Select UTxO for Group NFT minting
-      const { selectedUtxo: groupUtxo } =
-        selectUtxoAndCreateOutputReference(walletUtxos, 0);
-
-      console.log('Selected UTxO for Group NFT:', {
-        txHash: groupUtxo.input.txHash,
-        index: groupUtxo.input.outputIndex,
-      });
-
-      // Build and submit Group NFT mint transaction
-      const groupResult = await buildAndSubmitGroupMintTx({
-        provider,
-        network,
-        wallet,
-        walletAddress,
-        paymentKeyHash,
-        merkleRoot,
-        selectedUtxo: groupUtxo,
-        walletUtxos,
-      });
+      const groupResult = await mintGroupNft(organiserApi, wallet, { walletAddress }, setTxStatus);
 
       console.log('✅ Group NFT minted:', {
         txHash: groupResult.txHash,
@@ -990,136 +914,28 @@ export default function EventDashboard() {
 
       setTxStatus(`Group NFT minted! TX: ${groupResult.txHash.slice(0, 16)}... Waiting for confirmation...`);
 
-      // Wait for transaction confirmation
-      const groupConfirmed = await waitForTxConfirmation(provider, groupResult.txHash, 60, 3000);
+      const groupConfirmed = await waitForTxConfirmation(organiserApi, groupResult.txHash, 60, 3000);
       if (!groupConfirmed) {
         throw new Error('Group NFT transaction not confirmed after 3 minutes. Please try again.');
       }
       console.log('✅ Group NFT transaction confirmed on-chain');
 
-      // Wait for the Group NFT UTxO to be specifically visible at the script address.
-      //
-      // Previously: fixed 10s sleep. This was unreliable — sometimes the UTxO was
-      // not yet indexed, sometimes 10s was overkill.
-      //
-      // Now: active polling via Blockfrost until the UTxO appears at the script
-      // address. This is the correct signal that the node (and Blockfrost submission
-      // nodes) are ready to accept a TX referencing this UTxO. Max 90s before we
-      // warn and continue anyway (the Semaphore+Voting TX no longer uses an Ogmios
-      // evaluator, so the submission can succeed even if this check times out).
-      console.log('⏳ Waiting for Group NFT UTxO to be visible at script address...');
-      setTxStatus('Waiting for Group NFT to be available on-chain...');
-      let groupUtxoVisible = false;
-      for (let i = 0; i < 30; i++) {
-        try {
-          const utxosAtScript = await provider.fetchAddressUTxOs(groupResult.scriptAddress);
-          if (utxosAtScript.some(u => u.input.txHash === groupResult.txHash)) {
-            groupUtxoVisible = true;
-            console.log(`✅ Group NFT UTxO visible after ${(i + 1) * 3}s`);
-            break;
-          }
-        } catch { /* ignore fetch errors, keep polling */ }
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      }
-      if (!groupUtxoVisible) {
-        console.warn('⚠️ Group NFT UTxO not yet visible — proceeding anyway (evaluator is disabled for TX 2)');
-      }
-
       // ═══════════════════════════════════════════════════════════════════════
-      // E. TRANSACTION 2: MINT SEMAPHORE + VOTING NFTs
+      // C. TRANSACTION 2: MINT SEMAPHORE + VOTING NFTs
       // ═══════════════════════════════════════════════════════════════════════
+      // The backend waits for the Group NFT UTxO to be indexed, spends only the change of
+      // the Group mint (F11), derives the validity window and the datums, and persists the
+      // Semaphore/Voting identifiers and the event dates when it submits the tx.
 
       setMintingStep('voting');
       setTxStatus('Step 2/2: Minting Semaphore + Voting NFTs...');
 
-      // Fetch confirmed UTxOs from Blockfrost for Phase 2 building.
-      //
-      // Using wallet.getUtxos() here is unreliable: some wallets (Eternl) include
-      // unconfirmed or recently-spent UTxOs that Blockfrost hasn't indexed yet, causing
-      // MeshTxBuilder's internal fetchUTxOs() call to 404. Since the UTxO poll above
-      // already confirmed the Group NFT TX is indexed (visible at the script address),
-      // all of the wallet's UTxOs at walletAddress are also indexed and safe to use.
-      //
-      // F11: Blockfrost's UTXO index can lag behind even after tx confirmation, so UTxOs
-      // that were spent by the Group NFT mint may still appear in the listing. Exclude any
-      // UTxO that existed before the Group NFT mint — those are spent or stale. Only the
-      // change output(s) of the Group NFT mint (txHash === groupResult.txHash) are safe.
-      const fetchedUtxos2 = await provider.fetchAddressUTxOs(walletAddress);
-      const preGroupMintRefs = new Set(
-        walletUtxos.map(u => `${u.input.txHash}#${u.input.outputIndex}`)
-      );
-      const walletUtxos2 = fetchedUtxos2.filter(
-        u => !preGroupMintRefs.has(`${u.input.txHash}#${u.input.outputIndex}`)
-      );
-      if (walletUtxos2.length === 0) {
-        throw new Error('No UTxOs found at wallet address via Blockfrost. Please wait for transactions to confirm.');
-      }
-      console.log('Available wallet UTxOs (Blockfrost, confirmed):', walletUtxos2.length, '(pre-mint UTxOs excluded:', fetchedUtxos2.length - walletUtxos2.length, ')');
-
-      // Select different UTxO for Semaphore + Voting NFT minting
-      const { selectedUtxo: votingUtxo } =
-        selectUtxoAndCreateOutputReference(walletUtxos2, 0);
-
-      console.log('Selected UTxO for Semaphore + Voting NFTs:', {
-        txHash: votingUtxo.input.txHash,
-        index: votingUtxo.input.outputIndex,
-      });
-
-      // Calculate TX validity window.
-      //
-      // The Aiken voting validator enforces is_entirely_before(validity_range, event_start),
-      // meaning the TX validity upper bound (expressed as POSIX ms on-chain) must be
-      // strictly less than event_start. We therefore derive the window from the current
-      // block's timestamp and the user-chosen event start:
-      //
-      //   window = min(120s, (startingDate - block.time) - 60s)
-      //
-      // The 60-second buffer guards against slot drift between block.time and submission.
-      // We cap at 120 slots (2 min) so stale TXs don't linger in the mempool.
-      const latestBlock = await provider.fetchLatestBlock();
-      const currentSlot = parseInt(latestBlock.slot);
-      const currentTimeSec = latestBlock.time; // POSIX seconds
-      const secondsToStart = startingDate - currentTimeSec;
-
-      if (secondsToStart < 90) {
-        throw new Error(
-          `Event start is too soon (only ${Math.round(secondsToStart)}s away). ` +
-          `Please set the event to start at least 90 seconds from now.`
-        );
-      }
-
-      // Window: up to 120s but always ≥60s before event start so is_entirely_before passes.
-      const validityWindowSecs = Math.min(120, secondsToStart - 60);
-      const txValidityEndSlot = currentSlot + validityWindowSecs;
-
-      console.log('Transaction validity:', {
-        currentSlot,
-        currentTimeSec,
-        secondsToStart,
-        validityWindowSecs,
-        expiresAt: txValidityEndSlot,
-      });
-
-      // Build and submit Semaphore + Voting NFT mint transaction
-      const svResult = await buildAndSubmitSemaphoreVotingMintTx({
-        provider,
-        network,
-        vkeyRef: networkInfo.vkeyRef,
+      const svResult = await mintSemaphoreVotingNfts(
+        organiserApi,
         wallet,
-        walletAddress,
-        paymentKeyHash,
-        groupNftTxHash: groupResult.txHash,
-        groupNftOutputIndex: 0,
-        groupPolicyId: groupResult.policyId,
-        merkleRoot,
-        options: optionsArray,
-        votingPower,
-        startingDate,
-        endingDate,
-        selectedUtxo: votingUtxo,
-        walletUtxos: walletUtxos2,
-        txValidityEndSlot,
-      });
+        { walletAddress, startingDate, endingDate },
+        setTxStatus,
+      );
 
       console.log('✅ Semaphore + Voting NFTs minted:', {
         txHash: svResult.txHash,
@@ -1129,8 +945,7 @@ export default function EventDashboard() {
 
       setTxStatus(`Voting NFTs minted! TX: ${svResult.txHash.slice(0, 16)}... Waiting for confirmation...`);
 
-      // Wait for transaction confirmation
-      const svConfirmed = await waitForTxConfirmation(provider, svResult.txHash, 30, 2000);
+      const svConfirmed = await waitForTxConfirmation(organiserApi, svResult.txHash, 30, 2000);
       if (!svConfirmed) {
         console.warn('Semaphore/Voting NFT transaction not confirmed yet, but continuing...');
       } else {
@@ -1138,64 +953,17 @@ export default function EventDashboard() {
       }
 
       setMintingStep('complete');
-      setTxStatus('Blockchain transactions complete! Updating backend...');
+      setTxStatus('Blockchain transactions complete! Refreshing event data...');
 
       // ═══════════════════════════════════════════════════════════════════════
-      // F. BACKEND UPDATES
+      // D. REFRESH
       // ═══════════════════════════════════════════════════════════════════════
+      // Dates and on-chain identifiers were persisted by the backend at submit time.
 
-      // Update event dates
-      const dateResponse = await fetch(`${BACKEND_API_URL}/voting-event/${eventId}`, {
-        method: 'PATCH',
-        headers: adminHeaders,
-        body: JSON.stringify({
-          startingDate,
-          endingDate,
-        })
-      });
-
-      if (!dateResponse.ok) {
-        throw new Error(`Failed to update event dates: ${dateResponse.status}`);
-      }
-
-      const updatedEvent = await dateResponse.json();
-
-      // Update local state
       if (createdEvent) {
-        setCreatedEvent({
-          ...createdEvent,
-          startingDate: updatedEvent.startingDate,
-          endingDate: updatedEvent.endingDate,
-        });
+        setCreatedEvent({ ...createdEvent, startingDate, endingDate });
       }
-
-      // Save blockchain data (NFT policy IDs, addresses, TX hashes)
-      const blockchainData = {
-        groupNft: groupResult.policyId,
-        groupValidatorAddress: groupResult.scriptAddress,
-        groupValidatorCbor: groupResult.validatorCbor,
-        semaphoreNft: svResult.semaphorePolicyId,
-        semaphoreAddress: svResult.semaphoreScriptAddr,
-        votingNft: svResult.votingPolicyId,
-        votingValidatorAddress: svResult.votingScriptAddr,
-        // Required for re-deriving parameterized validator CBORs during voting
-        mintingOrefTxHash: votingUtxo.input.txHash,
-        mintingOrefIndex: votingUtxo.input.outputIndex,
-        txHashes: {
-          groupMint: groupResult.txHash,
-          semaphoreVotingMint: svResult.txHash,
-        },
-        mintedAt: Date.now(),
-        walletAddress,
-      };
-
-      await fetch(`${BACKEND_API_URL}/voting-event/${eventId}/save-blockchain-data`, {
-        method: 'POST',
-        headers: adminHeaders,
-        body: JSON.stringify({ blockchainData })
-      });
-
-      console.log('✅ Backend updated with blockchain data');
+      await loadEventFromBackend();
 
       // Store results for UI display
       setBlockchainResult({
@@ -1208,7 +976,7 @@ export default function EventDashboard() {
       });
 
       // ═══════════════════════════════════════════════════════════════════════
-      // G. SUCCESS
+      // E. SUCCESS
       // ═══════════════════════════════════════════════════════════════════════
 
       setTxStatus('Voting event published to blockchain! 🎉');

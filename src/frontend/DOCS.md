@@ -125,7 +125,6 @@ The WASM file and zkey are served as static assets from `public/zk/` and fetched
    | Variable | Value |
    |---|---|
    | `NEXT_PUBLIC_BACKEND_API_URL` | URL of the deployed backend, e.g. `https://api.yourdomain.com` |
-   | `NEXT_PUBLIC_BLOCKFROST_API_KEY` | Blockfrost project ID for the target network |
 
 4. Deploy. Vercel detects Next.js automatically.
 

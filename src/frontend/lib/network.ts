@@ -38,21 +38,6 @@ export function lovelaceToAda(lovelace: string | number | bigint): string {
   return n.toLocaleString('en-US', { maximumFractionDigits: 6 });
 }
 
-/**
- * Blockfrost key for the organiser's mint flow (the only place the browser still
- * talks to Blockfrost directly). NEXT_PUBLIC_BLOCKFROST_API_KEY stays the Preprod
- * key; Mainnet needs NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET. Both are inlined at
- * build time, so they must be read as literal property accesses.
- */
-export function blockfrostKeyFor(network: CardanoNetwork): string | undefined {
-  if (network === 'mainnet') return process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET || undefined;
-  return process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD || process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY || undefined;
-}
-
-export function blockfrostKeyEnvName(network: CardanoNetwork): string {
-  return network === 'mainnet' ? 'NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET' : 'NEXT_PUBLIC_BLOCKFROST_API_KEY';
-}
-
 export interface NetworkInfo {
   network: CardanoNetwork;
   enabled: boolean;

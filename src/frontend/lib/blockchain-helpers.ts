@@ -1,46 +1,52 @@
-import {
-  UTxO,
-  IWallet,
-  BlockfrostProvider,
-  conStr,
-  integer,
-  byteString,
-  resolveScriptHash,
-  resolvePlutusScriptAddress,
-  Asset,
-} from '@meshsdk/core';
-import {
-  textToHex,
-  createOutputReference,
-  createUrnaDatum,
-  createGroupDatum,
-  generateInitialOptions,
-  selectUtxoAndCreateOutputReference,
-  selectUtxoForCollateral,
-  applyOrefParamToScript,
-  buildGroupMintTransaction,
-  buildSemaphoreVotingMintTransaction,
-  VALIDATORS,
-} from '@src/tx/browser';
-import { CardanoNetwork, NETWORK_ID } from './network';
+/**
+ * Organiser publish flow — browser side.
+ *
+ * The browser never talks to Blockfrost. The backend builds every transaction with its own
+ * key for the event's network (POST build-*-tx), the organiser's CIP-30 wallet signs it, the
+ * backend submits it (POST submit-tx — only transactions it built itself) and reports
+ * confirmation (GET tx/:hash). The only wallet-side work left here is reading the wallet's
+ * UTxOs and signing.
+ */
 
-export {
-  textToHex,
-  createOutputReference,
-  createUrnaDatum,
-  createGroupDatum,
-  generateInitialOptions,
-  selectUtxoAndCreateOutputReference,
-  applyOrefParamToScript,
-};
+import type { IWallet, UTxO } from '@meshsdk/core';
 
-export { selectUtxoForCollateral };
+export interface OrganiserApi {
+  backendApiUrl: string;
+  eventId: string;
+  adminToken: string;
+}
+
+export class BackendError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string) {
+    super(message);
+  }
+}
+
+async function call<T>(api: OrganiserApi, method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${api.backendApiUrl}/voting-event/${api.eventId}/${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'x-admin-token': api.adminToken },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (response.ok) return response.json() as Promise<T>;
+  const err: { message?: string | string[]; code?: string } = await response.json().catch(() => ({}));
+  const message = Array.isArray(err?.message) ? err.message.join(', ') : typeof err?.message === 'string' ? err.message : `HTTP ${response.status}`;
+  throw new BackendError(message, response.status, err?.code);
+}
+
+// Only the fields the backend validates — wallets attach more (datums, script refs).
+function slimUtxos(utxos: UTxO[]): Array<{ input: { txHash: string; outputIndex: number }; output: { address: string; amount: Array<{ unit: string; quantity: string }> } }> {
+  return utxos.map(u => ({
+    input: { txHash: u.input.txHash, outputIndex: u.input.outputIndex },
+    output: { address: u.output.address, amount: u.output.amount.map(a => ({ unit: a.unit, quantity: a.quantity })) },
+  }));
+}
 
 export interface GroupMintResult {
   txHash: string;
   policyId: string;
   scriptAddress: string;
-  validatorCbor: string;
+  mintUtxo: { txHash: string; outputIndex: number };
 }
 
 export interface SemaphoreVotingMintResult {
@@ -49,174 +55,133 @@ export interface SemaphoreVotingMintResult {
   semaphoreScriptAddr: string;
   votingPolicyId: string;
   votingScriptAddr: string;
+  mintingOref: { txHash: string; outputIndex: number };
 }
 
-export async function buildAndSubmitGroupMintTx(params: {
-  provider: BlockfrostProvider;
-  network: CardanoNetwork; // script addresses carry the network tag; the builder sets the network too
-  wallet: IWallet;
-  walletAddress: string;
-  paymentKeyHash: string;
-  merkleRoot: bigint | number;
-  selectedUtxo: UTxO;
-  walletUtxos: UTxO[];
-}): Promise<GroupMintResult> {
-  const { provider, network, wallet, walletAddress, paymentKeyHash, merkleRoot, selectedUtxo, walletUtxos } = params;
-
-  const outputReference = createOutputReference(selectedUtxo.input.txHash, selectedUtxo.input.outputIndex);
-  const clothedCbor = await applyOrefParamToScript(VALIDATORS.group.mint, outputReference);
-  const policyId = resolveScriptHash(clothedCbor, 'V3');
-  const scriptAddress = resolvePlutusScriptAddress({ code: clothedCbor, version: 'V3' }, NETWORK_ID[network]);
-
-  const assetName = textToHex('zkvapp-group');
-  const mintValue: Asset[] = [
-    { unit: 'lovelace', quantity: '5000000' },
-    { unit: policyId + assetName, quantity: '1' },
-  ];
-  const groupDatum = createGroupDatum(merkleRoot, paymentKeyHash);
-  const createRedeemer = conStr(0, []);
-  const collateralUtxo = selectUtxoForCollateral(walletUtxos);
-  if (!collateralUtxo) throw new Error('No suitable collateral UTxO (need pure ADA ≥5 ADA)');
-
-  const unsignedTx = await buildGroupMintTransaction({
-    provider,
-    network,
-    policyId,
-    assetName,
-    clothedCbor,
-    createRedeemer,
-    selectedUtxo,
-    walletUtxos,
-    walletAddress,
-    scriptAddr: scriptAddress,
-    mintValue,
-    groupDatum,
-    paymentKeyHash,
-    collateralUtxo,
-  });
-
-  const signedTx = await wallet.signTx(unsignedTx, true);
-  const txHash = await wallet.submitTx(signedTx);
-
-  return { txHash, policyId, scriptAddress, validatorCbor: clothedCbor };
+export interface FeeDepositResult {
+  txHash: string;
+  amountLovelace: string;
+  relayAddress: string;
 }
 
-export async function buildAndSubmitSemaphoreVotingMintTx(params: {
-  provider: BlockfrostProvider;
-  network: CardanoNetwork;
-  // VKey reference UTxO of the network (from GET /voting-event/networks) — stored in the
-  // Semaphore datum and used by the relay on every vote, so both must agree.
-  vkeyRef: { txHash: string; outputIndex: number };
-  wallet: IWallet;
-  walletAddress: string;
-  paymentKeyHash: string;
-  groupNftTxHash: string;
-  groupNftOutputIndex: number;
-  groupPolicyId: string;
-  merkleRoot: bigint | number;
-  options: Array<{ index: number; text: string }>;
-  votingPower: number;
-  startingDate: number;
-  endingDate: number;
-  selectedUtxo: UTxO;
-  walletUtxos: UTxO[];
-  txValidityEndSlot: number;
-}): Promise<SemaphoreVotingMintResult> {
-  const {
-    provider, network, vkeyRef, wallet, walletAddress, paymentKeyHash,
-    groupNftTxHash, groupNftOutputIndex, groupPolicyId,
-    merkleRoot, options, votingPower, startingDate, endingDate,
-    selectedUtxo, walletUtxos, txValidityEndSlot,
-  } = params;
-  const networkId = NETWORK_ID[network];
+const isRetryable = (err: unknown, codes: string[]): err is BackendError =>
+  err instanceof BackendError && err.status === 409 && !!err.code && codes.includes(err.code);
 
-  const outputReference = createOutputReference(selectedUtxo.input.txHash, selectedUtxo.input.outputIndex);
-
-  const semaphoreValidatorCbor = await applyOrefParamToScript(VALIDATORS.semaphore.mint, outputReference);
-  const semaphoreScriptAddr = resolvePlutusScriptAddress({ code: semaphoreValidatorCbor, version: 'V3' }, networkId);
-  const semaphorePolicyId = resolveScriptHash(semaphoreValidatorCbor, 'V3');
-
-  const votingValidatorCbor = await applyOrefParamToScript(VALIDATORS.voting.mint, outputReference);
-  const votingScriptAddr = resolvePlutusScriptAddress({ code: votingValidatorCbor, version: 'V3' }, networkId);
-  const votingPolicyId = resolveScriptHash(votingValidatorCbor, 'V3');
-
-  const nullHash = '0000000000000000000000000000000000000000000000000000000000000000';
-  const semaphoreDatum = conStr(0, [
-    byteString(groupPolicyId),
-    integer(merkleRoot),
-    byteString(nullHash),
-    createOutputReference(vkeyRef.txHash, vkeyRef.outputIndex),
-  ]);
-
-  const weight = votingPower > 1 ? votingPower : 0;
-  // startingDate/endingDate from the backend are POSIX seconds; the on-chain
-  // validity_range is POSIX milliseconds, so multiply before storing in the datum.
-  const urnaDatum = createUrnaDatum({
-    weight,
-    options: generateInitialOptions(options.length),
-    eventStart: startingDate * 1000,
-    eventEnd: endingDate * 1000,
-    semaphoreNftPolicyId: semaphorePolicyId,
-  });
-
-  const semaphoreAssetName = textToHex('Semaphore1');
-  const semaphoreMintValue: Asset[] = [
-    { unit: 'lovelace', quantity: '5000000' },
-    { unit: semaphorePolicyId + semaphoreAssetName, quantity: '1' },
-  ];
-
-  const votingAssetName = textToHex('VotingEvent1');
-  const votingMintValue: Asset[] = [
-    { unit: 'lovelace', quantity: '5000000' },
-    { unit: votingPolicyId + votingAssetName, quantity: '1' },
-  ];
-
-  const collateralUtxo = selectUtxoForCollateral(walletUtxos);
-  if (!collateralUtxo) throw new Error('No suitable collateral UTxO (need pure ADA ≥5 ADA)');
-
-  const unsignedTx = await buildSemaphoreVotingMintTransaction({
-    provider,
-    network,
-    txValidityEndSlot,
-    groupNftTxHash,
-    groupNftOutputIndex,
-    semaphorePolicyId,
-    semaphoreAssetName,
-    semaphoreValidatorCbor,
-    votingPolicyId,
-    votingAssetName,
-    votingValidatorCbor,
-    selectedUtxo,
-    walletUtxos,
-    walletAddress,
-    semaphoreScriptAddr,
-    semaphoreMintValue,
-    semaphoreDatum,
-    votingScriptAddr,
-    votingMintValue,
-    urnaDatum,
-    paymentKeyHash,
-    collateralUtxo,
-  });
-
-  const signedTx = await wallet.signTx(unsignedTx, true);
-  const txHash = await wallet.submitTx(signedTx);
-
-  return { txHash, semaphorePolicyId, semaphoreScriptAddr, votingPolicyId, votingScriptAddr };
+/**
+ * Runs one build → sign → submit attempt; when the backend reports a stale wallet UTxO
+ * (STALE_INPUT: spent by an earlier tx the wallet still lists, or not yet indexed) it waits and
+ * tries again with fresh UTxOs. The organiser has to sign again — the status line says so.
+ */
+async function withStaleInputRetry<T>(attempt: () => Promise<T>, onStatus?: (message: string) => void, attempts = 4, waitMs = 10_000): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      if (!isRetryable(err, ['STALE_INPUT']) || i >= attempts) throw err;
+      onStatus?.(`A wallet UTxO was already spent or not indexed yet — refreshing the wallet and trying again (${i}/${attempts - 1})...`);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+  }
 }
 
+/** POST submit-tx: the backend submits a signed tx it built itself and returns its id. */
+export async function submitSignedTx(api: OrganiserApi, signedTx: string): Promise<{ txHash: string; kind: string }> {
+  return call(api, 'POST', 'submit-tx', { signedTx });
+}
+
+/** Step 1 — Group NFT mint: build on the backend, sign in the wallet, submit through the backend. */
+export async function mintGroupNft(
+  api: OrganiserApi,
+  wallet: IWallet,
+  params: { walletAddress: string },
+  onStatus?: (message: string) => void,
+): Promise<GroupMintResult> {
+  return withStaleInputRetry(async () => {
+    const walletUtxos = await getWalletUtxos(wallet);
+    const built = await call<{ unsignedTx: string; txHash: string; policyId: string; scriptAddress: string; mintUtxo: { txHash: string; outputIndex: number } }>(
+      api, 'POST', 'build-group-mint-tx', { walletAddress: params.walletAddress, walletUtxos: slimUtxos(walletUtxos) },
+    );
+    onStatus?.('Please sign the Group NFT mint in your wallet...');
+    const signedTx = await wallet.signTx(built.unsignedTx, true);
+    const { txHash } = await submitSignedTx(api, signedTx);
+    return { txHash, policyId: built.policyId, scriptAddress: built.scriptAddress, mintUtxo: built.mintUtxo };
+  }, onStatus);
+}
+
+/**
+ * Step 2 — Semaphore + Voting NFT mint. The backend answers 409 with a retry code while
+ * Blockfrost has not indexed the Group mint yet; we retry for up to `maxWaitMs`.
+ */
+export async function mintSemaphoreVotingNfts(
+  api: OrganiserApi,
+  wallet: IWallet,
+  params: { walletAddress: string; startingDate: number; endingDate: number },
+  onStatus?: (message: string) => void,
+  maxWaitMs = 120_000,
+  intervalMs = 3_000,
+): Promise<SemaphoreVotingMintResult> {
+  const deadline = Date.now() + maxWaitMs;
+  return withStaleInputRetry(async () => {
+    let built: {
+      unsignedTx: string; txHash: string; semaphorePolicyId: string; semaphoreScriptAddr: string;
+      votingPolicyId: string; votingScriptAddr: string; mintingOref: { txHash: string; outputIndex: number };
+    };
+    for (;;) {
+      try {
+        built = await call(api, 'POST', 'build-semaphore-voting-mint-tx', params);
+        break;
+      } catch (err) {
+        if (!isRetryable(err, ['GROUP_NFT_NOT_INDEXED', 'WALLET_UTXOS_NOT_INDEXED']) || Date.now() > deadline) throw err;
+        onStatus?.('Waiting for the Group NFT to be indexed on-chain...');
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+    }
+    onStatus?.('Please sign the Semaphore + Voting mint in your wallet...');
+    const signedTx = await wallet.signTx(built.unsignedTx, true);
+    const { txHash } = await submitSignedTx(api, signedTx);
+    return {
+      txHash,
+      semaphorePolicyId: built.semaphorePolicyId,
+      semaphoreScriptAddr: built.semaphoreScriptAddr,
+      votingPolicyId: built.votingPolicyId,
+      votingScriptAddr: built.votingScriptAddr,
+      mintingOref: built.mintingOref,
+    };
+  }, onStatus);
+}
+
+/** Fee deposit (fee-deposit networks): plain payment of the missing amount to the relay wallet. */
+export async function sendFeeDeposit(
+  api: OrganiserApi,
+  wallet: IWallet,
+  params: { walletAddress: string },
+  onStatus?: (message: string) => void,
+): Promise<FeeDepositResult> {
+  return withStaleInputRetry(async () => {
+    const walletUtxos = await getWalletUtxos(wallet);
+    const built = await call<{ unsignedTx: string; txHash: string; amountLovelace: string; relayAddress: string }>(
+      api, 'POST', 'build-fee-deposit-tx', { walletAddress: params.walletAddress, walletUtxos: slimUtxos(walletUtxos) },
+    );
+    onStatus?.('Please sign the fee deposit in your wallet...');
+    const signedTx = await wallet.signTx(built.unsignedTx, false);
+    const { txHash } = await submitSignedTx(api, signedTx);
+    return { txHash, amountLovelace: built.amountLovelace, relayAddress: built.relayAddress };
+  }, onStatus);
+}
+
+/** Polls GET tx/:hash on the backend until the transaction is on-chain. */
 export async function waitForTxConfirmation(
-  provider: BlockfrostProvider,
+  api: OrganiserApi,
   txHash: string,
   maxAttempts: number,
   intervalMs: number,
 ): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      await provider.fetchTxInfo(txHash);
-      return true;
+      const status = await call<{ confirmed: boolean }>(api, 'GET', `tx/${txHash}`);
+      if (status.confirmed) return true;
     } catch {
-      // Not yet confirmed
+      // transient backend/Blockfrost error — keep polling
     }
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
