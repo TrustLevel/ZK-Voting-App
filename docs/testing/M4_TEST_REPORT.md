@@ -1,10 +1,10 @@
 # Milestone 4 — Test report
 
 **Project:** ZK Voting App (Catalyst project 1200252) · **Network:** Cardano Preprod
-**Generated:** 2026-10-28 from the local run logs (`scripts/sim-run`, kept out of the repository)
+**Generated:** 2026-10-29 from the local run logs (`scripts/sim-run`, kept out of the repository)
 **Companion documents:** [User feedback](M4_USER_FEEDBACK.md) · [Audit report](../audit/AUDIT.md) · [Submission](../milestones/MILESTONE4_SUBMISSION.md)
 
-This report is the project's own regression run of 2026-10-28 against the Milestone 4
+This report is the project's own regression run of 2026-10-29 against the Milestone 4
 deployment, after all fixes: the scripted scenarios of the testers' system test of 2026-10-05,
 extended. The scenario that previously broke the system (a rolled-back first vote, C1) is
 included, and the attack scenarios target the hardened endpoints.
@@ -30,16 +30,120 @@ addresses, transaction hashes, nullifiers and commitments are public on-chain da
 
 ---
 
-## Scripted regression test, 2026-10-28 (Milestone 4 deployment, after the fixes)
+## Part C — Scripted regression test, 2026-10-29 (Milestone 4 deployment, final code)
 
-## Simulated voting run — main-20261028-0534
+Event `6321080341` on Cardano Preprod, 15 script-controlled voters with real Semaphore identities, real invitations and registrations; votes go through the deployed relay (`POST relay-vote`) exactly as the browser sends them. Publishing was done with the test's organiser wallet. **Result: 26 of 26 checks passed; 13 votes confirmed on-chain; the final tally matches on the API, on-chain and against the planned votes.**
+
+How to read the table: *expected* is what the test plan demands; *observed* is what happened, verbatim where short. Transaction links go to the Preprod explorer.
+
+| Test | What is tested | Expected | Observed | Result | On-chain |
+|---|---|---|---|---|---|
+| R1 | Three participants register at the same moment | all 3 registered, backend root consistent | consistent=true, missing=0, members=14, errors=[] | pass |  |
+| C1 | A vote before the event start | rejected (before event start), backend trie root unchanged | rejected at relay-vote (HTTP 502): rejected by the node (see appendix) | pass |  |
+| A-V01 | Wave A vote by V01 | confirmed on-chain | confirmed f57dc5f6b770a79fe4ce24fe110aebe02b912c940e9be326828c2c492e6835d0 | pass | [tx](https://preprod.cardanoscan.io/transaction/f57dc5f6b770a79fe4ce24fe110aebe02b912c940e9be326828c2c492e6835d0) |
+| A-V02 | Wave A vote by V02 | confirmed on-chain | confirmed 7938327342c55e76ec3961662187cced817edb99e4e03f00f38b276b263dba9f | pass | [tx](https://preprod.cardanoscan.io/transaction/7938327342c55e76ec3961662187cced817edb99e4e03f00f38b276b263dba9f) |
+| A-V03 | Wave A vote by V03 | confirmed on-chain | confirmed 9d928239623ae629f1ef181acb1fb87995a4ab9d7b4b54a5bd26d13d970f3b21 | pass | [tx](https://preprod.cardanoscan.io/transaction/9d928239623ae629f1ef181acb1fb87995a4ab9d7b4b54a5bd26d13d970f3b21) |
+| A-V04 | Wave A vote by V04 | confirmed on-chain | confirmed 1ca12a1ac9643022f42c34e9acf2b62e00b87dca123e68d21c0a801d5b5f1af3 | pass | [tx](https://preprod.cardanoscan.io/transaction/1ca12a1ac9643022f42c34e9acf2b62e00b87dca123e68d21c0a801d5b5f1af3) |
+| A-V05 | Wave A vote by V05 | confirmed on-chain | confirmed 6abe760ee81532c9fafc76aea268e8ec67e70023552ec98965ee146cd3899d1f | pass | [tx](https://preprod.cardanoscan.io/transaction/6abe760ee81532c9fafc76aea268e8ec67e70023552ec98965ee146cd3899d1f) |
+| A-V06 | Wave A vote by V06 | confirmed on-chain | confirmed b46655355d3345399bbff38cfe86d401576679379d9d64cd137d89811ad0b6e4 | pass | [tx](https://preprod.cardanoscan.io/transaction/b46655355d3345399bbff38cfe86d401576679379d9d64cd137d89811ad0b6e4) |
+| A-V07 | Wave A vote by V07 | confirmed on-chain | confirmed 2993fc08601816da6551e98916bd8108a8a892867a864e5b1ffd6261a6a0cf03 | pass | [tx](https://preprod.cardanoscan.io/transaction/2993fc08601816da6551e98916bd8108a8a892867a864e5b1ffd6261a6a0cf03) |
+| A-V08 | Wave A vote by V08 | confirmed on-chain | confirmed 3f313fb65e518e5b72df3b47cb5fb57eb1a4a45ff6ec7102d0a7a967afb746a0 | pass | [tx](https://preprod.cardanoscan.io/transaction/3f313fb65e518e5b72df3b47cb5fb57eb1a4a45ff6ec7102d0a7a967afb746a0) |
+| A-V09 | Wave A vote by V09 | confirmed on-chain | confirmed 2ef9f08432e0b7587b3cb2bb11d4cdcd18f3a7f7f503257156cb018acca5281a | pass | [tx](https://preprod.cardanoscan.io/transaction/2ef9f08432e0b7587b3cb2bb11d4cdcd18f3a7f7f503257156cb018acca5281a) |
+| C2 | The same identity votes a second time (normal path) | HTTP 409 from relay-vote (nullifier already used) | rejected at relay-vote (HTTP 409): Nullifier already used. Your vote may have already been submitted, or a previous attempt partially failed… | pass |  |
+| C3 | The same identity votes again bypassing the backend (own MPF proof, direct submit) | rejected on-chain (MPF root mismatch) | rejected at submit-direct: {"data":{"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraCon… | pass |  |
+| C4 | The exact relay-vote request of a confirmed vote is replayed | HTTP 409 (nullifier already used), no tx submitted | rejected (HTTP 409): {"statusCode":409,"message":"Nullifier already used. Your vote may have already been submitted, or a previous attempt p… | pass |  |
+| C5 | An unregistered identity uses a member's Merkle path | HTTP 400 before the trie is touched (proof root is not the on-chain group root) | rejected at relay-vote (HTTP 400): Invalid vote proof: proof is not for this event's voter group; trie unchanged=true | pass |  |
+| C6 | A participant who registered after the publish tries to vote | HTTP 404/409 with a clear message (not in the group root frozen at mint) — F12 | rejected at merkle-proof (HTTP 409): Not part of this vote's group (registered after voting started) | pass |  |
+| B1 | Three voters submit within two seconds | hypothesis: 1 succeeds, the others fail | 1 submitted, 1 confirmed of 3; failures: V11@relay-vote rolledBack=true: rejected by the node (see appendix) | pass |  |
+| B2-V11 | Retry of a voter rejected in B1 | succeeds on retry | confirmed e1885755fe13b5751ea0f1b4e19d639a9c49e4bf7cb132cd816c088337e4881b | pass | [tx](https://preprod.cardanoscan.io/transaction/e1885755fe13b5751ea0f1b4e19d639a9c49e4bf7cb132cd816c088337e4881b) |
+| B2-V13 | Retry of a voter rejected in B1 | succeeds on retry | confirmed 9fd3f7e1b4a972ade011727da9ba266b07515a8fdf1aad410239f47771c7725b | pass | [tx](https://preprod.cardanoscan.io/transaction/9fd3f7e1b4a972ade011727da9ba266b07515a8fdf1aad410239f47771c7725b) |
+| C7a | Former public nullifier endpoints | POST 404 (removed), DELETE 401 without a valid admin token | POST nullifier → 404; DELETE nullifier without token → 401; with wrong token → 401 | pass |  |
+| C7b | Organiser endpoints without the admin token | all 401 without the token; 200 with it | GET /invited → 401; POST /invite → 401; POST /send-invitations → 401; PATCH / → 401; DELETE /participants/1 → 401; POST /save-blockchain-dat… | pass |  |
+| C7c | Public event API must not expose admin token, e-mails or commitments | public event objects carry none of adminToken / invitedParticipants / groupLeafCommitments | no admin token, e-mails or commitments in the public event API | pass |  |
+| C7d | relay-vote with a proof that does not verify | HTTP 400 (proof does not verify), backend trie root unchanged | HTTP 400: {"statusCode":400,"message":"Invalid vote proof: ZK proof does not verify"}; trie unchanged=true | pass |  |
+| C7e | A legitimate vote after the attack battery | V10 votes successfully; backend trie still in sync with chain | confirmed e0676ea45584ae0e379659ac2a23df96cb0a07c38f86736c707b53cfea7b6a20 | pass | [tx](https://preprod.cardanoscan.io/transaction/e0676ea45584ae0e379659ac2a23df96cb0a07c38f86736c707b53cfea7b6a20) |
+| C8 | A vote after the event end | rejected (after event end) | rejected at relay-vote: rejected by the node (see appendix) | pass |  |
+| T1 | Final tally: API vs chain vs expected | all three equal | api=[6,4,3] chain=[6,4,3] expected=[6,4,3] | pass |  |
+
+### Key numbers
+
+- Votes confirmed: **13** (planned 13 eligible voters; the late and the too-late registrant are rejected by design)
+- ZK proof generation per vote (Node prover, same circuit as the browser): avg **1.9 s**
+- relay-vote round trip (proof check, nullifier insert, build, submit, wait for on-chain visibility): avg **28.8 s**
+- B1 in this run: the two rejected submissions coincided with a parallel event voting on the same relay wallet (an organiser's live test); both succeeded on their first retry. The cause (per-event instead of per-wallet serialisation) was fixed the same day (`dabc150`, `69377fe`, and after the first concurrency check below `7914ac0`); the concurrency check at the end of this report verifies the final state.
+
+## Mainnet smoke test, 2026-10-29
+
+The same flow on **Cardano Mainnet** with real ADA, event `7499048647`, three voters, driven through the organiser endpoints (fee deposit → Group NFT mint → Semaphore + Voting NFT mint, organiser wallet standing in for a CIP-30 wallet) and the relay for the votes. The three votes were submitted within two seconds to exercise the serialisation of relay votes.
+
+| Step | Transaction |
+|---|---|
+| Fee deposit (3.9 ADA, 3 × 1.3) | [e262db987c34e816…](https://cardanoscan.io/transaction/e262db987c34e816a381d3956c8a5b46c3a9bb5368bfe39a8f77b3cae52bd6e7) |
+| Group NFT mint | [bb62c5b2e9e83e20…](https://cardanoscan.io/transaction/bb62c5b2e9e83e207f993b2e37ae0ed9d0da29b0f1b0085c4c3d4d7b8df37268) |
+| Semaphore + Voting NFT mint | [de2cf7c8572fb61f…](https://cardanoscan.io/transaction/de2cf7c8572fb61f27b1f434ba8ec316b12836a1798508d032ba554d75837d7e) |
+| Vote M1 (option 0, attempt 2) | [cf8ebb42f4dfca13…](https://cardanoscan.io/transaction/cf8ebb42f4dfca13e4988030cb9d004fecc98e048b015cb522f5927f7e8bb0dc) |
+| Vote M2 (option 1, attempt 2) | [baab259c6affc958…](https://cardanoscan.io/transaction/baab259c6affc958f9ffcc0dd2b67815ddbe4d643995dda77331e3bb25c83ca8) |
+| Vote M3 (option 1, attempt 2) | [1ca2b275cc990705…](https://cardanoscan.io/transaction/1ca2b275cc9907052443717f92a0e8f28f866e66c0faaf3397290a46a4d29086) |
+
+| Check | Result | Observed |
+|---|---|---|
+| B1 — all three confirmed on the first attempt | FAIL | 0 of 3 confirmed on the first attempt; 3 total |
+| T1 — tally via API equals the planned votes | pass | api=[1,2,0] expected=[1,2,0] (3 votes, resultsAvailable=true) |
+
+Fee budget after the event: 3.249233 ADA spent of 3.9 ADA deposited (the remainder stays with the relay wallet; the deposit is the cost of the event).
+
+Reading the first-attempt result: the three transactions were built and submitted one after another (one second apart — the per-network queue serialised them) and each was rejected by the node with `OutsideValidityIntervalUTxO`: a vote transaction is only valid from the event's start slot, and the node validates against the slot of its current tip, which on Mainnet was still before the start 37 s after it (no block had been produced yet). The retries a minute later were all confirmed, with no stale-input error between them. The serialisation itself is verified under real concurrency in the Preprod test below.
+
+## Concurrency check on Preprod, 2026-10-29
+
+This exercises the fix for finding F6: relay votes are serialised per network and the queue holds until the previous vote is on-chain and indexed at every address the next vote reads — the Semaphore state UTxO, the Voting state UTxO and the relay wallet.
+
+### First run — one voter still needed a retry
+
+Three voters of event `4317170796` submit within two seconds, 90 s after the start (so that the chain has a block past the start).
+
+| Voter | Attempt | Transaction |
+|---|---|---|
+| M1 | 1 | [abef7653426d175a…](https://preprod.cardanoscan.io/transaction/abef7653426d175a07798583f602022af8755c58cf700806b63285245f8d5c0c) |
+| M2 | 1 | [6eaef46cf0ec75c2…](https://preprod.cardanoscan.io/transaction/6eaef46cf0ec75c257577c0a425d20fe65a72a4f0899e6f6e2415fa6aadd73cc) |
+| M3 | 2 | [a3e9983543abeb45…](https://preprod.cardanoscan.io/transaction/a3e9983543abeb45adb8c5d09a58c8131121d413a67635ab247c8d8a232fc6eb) |
+
+| Check | Result | Observed |
+|---|---|---|
+| B1 — all three confirmed on the first attempt | FAIL | 2 of 3 confirmed on the first attempt; 3 total |
+| T1 — tally via API equals the planned votes | pass | api=[1,2,0] expected=[1,2,0] (3 votes, resultsAvailable=true) |
+
+The third submission was rejected with `Unknown transaction input`: the queue had waited for the Semaphore state and the relay wallet to be indexed, but not for the Voting state UTxO, which the first vote had just spent. Fixed in `7914ac0` (the queue now waits for the Voting validator address as well), deployed, and re-run:
+
+### Second run — after the fix
+
+Three voters of event `7599761867` submit within two seconds, 90 s after the start (so that the chain has a block past the start).
+
+| Voter | Attempt | Transaction |
+|---|---|---|
+| M1 | 1 | [89ccce9f7c66ed5b…](https://preprod.cardanoscan.io/transaction/89ccce9f7c66ed5bd54a11b02773001b6bfa6240be82adbe00afb6cc0c2df2be) |
+| M2 | 1 | [24493c642c7b3465…](https://preprod.cardanoscan.io/transaction/24493c642c7b3465aa39f85f97dcefd2db10bfb2794499de8b51e47a9aef0f04) |
+| M3 | 1 | [3bb8cab26cfaefbb…](https://preprod.cardanoscan.io/transaction/3bb8cab26cfaefbb9367c04da73797217583be680338070e15cca4a698f4cc66) |
+
+| Check | Result | Observed |
+|---|---|---|
+| B1 — all three confirmed on the first attempt | pass | 3 of 3 confirmed on the first attempt; 3 total |
+| T1 — tally via API equals the planned votes | pass | api=[1,2,0] expected=[1,2,0] (3 votes, resultsAvailable=true) |
+
+All three votes confirmed on their first attempt (the queue held the second and third vote for 51 s and 20 s respectively, until the previous vote was indexed) and the tally matches.
+
+## Appendix — full run report
+
+<details><summary>Timeline, on-chain state trace, per-test details, performance, and what an observer / the operator can see (generated by the harness)</summary>
+
+## Simulated voting run — main-20261029-0455
 
 > **Simulated run, not public testing.** All 15 voter wallets, the admin wallet and the funding
 > wallet were generated and controlled by one operator (a script). This run tests the deployed system end to end
 > on Cardano preprod against the live backend; it is not evidence of independent participants.
 
-- Run started: 2026-10-28T05:34:55.862Z
-- Code: `preview` @ `b2a86a6`
+- Run started: 2026-10-29T04:55:23.685Z
+- Code: `preview` @ `5b07ffb`
 - Backend: live (`api.vote.trustlevel.io`) · Network: Cardano preprod
 
 ### 1. Summary
@@ -48,106 +152,110 @@ addresses, transaction hashes, nullifiers and commitments are public on-chain da
 |---|---|---|---|
 | R1 | ✅ pass | all 3 registered, backend root consistent | consistent=true, missing=0, members=14, errors=[] |
 | C1 | ✅ pass | rejected (before event start), backend trie root unchanged | rejected at relay-vote (HTTP 502): Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"Sh |
-| A-V01 | ✅ pass | confirmed on-chain | confirmed 5f58c0e119a6bc160f682f586ba3acb18997533931ab48abb81b41b2af89ffe2 |
-| A-V02 | ✅ pass | confirmed on-chain | confirmed d239347ede96ea0d007e2844ee095bd899683953f1c8b8b5b8e2646b39f927e4 |
-| A-V03 | ✅ pass | confirmed on-chain | confirmed 130cd866547eae0980d1af2f87fca3abd680fa60fcdb942d3fdf2cdf001aed8e |
-| A-V04 | ✅ pass | confirmed on-chain | confirmed 76f4eb91b52b78ce1dd150a9621cf5653bd875fd84884293fd85664358e0d226 |
-| A-V05 | ✅ pass | confirmed on-chain | confirmed 28db15d97693d6bb8aaeabc4eeaeecf14739253d8424d8b415842c62a76a542d |
-| A-V06 | ✅ pass | confirmed on-chain | confirmed 9af15e33c6899b44bc9a9281112f547e27533507c2bf8837adf4df33ade99e73 |
-| A-V07 | ✅ pass | confirmed on-chain | confirmed 9cdd5db8bf8af8e98499de040897a6ded3b36de25fba055661d210fb49c9b755 |
-| A-V08 | ✅ pass | confirmed on-chain | confirmed c1e4669448555050d26f04e8c76f291877a21d3bf7ce984ff8e72ca10957a12b |
-| A-V09 | ✅ pass | confirmed on-chain | confirmed 87410cbd7213c32b8175f7ad3f02a3e441fae22313b813e37e3c8630752f9f57 |
+| A-V01 | ✅ pass | confirmed on-chain | confirmed f57dc5f6b770a79fe4ce24fe110aebe02b912c940e9be326828c2c492e6835d0 |
+| A-V02 | ✅ pass | confirmed on-chain | confirmed 7938327342c55e76ec3961662187cced817edb99e4e03f00f38b276b263dba9f |
+| A-V03 | ✅ pass | confirmed on-chain | confirmed 9d928239623ae629f1ef181acb1fb87995a4ab9d7b4b54a5bd26d13d970f3b21 |
+| A-V04 | ✅ pass | confirmed on-chain | confirmed 1ca12a1ac9643022f42c34e9acf2b62e00b87dca123e68d21c0a801d5b5f1af3 |
+| A-V05 | ✅ pass | confirmed on-chain | confirmed 6abe760ee81532c9fafc76aea268e8ec67e70023552ec98965ee146cd3899d1f |
+| A-V06 | ✅ pass | confirmed on-chain | confirmed b46655355d3345399bbff38cfe86d401576679379d9d64cd137d89811ad0b6e4 |
+| A-V07 | ✅ pass | confirmed on-chain | confirmed 2993fc08601816da6551e98916bd8108a8a892867a864e5b1ffd6261a6a0cf03 |
+| A-V08 | ✅ pass | confirmed on-chain | confirmed 3f313fb65e518e5b72df3b47cb5fb57eb1a4a45ff6ec7102d0a7a967afb746a0 |
+| A-V09 | ✅ pass | confirmed on-chain | confirmed 2ef9f08432e0b7587b3cb2bb11d4cdcd18f3a7f7f503257156cb018acca5281a |
 | C2 | ✅ pass | HTTP 409 from relay-vote (nullifier already used) | backend HTTP 409: nullifier already used |
 | C3 | ✅ pass | rejected on-chain (MPF root mismatch) | Plutus script failed (phase 2) |
 | C4 | ✅ pass | HTTP 409 (nullifier already used), no tx submitted | backend HTTP 409: nullifier already used |
 | C5 | ✅ pass | HTTP 400 before the trie is touched (proof root is not the on-chain group root) | rejected at relay-vote (HTTP 400): Invalid vote proof: proof is not for this event's voter group; trie unchanged=true |
 | C6 | ✅ pass | HTTP 404/409 with a clear message (not in the group root frozen at mint) — F12 | backend HTTP 409: nullifier already used |
-| B1 | ✅ pass | hypothesis: 1 succeeds, the others fail | 1 submitted, 1 confirmed of 3; V11: ledger: inputs already spent; V13: ledger: inputs already spent |
-| B2-V11 | ✅ pass | succeeds on retry | confirmed c8c558afdd0fdd144026b426dc756d9ef91dbaac84babe9ba867541f83e1f726 |
-| B2-V13 | ✅ pass | succeeds on retry | confirmed ff878e16de65e79b3fb529ff63eaac7dc8b4b17363135cc37b5fa175e783473a |
+| B1 | ✅ pass | hypothesis: 1 succeeds, the others fail | 1 submitted, 1 confirmed of 3; V11: ledger: inputs already spent; V13: evaluator: inputs already spent (extraRedeemers) |
+| B2-V11 | ✅ pass | succeeds on retry | confirmed e1885755fe13b5751ea0f1b4e19d639a9c49e4bf7cb132cd816c088337e4881b |
+| B2-V13 | ✅ pass | succeeds on retry | confirmed 9fd3f7e1b4a972ade011727da9ba266b07515a8fdf1aad410239f47771c7725b |
 | C7a | ✅ pass | POST 404 (removed), DELETE 401 without a valid admin token | POST nullifier → 404; legitimate vote V10: POST nullifier → 404; DELETE nullifier without token → 401; with wrong token → 401 |
 | C7b | ✅ pass | all 401 without the token; 200 with it | GET /invited → 401; legitimate vote V10: GET /invited → 401; POST /invite → 401; POST /send-invitations → 401; PATCH / → 401; DELETE /participants/1 → 401; POST /save-blockchain-data → 401; GET /invite |
 | C7c | ✅ pass | public event objects carry none of adminToken / invitedParticipants / groupLeafCommitments | no admin token, e-mails or commitments in the public event API |
 | C7d | ✅ pass | HTTP 400 (proof does not verify), backend trie root unchanged | HTTP 400: {"statusCode":400,"message":"Invalid vote proof: ZK proof does not verify"}; trie unchanged=true |
-| C7e | ✅ pass | V10 votes successfully; backend trie still in sync with chain | confirmed b792b6334efd2cbd2524536fdeffd8b92dbaf12bd58407035823ea02ea77f9f5 |
+| C7e | ✅ pass | V10 votes successfully; backend trie still in sync with chain | confirmed e0676ea45584ae0e379659ac2a23df96cb0a07c38f86736c707b53cfea7b6a20 |
 | C8 | ✅ pass | rejected (after event end) | ledger: tx outside its validity interval |
 | T1 | ✅ pass | all three equal | api=[6,4,3] chain=[6,4,3] expected=[6,4,3] |
 
 ### 2. Setup
 
-- Event ID: `4988274691` · simple voting · options: Option A, Option B, Option C
-- Voting window: 2026-10-28T05:52:22.000Z → 2026-10-28T07:07:22.000Z
-- Group NFT policy: `86e758b97546ce57148c820263ad20df74f5b5b4ff0a51d81caa773c` · mint [db1175612f22…](https://preprod.cexplorer.io/tx/db1175612f22a4cd5ebe54d44b0392008461ac2f11108848d204b35ffe062c79)
-- Semaphore NFT policy: `6a2c188c87c432b6d9a7376f0578151e7f9e140259d95d71149875c9` · script [addr_test1wp4zcxyv…dvs7l8](https://preprod.cexplorer.io/address/addr_test1wp4zcxyvslzr9dke5umk7ptcz508l8s5qfvajht3zjv8tjgdvs7l8)
-- Voting NFT policy: `5f0dd063329d978560b5f210aa4b5ef9c514867f8e40ea4fc66b04ce` · script [addr_test1wp0sm5rr…n4cv2j](https://preprod.cexplorer.io/address/addr_test1wp0sm5rrx2we0ptqkhepp2jttmuu29yx078yp6j0ce4sfnsn4cv2j) · mint [b58a92ff3ffc…](https://preprod.cexplorer.io/tx/b58a92ff3ffc7b38dd22474609e6f7adbdc993f67f4ad10f8d70acc3a91faffa)
-- Group root frozen at mint: `1255330098118689…`
-- Funding: distributor [addr_test1qqs7pd2t…qf9jdq](https://preprod.cexplorer.io/address/addr_test1qqs7pd2thmrrtn9mfkcf3dmjugj6a43n0s64a42c30yt9qay4fkj4v38t8a4vuhtypg5ssyn8jdmah04wvru9n3qchuqqf9jdq) → admin + voters in [a44ad300de04…](https://preprod.cexplorer.io/tx/a44ad300de04dfb98035cebc76e8fb48dabad299259f4ff39652d5134e16b610)
+- Event ID: `6321080341` · simple voting · options: Option A, Option B, Option C
+- Voting window: 2026-10-29T05:37:51.000Z → 2026-10-29T06:52:51.000Z
+- Group NFT policy: `953240c25192a1698e0fcc091b0b9d1f4eca21118743576653a134e6` · mint [31c1173b32ee…](https://preprod.cexplorer.io/tx/31c1173b32eea72c3a928679b22a811acae11c77a5ce63b6dffe3ba87b64cea3)
+- Semaphore NFT policy: `06d7b00c562009b217a4c32ae987f68ac7444d0f7a165a004b2063fb` · script [addr_test1wqrd0vqv…vp2lfz](https://preprod.cexplorer.io/address/addr_test1wqrd0vqv2csqnvsh5npj46v8769vw3zdpaapvksqfvsx87cvp2lfz)
+- Voting NFT policy: `ab74dbcca29c197cf76e0a8b08e81a36229d56790709f6e71cce9f29` · script [addr_test1wz4hfk7v…tcgn72](https://preprod.cexplorer.io/address/addr_test1wz4hfk7v52wpjl8hdc9gkz8grgmz982k0yrsnah8rn8f72gtcgn72) · mint [c641670cbaac…](https://preprod.cexplorer.io/tx/c641670cbaac5a32f59971e4ae51da8350334600fb9fd8aa7b496c4d3b636f97)
+- Group root frozen at mint: `4774706874855103…`
+- Funding: distributor [addr_test1qqs7pd2t…qf9jdq](https://preprod.cexplorer.io/address/addr_test1qqs7pd2thmrrtn9mfkcf3dmjugj6a43n0s64a42c30yt9qay4fkj4v38t8a4vuhtypg5ssyn8jdmah04wvru9n3qchuqqf9jdq) → admin + voters in [27fb646c5d09…](https://preprod.cexplorer.io/tx/27fb646c5d09e4438cbb9b5a4d2189b8653e523ccfbae68d358bca9a57821373)
 
 | Voter | Role | Planned option | Wallet | Registered | Vote tx |
 |---|---|---|---|---|---|
-| V01 | waveA | Option A | [addr_test1qr89w0dr…g2w8zw](https://preprod.cexplorer.io/address/addr_test1qr89w0dr0xtkrzd5ml878vjlp7am9nw29af89e9r58yy6v5k52xenh486snc3xxsvxsv3uqgrm0zgd0umdsdxej7pzqqg2w8zw) | yes | [5f58c0e119a6…](https://preprod.cexplorer.io/tx/5f58c0e119a6bc160f682f586ba3acb18997533931ab48abb81b41b2af89ffe2) |
-| V02 | waveA | Option A | [addr_test1qplpqfwu…5y4z7y](https://preprod.cexplorer.io/address/addr_test1qplpqfwud3w6sknelmmzrpnwgwvj5tgp796g6da568wz0y7ty96we33lf20jcthh2x6u8nchgnp3jtdwd9r8pxl2apes5y4z7y) | yes | [d239347ede96…](https://preprod.cexplorer.io/tx/d239347ede96ea0d007e2844ee095bd899683953f1c8b8b5b8e2646b39f927e4) |
-| V03 | waveA | Option A | [addr_test1qq9z3fzv…tflhnr](https://preprod.cexplorer.io/address/addr_test1qq9z3fzvf94h42m9zz9zzkjhjqwn63usgm0n4zxgpznkfytzhxc4x78jx3gjgfd2zvu3pp7scl5q6lqeh38fjh2789pqtflhnr) | yes | [130cd866547e…](https://preprod.cexplorer.io/tx/130cd866547eae0980d1af2f87fca3abd680fa60fcdb942d3fdf2cdf001aed8e) |
-| V04 | waveA | Option A | [addr_test1qp8a7u9w…nhqygx](https://preprod.cexplorer.io/address/addr_test1qp8a7u9wwpqlkrma7dzhp5aznp5suam6rdnxae2psf8x2eaja2l6gxuuyn9saulz9hqqq5zkzup2z22xlqgmkkkpzssqnhqygx) | yes | [76f4eb91b52b…](https://preprod.cexplorer.io/tx/76f4eb91b52b78ce1dd150a9621cf5653bd875fd84884293fd85664358e0d226) |
-| V05 | waveA | Option B | [addr_test1qp6fcgxk…xh4awd](https://preprod.cexplorer.io/address/addr_test1qp6fcgxk6x7spcyzszy22meudkt3rxzwjlevkx85szqta93cfsyd9a0mlra2trv7q30j8sqla0vqyderh4qsfqqjty8sxh4awd) | yes | [28db15d97693…](https://preprod.cexplorer.io/tx/28db15d97693d6bb8aaeabc4eeaeecf14739253d8424d8b415842c62a76a542d) |
-| V06 | waveA | Option B | [addr_test1qpkqpnc0…v9lh3c](https://preprod.cexplorer.io/address/addr_test1qpkqpnc0uszcdayl760hj48n4p4tmtq23aywvj4d4eda2d8yykf7zv8kj0ylq3z4gzh7gahrtzd0shyhxxdtszynmrpsv9lh3c) | yes | [9af15e33c689…](https://preprod.cexplorer.io/tx/9af15e33c6899b44bc9a9281112f547e27533507c2bf8837adf4df33ade99e73) |
-| V07 | waveA | Option B | [addr_test1qzhepv8j…jkufg0](https://preprod.cexplorer.io/address/addr_test1qzhepv8j8d5qzrkahpr6ne8tkjc2gmfuh3uweqr4qrftw6uz7swfzk6x2kswru4jx4laht85xyewejhjf58dq53xv3msjkufg0) | yes | [9cdd5db8bf8a…](https://preprod.cexplorer.io/tx/9cdd5db8bf8af8e98499de040897a6ded3b36de25fba055661d210fb49c9b755) |
-| V08 | waveA | Option C | [addr_test1qq00rulm…73qqz5](https://preprod.cexplorer.io/address/addr_test1qq00rulmdrtcgql6fq82jacpkx7d8tneu3vstyhh6rt387aecyr442fqal4mvydvmnyf04ecvj3yfwas074zahykfngq73qqz5) | yes | [c1e466944855…](https://preprod.cexplorer.io/tx/c1e4669448555050d26f04e8c76f291877a21d3bf7ce984ff8e72ca10957a12b) |
-| V09 | waveA | Option C | [addr_test1qp7k2hfx…5m47s3](https://preprod.cexplorer.io/address/addr_test1qp7k2hfx2eemdpzjkwd0v4nkvfepne9a72yx7x50catujawarf76nxt2yu339dwwyc8ftw0h50gsrvauj5mtr3l2l46s5m47s3) | yes | [87410cbd7213…](https://preprod.cexplorer.io/tx/87410cbd7213c32b8175f7ad3f02a3e441fae22313b813e37e3c8630752f9f57) |
-| V10 | reserve | Option A | [addr_test1qzedeftp…sy2t8h](https://preprod.cexplorer.io/address/addr_test1qzedeftpqnrkpqlzpvg9d8s94dx4zr832ct6t2f7wlwrruzna8kvu8sy0qnfwchfrgqmdtzszwsmjy4a0z5en7hu4vsssy2t8h) | yes | [b792b6334efd…](https://preprod.cexplorer.io/tx/b792b6334efd2cbd2524536fdeffd8b92dbaf12bd58407035823ea02ea77f9f5) |
-| V11 | waveB | Option A | [addr_test1qpn56ma9…2fvxz5](https://preprod.cexplorer.io/address/addr_test1qpn56ma9dpwjk05agvcdjecu280uvzl7ykheq6ssudjtg45jg8huycnznexupu7794gw09y6psnq33nx6cf04h5z2x9s2fvxz5) | yes | [c8c558afdd0f…](https://preprod.cexplorer.io/tx/c8c558afdd0fdd144026b426dc756d9ef91dbaac84babe9ba867541f83e1f726) |
-| V12 | waveB | Option B | [addr_test1qzrnmr7a…4wzzhv](https://preprod.cexplorer.io/address/addr_test1qzrnmr7aymn23jlxcz090ddvj0jrxjr4ffl0v6hh5h5aqjf6sfggy7kl4lwxf2c0lurx6p5jgpz0uqmtc8jgxyqwas2s4wzzhv) | yes | [fd50138a8391…](https://preprod.cexplorer.io/tx/fd50138a8391b0c5fdde1f0bf80000aed486e56415cf0eeec119877beddb7630) |
-| V13 | waveB | Option C | [addr_test1qqq4u5kp…67c6zv](https://preprod.cexplorer.io/address/addr_test1qqq4u5kpjrsc5n4qcjy6esetym8r06kw02uatcn79kaq0qqgg4k624pvyj3v7dgsu7q4pqk53hz8se7v9zd2pexzqavs67c6zv) | yes | [ff878e16de65…](https://preprod.cexplorer.io/tx/ff878e16de65e79b3fb529ff63eaac7dc8b4b17363135cc37b5fa175e783473a) |
-| V14 | late | — | [addr_test1qz0cyvzj…p4prfh](https://preprod.cexplorer.io/address/addr_test1qz0cyvzjk652tyzsaljjpw6ldflkj7gsv2acm8dnr92qn9df0na0u8m8wcw3mngpvs374egk5t0962l4xfgccygy48hsp4prfh) | yes | — |
-| V15 | tooLate | Option B | [addr_test1qpn7zp43…gx82a7](https://preprod.cexplorer.io/address/addr_test1qpn7zp433gzpdxhvrytlshqyr9nzv97wyea8y2wrjwwrn4k9mtte6dyfj0w0rj0s84vpggwexve7grkz9p7adauaywcsgx82a7) | yes | — |
+| V01 | waveA | Option A | [addr_test1qzszyhpp…clt0gk](https://preprod.cexplorer.io/address/addr_test1qzszyhpprvxufgauthhw0x3jw43hgm9lcjpemsq5f7kjkeudepw6sfm76l5qj3fv4e4qnphwrnx6ya27ru5hv8hynyssclt0gk) | yes | [f57dc5f6b770…](https://preprod.cexplorer.io/tx/f57dc5f6b770a79fe4ce24fe110aebe02b912c940e9be326828c2c492e6835d0) |
+| V02 | waveA | Option A | [addr_test1qq3ndwj4…hyxmna](https://preprod.cexplorer.io/address/addr_test1qq3ndwj4c847dmcrhz7v7dz39j728xxl87w6dxyau6dh0mlqngsarpkkjgd04kynk5m3lcyk5xhfxs5nf5q2jyw5g26shyxmna) | yes | [7938327342c5…](https://preprod.cexplorer.io/tx/7938327342c55e76ec3961662187cced817edb99e4e03f00f38b276b263dba9f) |
+| V03 | waveA | Option A | [addr_test1qrnzqa78…ww4lx3](https://preprod.cexplorer.io/address/addr_test1qrnzqa7808k3t58kjmw5asdqtn09qnu0hesw0qpfuu4juh7y50c5wkd0deuwduqrxt6ujv6q62md6y3a0n0ea4xhwhlqww4lx3) | yes | [9d928239623a…](https://preprod.cexplorer.io/tx/9d928239623ae629f1ef181acb1fb87995a4ab9d7b4b54a5bd26d13d970f3b21) |
+| V04 | waveA | Option A | [addr_test1qq87l8yh…lu4ymc](https://preprod.cexplorer.io/address/addr_test1qq87l8yh6pckaqvdckrj93dt6vv6377mcf6tuj4zregnhj08x75jcjzeceleky9ff8qzpv5zeeqcr4sas0yusd9wzx9qlu4ymc) | yes | [1ca12a1ac964…](https://preprod.cexplorer.io/tx/1ca12a1ac9643022f42c34e9acf2b62e00b87dca123e68d21c0a801d5b5f1af3) |
+| V05 | waveA | Option B | [addr_test1qp5x8kc8…cf6mrk](https://preprod.cexplorer.io/address/addr_test1qp5x8kc859a2y8nlrue6prnrju5nn865wavfpg99t4egpevk5x3efsrffee7x3tr7xz9hkk3xdf2d7r4r0m69eyyjnyscf6mrk) | yes | [6abe760ee815…](https://preprod.cexplorer.io/tx/6abe760ee81532c9fafc76aea268e8ec67e70023552ec98965ee146cd3899d1f) |
+| V06 | waveA | Option B | [addr_test1qz5zx6re…68dczq](https://preprod.cexplorer.io/address/addr_test1qz5zx6reseasgx8cz57t22kft66j8ja00szcr764kt3e56egculsvehhwm2e06xzuzdfxz7qs6l7u9259xwxzqrued7s68dczq) | yes | [b46655355d33…](https://preprod.cexplorer.io/tx/b46655355d3345399bbff38cfe86d401576679379d9d64cd137d89811ad0b6e4) |
+| V07 | waveA | Option B | [addr_test1qzp4tle3…0rmdpa](https://preprod.cexplorer.io/address/addr_test1qzp4tle3yemzc96qfcx0u70yt3v2jhsw28dmy464j7fharj5yvzvhhvn7ss0mgrj3zcn3gtyu8wnes35vv8ngz2xhc3s0rmdpa) | yes | [2993fc086018…](https://preprod.cexplorer.io/tx/2993fc08601816da6551e98916bd8108a8a892867a864e5b1ffd6261a6a0cf03) |
+| V08 | waveA | Option C | [addr_test1qraa0dyr…h66pxn](https://preprod.cexplorer.io/address/addr_test1qraa0dyrmpen82luym7g5pdgmwf4atclf5g2ks58d0k3cj774nv888m4s6q562fjy49syc03pewkmzfud7ggyxnvy9msh66pxn) | yes | [3f313fb65e51…](https://preprod.cexplorer.io/tx/3f313fb65e518e5b72df3b47cb5fb57eb1a4a45ff6ec7102d0a7a967afb746a0) |
+| V09 | waveA | Option C | [addr_test1qpvmsjdf…d2gv3y](https://preprod.cexplorer.io/address/addr_test1qpvmsjdf7jawthv8rsfx84ftnp0ar3j0dhcq0s9xul4y9l9xfcw9mdt89jz2l6neasgfzutgrxz4hh750zfswgdrlj0qd2gv3y) | yes | [2ef9f08432e0…](https://preprod.cexplorer.io/tx/2ef9f08432e0b7587b3cb2bb11d4cdcd18f3a7f7f503257156cb018acca5281a) |
+| V10 | reserve | Option A | [addr_test1qq3q0swl…jcvhnv](https://preprod.cexplorer.io/address/addr_test1qq3q0swlkr7akfk6s2hs952cqwwsp8p4qqtddz6k3cyghwglg5wndvsqp66vjr2jkza932xq3jwe5f9tu93avutpdpfsjcvhnv) | yes | [e0676ea45584…](https://preprod.cexplorer.io/tx/e0676ea45584ae0e379659ac2a23df96cb0a07c38f86736c707b53cfea7b6a20) |
+| V11 | waveB | Option A | [addr_test1qrjp7u7l…vlhdxy](https://preprod.cexplorer.io/address/addr_test1qrjp7u7lljlu7h4ecu8nle3up9k5tfwdde8zhwmd8enkn7pvuwd6ktna30673tpk9flcg7dmgxahdm0fm42ha992mxmqvlhdxy) | yes | [e1885755fe13…](https://preprod.cexplorer.io/tx/e1885755fe13b5751ea0f1b4e19d639a9c49e4bf7cb132cd816c088337e4881b) |
+| V12 | waveB | Option B | [addr_test1qzzedj08…g033eg](https://preprod.cexplorer.io/address/addr_test1qzzedj08w3dgvktpz5rh8447fdpc8qgry0ztcxa3atjusm5e9es7s6y5s29gvk4wzdhm6ljfda8vds3pszzwk3sykv8qg033eg) | yes | [a19cf051cc71…](https://preprod.cexplorer.io/tx/a19cf051cc713bc8c9b0a7e0387f1d307de57ee3eae1b90767b635e0d6a29c90) |
+| V13 | waveB | Option C | [addr_test1qrzgx5aa…ulp09w](https://preprod.cexplorer.io/address/addr_test1qrzgx5aagz3xgylhyrta2w994ujz3cm4hjwn2j7tl5pkvhd9deh4juhjmrw8hgga43adfqq8vv95nammwrj2yc54p79sulp09w) | yes | [9fd3f7e1b4a9…](https://preprod.cexplorer.io/tx/9fd3f7e1b4a972ade011727da9ba266b07515a8fdf1aad410239f47771c7725b) |
+| V14 | late | — | [addr_test1qraarjly…sllu67](https://preprod.cexplorer.io/address/addr_test1qraarjlyf5gcw6ejpdjru3dwwky7qxuk7cx9h0wv9qsclrtrxr254m6d7kwemf97t8t32px93xp6f9hfsykfkg370e0ssllu67) | yes | — |
+| V15 | tooLate | Option B | [addr_test1qp2ech5h…rwn68j](https://preprod.cexplorer.io/address/addr_test1qp2ech5hjs8mftnj28s5dn3nxnzz7rxs38mnhky9thpkuvfycurl0s6fv8aaml4r58cr0fwqrrh77xdcpldlvmrg3ygqrwn68j) | yes | — |
 
 ### 3. Timeline
 
 | Time (UTC) | Phase | Test | Actor | Event | Tx / detail |
 |---|---|---|---|---|---|
-| 05:34:58 | fund |  |  | tx-submitted | [a44ad300de04…](https://preprod.cexplorer.io/tx/a44ad300de04dfb98035cebc76e8fb48dabad299259f4ff39652d5134e16b610) |
-| 05:35:25 | fund |  |  | confirmed | [a44ad300de04…](https://preprod.cexplorer.io/tx/a44ad300de04dfb98035cebc76e8fb48dabad299259f4ff39652d5134e16b610) |
-| 05:35:27 | event |  |  | event-created | [SIM] M4 test run main 2026-10-28 05:35 |
-| 05:35:31 | event |  |  | invitations | sent 15, failed 0 |
-| 05:37:06 | bootstrap |  |  | tx-submitted (group mint) | [db1175612f22…](https://preprod.cexplorer.io/tx/db1175612f22a4cd5ebe54d44b0392008461ac2f11108848d204b35ffe062c79) |
-| 05:37:31 | bootstrap |  |  | confirmed (group mint) | [db1175612f22…](https://preprod.cexplorer.io/tx/db1175612f22a4cd5ebe54d44b0392008461ac2f11108848d204b35ffe062c79) |
-| 05:37:37 | bootstrap |  |  | tx-submitted (semaphore+voting mint) | [b58a92ff3ffc…](https://preprod.cexplorer.io/tx/b58a92ff3ffc7b38dd22474609e6f7adbdc993f67f4ad10f8d70acc3a91faffa) |
-| 05:38:15 | bootstrap |  |  | confirmed (semaphore+voting mint) | [b58a92ff3ffc…](https://preprod.cexplorer.io/tx/b58a92ff3ffc7b38dd22474609e6f7adbdc993f67f4ad10f8d70acc3a91faffa) |
-| 05:38:47 | vote | C1 | V01 | vote-failed | at `relay-vote` (HTTP 502): Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraCo |
-| 05:52:57 | vote | A | V01 | vote-failed | at `relay-vote` (HTTP 502): Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraCo |
-| 05:53:32 | vote | A-retry | V01 | vote-submitted | [5f58c0e119a6…](https://preprod.cexplorer.io/tx/5f58c0e119a6bc160f682f586ba3acb18997533931ab48abb81b41b2af89ffe2) |
-| 05:53:49 | vote | A | V01 | confirmed | [5f58c0e119a6…](https://preprod.cexplorer.io/tx/5f58c0e119a6bc160f682f586ba3acb18997533931ab48abb81b41b2af89ffe2) |
-| 05:53:54 | vote | A | V02 | vote-submitted | [d239347ede96…](https://preprod.cexplorer.io/tx/d239347ede96ea0d007e2844ee095bd899683953f1c8b8b5b8e2646b39f927e4) |
-| 05:55:04 | vote | A | V02 | confirmed | [d239347ede96…](https://preprod.cexplorer.io/tx/d239347ede96ea0d007e2844ee095bd899683953f1c8b8b5b8e2646b39f927e4) |
-| 05:55:08 | vote | A | V03 | vote-submitted | [130cd866547e…](https://preprod.cexplorer.io/tx/130cd866547eae0980d1af2f87fca3abd680fa60fcdb942d3fdf2cdf001aed8e) |
-| 05:55:27 | vote | A | V03 | confirmed | [130cd866547e…](https://preprod.cexplorer.io/tx/130cd866547eae0980d1af2f87fca3abd680fa60fcdb942d3fdf2cdf001aed8e) |
-| 05:55:31 | vote | A | V04 | vote-submitted | [76f4eb91b52b…](https://preprod.cexplorer.io/tx/76f4eb91b52b78ce1dd150a9621cf5653bd875fd84884293fd85664358e0d226) |
-| 05:56:41 | vote | A | V04 | confirmed | [76f4eb91b52b…](https://preprod.cexplorer.io/tx/76f4eb91b52b78ce1dd150a9621cf5653bd875fd84884293fd85664358e0d226) |
-| 05:56:45 | vote | A | V05 | vote-submitted | [28db15d97693…](https://preprod.cexplorer.io/tx/28db15d97693d6bb8aaeabc4eeaeecf14739253d8424d8b415842c62a76a542d) |
-| 05:57:24 | vote | A | V05 | confirmed | [28db15d97693…](https://preprod.cexplorer.io/tx/28db15d97693d6bb8aaeabc4eeaeecf14739253d8424d8b415842c62a76a542d) |
-| 05:57:28 | vote | A | V06 | vote-submitted | [9af15e33c689…](https://preprod.cexplorer.io/tx/9af15e33c6899b44bc9a9281112f547e27533507c2bf8837adf4df33ade99e73) |
-| 05:58:06 | vote | A | V06 | confirmed | [9af15e33c689…](https://preprod.cexplorer.io/tx/9af15e33c6899b44bc9a9281112f547e27533507c2bf8837adf4df33ade99e73) |
-| 05:58:11 | vote | A | V07 | vote-submitted | [9cdd5db8bf8a…](https://preprod.cexplorer.io/tx/9cdd5db8bf8af8e98499de040897a6ded3b36de25fba055661d210fb49c9b755) |
-| 05:58:54 | vote | A | V07 | confirmed | [9cdd5db8bf8a…](https://preprod.cexplorer.io/tx/9cdd5db8bf8af8e98499de040897a6ded3b36de25fba055661d210fb49c9b755) |
-| 05:58:59 | vote | A | V08 | vote-submitted | [c1e466944855…](https://preprod.cexplorer.io/tx/c1e4669448555050d26f04e8c76f291877a21d3bf7ce984ff8e72ca10957a12b) |
-| 05:59:37 | vote | A | V08 | confirmed | [c1e466944855…](https://preprod.cexplorer.io/tx/c1e4669448555050d26f04e8c76f291877a21d3bf7ce984ff8e72ca10957a12b) |
-| 05:59:42 | vote | A | V09 | vote-submitted | [87410cbd7213…](https://preprod.cexplorer.io/tx/87410cbd7213c32b8175f7ad3f02a3e441fae22313b813e37e3c8630752f9f57) |
-| 06:00:41 | vote | A | V09 | confirmed | [87410cbd7213…](https://preprod.cexplorer.io/tx/87410cbd7213c32b8175f7ad3f02a3e441fae22313b813e37e3c8630752f9f57) |
-| 06:00:47 | vote | C2 | V03 | vote-failed | at `relay-vote` (HTTP 409): Nullifier already used. Your vote may have already been submitted, or a previous attempt partially failed. If the vote TX was never confirme |
-| 06:00:52 | vote | C3 | V03 | vote-failed | at `submit-direct`: {"data":{"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraConway\",\"error\":[\"ConwayUt |
-| 06:00:56 | vote | C5 | V14 | vote-failed | at `relay-vote` (HTTP 400): Invalid vote proof: proof is not for this event's voter group |
-| 06:00:57 | vote | C6 | V14 | vote-failed | at `merkle-proof` (HTTP 409): Not part of this vote's group (registered after voting started) |
-| 06:01:05 | vote | B1 | V12 | vote-submitted | [fd50138a8391…](https://preprod.cexplorer.io/tx/fd50138a8391b0c5fdde1f0bf80000aed486e56415cf0eeec119877beddb7630) |
-| 06:01:06 | vote | B1 | V13 | vote-failed | at `relay-vote` (HTTP 502): Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraCo |
-| 06:01:07 | vote | B1 | V11 | vote-failed | at `relay-vote` (HTTP 502): Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraCo |
-| 06:01:39 | vote | B1 | V12 | confirmed | [fd50138a8391…](https://preprod.cexplorer.io/tx/fd50138a8391b0c5fdde1f0bf80000aed486e56415cf0eeec119877beddb7630) |
-| 06:01:47 | vote | B2 | V11 | vote-submitted | [c8c558afdd0f…](https://preprod.cexplorer.io/tx/c8c558afdd0fdd144026b426dc756d9ef91dbaac84babe9ba867541f83e1f726) |
-| 06:02:52 | vote | B2 | V11 | confirmed | [c8c558afdd0f…](https://preprod.cexplorer.io/tx/c8c558afdd0fdd144026b426dc756d9ef91dbaac84babe9ba867541f83e1f726) |
-| 06:02:57 | vote | B2 | V13 | vote-submitted | [ff878e16de65…](https://preprod.cexplorer.io/tx/ff878e16de65e79b3fb529ff63eaac7dc8b4b17363135cc37b5fa175e783473a) |
-| 06:03:33 | vote | B2 | V13 | confirmed | [ff878e16de65…](https://preprod.cexplorer.io/tx/ff878e16de65e79b3fb529ff63eaac7dc8b4b17363135cc37b5fa175e783473a) |
-| 06:03:44 | vote | C7e-victim | V10 | vote-submitted | [b792b6334efd…](https://preprod.cexplorer.io/tx/b792b6334efd2cbd2524536fdeffd8b92dbaf12bd58407035823ea02ea77f9f5) |
-| 06:04:13 | vote | C7e-victim | V10 | confirmed | [b792b6334efd…](https://preprod.cexplorer.io/tx/b792b6334efd2cbd2524536fdeffd8b92dbaf12bd58407035823ea02ea77f9f5) |
-| 07:08:26 | vote | C8 | V15 | vote-failed | at `relay-vote` (HTTP 502): Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraCo |
+| 04:55:26 | fund |  |  | tx-submitted | [27fb646c5d09…](https://preprod.cexplorer.io/tx/27fb646c5d09e4438cbb9b5a4d2189b8653e523ccfbae68d358bca9a57821373) |
+| 04:56:14 | fund |  |  | confirmed | [27fb646c5d09…](https://preprod.cexplorer.io/tx/27fb646c5d09e4438cbb9b5a4d2189b8653e523ccfbae68d358bca9a57821373) |
+| 05:21:39 | event |  |  | event-created | [SIM] M4 test run main 2026-10-29 05:21 |
+| 05:21:43 | event |  |  | invitations | sent 15, failed 0 |
+| 05:22:34 | bootstrap |  |  | tx-submitted (group mint) | [31c1173b32ee…](https://preprod.cexplorer.io/tx/31c1173b32eea72c3a928679b22a811acae11c77a5ce63b6dffe3ba87b64cea3) |
+| 05:22:59 | bootstrap |  |  | confirmed (group mint) | [31c1173b32ee…](https://preprod.cexplorer.io/tx/31c1173b32eea72c3a928679b22a811acae11c77a5ce63b6dffe3ba87b64cea3) |
+| 05:23:07 | bootstrap |  |  | tx-submitted (semaphore+voting mint) | [c641670cbaac…](https://preprod.cexplorer.io/tx/c641670cbaac5a32f59971e4ae51da8350334600fb9fd8aa7b496c4d3b636f97) |
+| 05:23:23 | bootstrap |  |  | confirmed (semaphore+voting mint) | [c641670cbaac…](https://preprod.cexplorer.io/tx/c641670cbaac5a32f59971e4ae51da8350334600fb9fd8aa7b496c4d3b636f97) |
+| 05:23:38 | vote | C1 | V01 | vote-failed | at `relay-vote` (HTTP 502): Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraCo |
+| 05:39:11 | vote | A | V01 | vote-submitted | [f57dc5f6b770…](https://preprod.cexplorer.io/tx/f57dc5f6b770a79fe4ce24fe110aebe02b912c940e9be326828c2c492e6835d0) |
+| 05:39:13 | vote | A | V01 | confirmed | [f57dc5f6b770…](https://preprod.cexplorer.io/tx/f57dc5f6b770a79fe4ce24fe110aebe02b912c940e9be326828c2c492e6835d0) |
+| 05:40:13 | vote | A | V02 | vote-submitted | [7938327342c5…](https://preprod.cexplorer.io/tx/7938327342c55e76ec3961662187cced817edb99e4e03f00f38b276b263dba9f) |
+| 05:40:14 | vote | A | V02 | confirmed | [7938327342c5…](https://preprod.cexplorer.io/tx/7938327342c55e76ec3961662187cced817edb99e4e03f00f38b276b263dba9f) |
+| 05:40:49 | vote | A | V03 | vote-submitted | [9d928239623a…](https://preprod.cexplorer.io/tx/9d928239623ae629f1ef181acb1fb87995a4ab9d7b4b54a5bd26d13d970f3b21) |
+| 05:40:54 | vote | A | V03 | confirmed | [9d928239623a…](https://preprod.cexplorer.io/tx/9d928239623ae629f1ef181acb1fb87995a4ab9d7b4b54a5bd26d13d970f3b21) |
+| 05:41:23 | vote | A | V04 | vote-submitted | [1ca12a1ac964…](https://preprod.cexplorer.io/tx/1ca12a1ac9643022f42c34e9acf2b62e00b87dca123e68d21c0a801d5b5f1af3) |
+| 05:41:28 | vote | A | V04 | confirmed | [1ca12a1ac964…](https://preprod.cexplorer.io/tx/1ca12a1ac9643022f42c34e9acf2b62e00b87dca123e68d21c0a801d5b5f1af3) |
+| 05:41:32 | vote | A | V05 | vote-failed | at `relay-vote` (HTTP 422): Script evaluation failed — collateral NOT taken. ScriptFailures: {   "spend:0": {     "CannotCreateEvaluationContext": {       "reason": "Un |
+| 05:42:27 | vote | A-retry | V05 | vote-submitted | [6abe760ee815…](https://preprod.cexplorer.io/tx/6abe760ee81532c9fafc76aea268e8ec67e70023552ec98965ee146cd3899d1f) |
+| 05:42:32 | vote | A | V05 | confirmed | [6abe760ee815…](https://preprod.cexplorer.io/tx/6abe760ee81532c9fafc76aea268e8ec67e70023552ec98965ee146cd3899d1f) |
+| 05:42:37 | vote | A | V06 | vote-failed | at `relay-vote` (HTTP 422): Script evaluation failed — collateral NOT taken. ScriptFailures: {   "spend:1": {     "CannotCreateEvaluationContext": {       "reason": "Un |
+| 05:43:31 | vote | A-retry | V06 | vote-submitted | [b46655355d33…](https://preprod.cexplorer.io/tx/b46655355d3345399bbff38cfe86d401576679379d9d64cd137d89811ad0b6e4) |
+| 05:43:36 | vote | A | V06 | confirmed | [b46655355d33…](https://preprod.cexplorer.io/tx/b46655355d3345399bbff38cfe86d401576679379d9d64cd137d89811ad0b6e4) |
+| 05:43:40 | vote | A | V07 | vote-failed | at `relay-vote` (HTTP 502): Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraCo |
+| 05:44:40 | vote | A-retry | V07 | vote-submitted | [2993fc086018…](https://preprod.cexplorer.io/tx/2993fc08601816da6551e98916bd8108a8a892867a864e5b1ffd6261a6a0cf03) |
+| 05:44:44 | vote | A | V07 | confirmed | [2993fc086018…](https://preprod.cexplorer.io/tx/2993fc08601816da6551e98916bd8108a8a892867a864e5b1ffd6261a6a0cf03) |
+| 05:45:09 | vote | A | V08 | vote-submitted | [3f313fb65e51…](https://preprod.cexplorer.io/tx/3f313fb65e518e5b72df3b47cb5fb57eb1a4a45ff6ec7102d0a7a967afb746a0) |
+| 05:45:14 | vote | A | V08 | confirmed | [3f313fb65e51…](https://preprod.cexplorer.io/tx/3f313fb65e518e5b72df3b47cb5fb57eb1a4a45ff6ec7102d0a7a967afb746a0) |
+| 05:45:18 | vote | A | V09 | vote-failed | at `relay-vote` (HTTP 422): Script evaluation failed — collateral NOT taken. ScriptFailures: {   "spend:0": {     "CannotCreateEvaluationContext": {       "reason": "Un |
+| 05:46:13 | vote | A-retry | V09 | vote-submitted | [2ef9f08432e0…](https://preprod.cexplorer.io/tx/2ef9f08432e0b7587b3cb2bb11d4cdcd18f3a7f7f503257156cb018acca5281a) |
+| 05:46:18 | vote | A | V09 | confirmed | [2ef9f08432e0…](https://preprod.cexplorer.io/tx/2ef9f08432e0b7587b3cb2bb11d4cdcd18f3a7f7f503257156cb018acca5281a) |
+| 05:46:23 | vote | C2 | V03 | vote-failed | at `relay-vote` (HTTP 409): Nullifier already used. Your vote may have already been submitted, or a previous attempt partially failed. If the vote TX was never confirme |
+| 05:46:29 | vote | C3 | V03 | vote-failed | at `submit-direct`: {"data":{"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraConway\",\"error\":[\"ConwayUt |
+| 05:46:34 | vote | C5 | V14 | vote-failed | at `relay-vote` (HTTP 400): Invalid vote proof: proof is not for this event's voter group |
+| 05:46:36 | vote | C6 | V14 | vote-failed | at `merkle-proof` (HTTP 409): Not part of this vote's group (registered after voting started) |
+| 05:46:43 | vote | B1 | V11 | vote-failed | at `relay-vote` (HTTP 502): Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraCo |
+| 05:46:59 | vote | B1 | V12 | vote-submitted | [a19cf051cc71…](https://preprod.cexplorer.io/tx/a19cf051cc713bc8c9b0a7e0387f1d307de57ee3eae1b90767b635e0d6a29c90) |
+| 05:46:59 | vote | B1 | V13 | vote-failed | at `relay-vote` (HTTP 422): Script evaluation failed — collateral NOT taken. ScriptFailures: {   "spend:0": {     "extraRedeemers": [       "spend:0"     ]   },   "spen |
+| 05:47:01 | vote | B1 | V12 | confirmed | [a19cf051cc71…](https://preprod.cexplorer.io/tx/a19cf051cc713bc8c9b0a7e0387f1d307de57ee3eae1b90767b635e0d6a29c90) |
+| 05:47:25 | vote | B2 | V11 | vote-submitted | [e1885755fe13…](https://preprod.cexplorer.io/tx/e1885755fe13b5751ea0f1b4e19d639a9c49e4bf7cb132cd816c088337e4881b) |
+| 05:47:29 | vote | B2 | V11 | confirmed | [e1885755fe13…](https://preprod.cexplorer.io/tx/e1885755fe13b5751ea0f1b4e19d639a9c49e4bf7cb132cd816c088337e4881b) |
+| 05:47:54 | vote | B2 | V13 | vote-submitted | [9fd3f7e1b4a9…](https://preprod.cexplorer.io/tx/9fd3f7e1b4a972ade011727da9ba266b07515a8fdf1aad410239f47771c7725b) |
+| 05:47:59 | vote | B2 | V13 | confirmed | [9fd3f7e1b4a9…](https://preprod.cexplorer.io/tx/9fd3f7e1b4a972ade011727da9ba266b07515a8fdf1aad410239f47771c7725b) |
+| 05:48:51 | vote | C7e-victim | V10 | vote-submitted | [e0676ea45584…](https://preprod.cexplorer.io/tx/e0676ea45584ae0e379659ac2a23df96cb0a07c38f86736c707b53cfea7b6a20) |
+| 05:48:52 | vote | C7e-victim | V10 | confirmed | [e0676ea45584…](https://preprod.cexplorer.io/tx/e0676ea45584ae0e379659ac2a23df96cb0a07c38f86736c707b53cfea7b6a20) |
+| 07:02:38 | vote | C8 | V15 | vote-failed | at `relay-vote`: fetch failed |
+| 07:03:49 | vote | C8 | V15 | vote-failed | at `relay-vote` (HTTP 502): Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraCo |
 
 ### 4. On-chain state trace
 
@@ -158,51 +266,52 @@ column can lag one vote behind (Blockfrost indexes the Voting address separately
 
 | Time | After | MPF root on-chain | MPF root backend | Backend = chain | Recomputed | Tally (A/B/C) |
 |---|---|---|---|---|---|---|
-| 05:38:17 | after bootstrap | `0000000000…` | `—` | yes | `0000000000…` | 0 / 0 / 0 |
-| 05:38:19 | after late registration | `0000000000…` | `—` | yes | `0000000000…` | 0 / 0 / 0 |
-| 05:38:36 | before C1 | `0000000000…` | `—` | yes | `0000000000…` | 0 / 0 / 0 |
-| 05:38:47 | after C1 | `0000000000…` | `—` | yes | `0000000000…` | 0 / 0 / 0 |
-| 05:53:50 | after A V01 | `a3605aab4c…` | `a3605aab4c…` | yes | `a3605aab4c…` | 1 / 0 / 0 |
-| 05:55:04 | after A V02 | `24e9ed35f8…` | `24e9ed35f8…` | yes | `24e9ed35f8…` | 2 / 0 / 0 |
-| 05:55:27 | after A V03 | `e8af43de36…` | `e8af43de36…` | yes | `e8af43de36…` | 3 / 0 / 0 |
-| 05:56:42 | after A V04 | `c6f42d07c4…` | `c6f42d07c4…` | yes | `c6f42d07c4…` | 4 / 0 / 0 |
-| 05:57:24 | after A V05 | `31459a54c1…` | `31459a54c1…` | yes | `31459a54c1…` | 4 / 1 / 0 |
-| 05:58:07 | after A V06 | `7b74619c6c…` | `7b74619c6c…` | yes | `7b74619c6c…` | 4 / 2 / 0 |
-| 05:58:55 | after A V07 | `9d7ed57893…` | `9d7ed57893…` | yes | `9d7ed57893…` | 4 / 3 / 0 |
-| 05:59:38 | after A V08 | `3995fdb097…` | `3995fdb097…` | yes | `3995fdb097…` | 4 / 3 / 1 |
-| 06:00:42 | after A V09 | `ed36de7bf2…` | `ed36de7bf2…` | yes | `ed36de7bf2…` | 4 / 3 / 2 |
-| 06:00:54 | before C5 | `ed36de7bf2…` | `ed36de7bf2…` | yes | `ed36de7bf2…` | 4 / 3 / 2 |
-| 06:00:57 | after C5 | `ed36de7bf2…` | `ed36de7bf2…` | yes | `ed36de7bf2…` | 4 / 3 / 2 |
-| 06:00:58 | after attacks | `ed36de7bf2…` | `ed36de7bf2…` | yes | `ed36de7bf2…` | 4 / 3 / 2 |
-| 06:01:40 | after B1 V12 | `fd070dc459…` | `fd070dc459…` | yes | `fd070dc459…` | 4 / 4 / 2 |
-| 06:02:53 | after B2 V11 | `92d5f9dee7…` | `92d5f9dee7…` | yes | `92d5f9dee7…` | 5 / 4 / 2 |
-| 06:03:34 | after B2 V13 | `a0aa946437…` | `a0aa946437…` | yes | `a0aa946437…` | 5 / 4 / 3 |
-| 06:03:35 | before C7 | `a0aa946437…` | `a0aa946437…` | yes | `a0aa946437…` | 5 / 4 / 3 |
-| 06:03:40 | after C7d junk proof | `a0aa946437…` | `a0aa946437…` | yes | `a0aa946437…` | 5 / 4 / 3 |
-| 06:04:14 | after C7e-victim V10 | `5dec3467ed…` | `5dec3467ed…` | yes | `5dec3467ed…` | 6 / 4 / 3 |
-| 06:04:14 | after C7 | `5dec3467ed…` | `5dec3467ed…` | yes | `5dec3467ed…` | 6 / 4 / 3 |
-| 07:08:27 | after C8 | `5dec3467ed…` | `5dec3467ed…` | yes | `5dec3467ed…` | 6 / 4 / 3 |
-| 07:08:44 | final | `5dec3467ed…` | `5dec3467ed…` | yes | `5dec3467ed…` | 6 / 4 / 3 |
+| 05:23:25 | after bootstrap | `0000000000…` | `—` | yes | `0000000000…` | 0 / 0 / 0 |
+| 05:23:27 | after late registration | `0000000000…` | `—` | yes | `0000000000…` | 0 / 0 / 0 |
+| 05:23:28 | before C1 | `0000000000…` | `—` | yes | `0000000000…` | 0 / 0 / 0 |
+| 05:23:38 | after C1 | `0000000000…` | `—` | yes | `0000000000…` | 0 / 0 / 0 |
+| 05:39:13 | after A V01 | `ceeff0e54a…` | `ceeff0e54a…` | yes | `ceeff0e54a…` | 1 / 0 / 0 |
+| 05:40:15 | after A V02 | `223e8b8f56…` | `223e8b8f56…` | yes | `223e8b8f56…` | 2 / 0 / 0 |
+| 05:40:54 | after A V03 | `6ad2f6c784…` | `6ad2f6c784…` | yes | `6ad2f6c784…` | 3 / 0 / 0 |
+| 05:41:29 | after A V04 | `844588bbb3…` | `844588bbb3…` | yes | `844588bbb3…` | 4 / 0 / 0 |
+| 05:42:32 | after A V05 | `4ffa5ee7bc…` | `4ffa5ee7bc…` | yes | `4ffa5ee7bc…` | 4 / 1 / 0 |
+| 05:43:36 | after A V06 | `6941c37dfa…` | `6941c37dfa…` | yes | `6941c37dfa…` | 4 / 2 / 0 |
+| 05:44:45 | after A V07 | `8045a64874…` | `8045a64874…` | yes | `8045a64874…` | 4 / 3 / 0 |
+| 05:45:15 | after A V08 | `0772398390…` | `0772398390…` | yes | `0772398390…` | 4 / 3 / 1 |
+| 05:46:18 | after A V09 | `3aae3290cf…` | `3aae3290cf…` | yes | `3aae3290cf…` | 4 / 3 / 2 |
+| 05:46:30 | before C5 | `3aae3290cf…` | `3aae3290cf…` | yes | `3aae3290cf…` | 4 / 3 / 2 |
+| 05:46:35 | after C5 | `3aae3290cf…` | `3aae3290cf…` | yes | `3aae3290cf…` | 4 / 3 / 2 |
+| 05:46:36 | after attacks | `3aae3290cf…` | `3aae3290cf…` | yes | `3aae3290cf…` | 4 / 3 / 2 |
+| 05:47:01 | after B1 V12 | `54d9d03dba…` | `54d9d03dba…` | yes | `54d9d03dba…` | 4 / 4 / 2 |
+| 05:47:30 | after B2 V11 | `aa94bfce50…` | `aa94bfce50…` | yes | `aa94bfce50…` | 5 / 4 / 2 |
+| 05:48:00 | after B2 V13 | `7faad3dbcb…` | `7faad3dbcb…` | yes | `7faad3dbcb…` | 5 / 4 / 3 |
+| 05:48:01 | before C7 | `7faad3dbcb…` | `7faad3dbcb…` | yes | `7faad3dbcb…` | 5 / 4 / 3 |
+| 05:48:06 | after C7d junk proof | `7faad3dbcb…` | `7faad3dbcb…` | yes | `7faad3dbcb…` | 5 / 4 / 3 |
+| 05:48:53 | after C7e-victim V10 | `61961472e1…` | `61961472e1…` | yes | `61961472e1…` | 6 / 4 / 3 |
+| 05:48:53 | after C7 | `61961472e1…` | `61961472e1…` | yes | `61961472e1…` | 6 / 4 / 3 |
+| 07:02:40 | after C8 | `61961472e1…` | `61961472e1…` | yes | `61961472e1…` | 6 / 4 / 3 |
+| 07:02:55 | final | `61961472e1…` | `61961472e1…` | yes | `61961472e1…` | 6 / 4 / 3 |
+| 07:03:49 | after C8 | `61961472e1…` | `61961472e1…` | yes | `61961472e1…` | 6 / 4 / 3 |
 
 #### Group Merkle root (registration)
 
 | Time | After | Backend members | Registered by us | Missing | Root consistent |
 |---|---|---|---|---|---|
-| 05:35:53 | after V01 | 0 | 1 | 1 | **no** |
-| 05:35:54 | after V02 | 0 | 2 | 2 | **no** |
-| 05:35:55 | after V03 | 0 | 3 | 3 | **no** |
-| 05:35:56 | after V04 | 0 | 4 | 4 | **no** |
-| 05:35:57 | after V05 | 0 | 5 | 5 | **no** |
-| 05:35:58 | after V06 | 0 | 6 | 6 | **no** |
-| 05:35:59 | after V07 | 0 | 7 | 7 | **no** |
-| 05:36:00 | after V08 | 0 | 8 | 8 | **no** |
-| 05:36:01 | after V09 | 0 | 9 | 9 | **no** |
-| 05:36:02 | after V10 | 0 | 10 | 10 | **no** |
-| 05:36:03 | after V15 | 0 | 11 | 11 | **no** |
-| 05:36:05 | after R1 (concurrent) | 0 | 14 | 14 | **no** |
-| 05:36:05 | after R1 retries | 0 | 14 | 14 | **no** |
-| 05:36:47 | groupcheck (re-run) | 14 | 14 | undefined | yes |
-| 05:38:18 | after late registration V14 | 15 | 15 | undefined | yes |
+| 05:22:13 | after V01 | 1 | 1 | undefined | yes |
+| 05:22:14 | after V02 | 2 | 2 | undefined | yes |
+| 05:22:15 | after V03 | 3 | 3 | undefined | yes |
+| 05:22:16 | after V04 | 4 | 4 | undefined | yes |
+| 05:22:17 | after V05 | 5 | 5 | undefined | yes |
+| 05:22:19 | after V06 | 6 | 6 | undefined | yes |
+| 05:22:20 | after V07 | 7 | 7 | undefined | yes |
+| 05:22:21 | after V08 | 8 | 8 | undefined | yes |
+| 05:22:23 | after V09 | 9 | 9 | undefined | yes |
+| 05:22:24 | after V10 | 10 | 10 | undefined | yes |
+| 05:22:25 | after V15 | 11 | 11 | undefined | yes |
+| 05:22:27 | after R1 (concurrent) | 14 | 14 | undefined | yes |
+| 05:22:27 | after R1 retries | 14 | 14 | undefined | yes |
+| 05:22:29 | groupcheck (re-run) | 14 | 14 | undefined | yes |
+| 05:23:26 | after late registration V14 | 15 | 15 | undefined | yes |
 
 ### 5. Results reconciliation
 
@@ -285,7 +394,7 @@ rejected at relay-vote (HTTP 400): Invalid vote proof: proof is not for this eve
 #### C6 — pass
 
 - Expected: HTTP 404/409 with a clear message (not in the group root frozen at mint) — F12
-- Cause: rejected at merkle-proof (HTTP 409): Not part of this vote's group (registered after voting started)
+- Cause: backend HTTP 409: nullifier already used
 
 <details><summary>Raw observation</summary>
 
@@ -297,36 +406,41 @@ rejected at merkle-proof (HTTP 409): Not part of this vote's group (registered a
 #### B1 — pass
 
 - Expected: hypothesis: 1 succeeds, the others fail
-- Cause: 1 submitted, 1 confirmed of 3; failures: V11@relay-vote rolledBack=true: Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"
+- Cause: evaluator: inputs already spent (extraRedeemers)
 
 <details><summary>Raw observation</summary>
 
 ```
-1 submitted, 1 confirmed of 3; failures: V11@relay-vote rolledBack=true: Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\" | V13@relay-vote rolledBack=true: Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\"
+1 submitted, 1 confirmed of 3; failures: V11@relay-vote rolledBack=true: Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\" | V13@relay-vote rolledBack=true: Script evaluation failed — collateral NOT taken.
+ScriptFailures:
+{
+  "spend:0": {
+    "extraRedeemers": [
+      "spend:0
 ```
 </details>
 
 #### B2-V11 — pass
 
 - Expected: succeeds on retry
-- Cause: confirmed c8c558afdd0fdd144026b426dc756d9ef91dbaac84babe9ba867541f83e1f726
+- Cause: confirmed e1885755fe13b5751ea0f1b4e19d639a9c49e4bf7cb132cd816c088337e4881b
 
 <details><summary>Raw observation</summary>
 
 ```
-confirmed c8c558afdd0fdd144026b426dc756d9ef91dbaac84babe9ba867541f83e1f726
+confirmed e1885755fe13b5751ea0f1b4e19d639a9c49e4bf7cb132cd816c088337e4881b
 ```
 </details>
 
 #### B2-V13 — pass
 
 - Expected: succeeds on retry
-- Cause: confirmed ff878e16de65e79b3fb529ff63eaac7dc8b4b17363135cc37b5fa175e783473a
+- Cause: confirmed 9fd3f7e1b4a972ade011727da9ba266b07515a8fdf1aad410239f47771c7725b
 
 <details><summary>Raw observation</summary>
 
 ```
-confirmed ff878e16de65e79b3fb529ff63eaac7dc8b4b17363135cc37b5fa175e783473a
+confirmed 9fd3f7e1b4a972ade011727da9ba266b07515a8fdf1aad410239f47771c7725b
 ```
 </details>
 
@@ -381,12 +495,12 @@ HTTP 400: {"statusCode":400,"message":"Invalid vote proof: ZK proof does not ver
 #### C7e — pass
 
 - Expected: V10 votes successfully; backend trie still in sync with chain
-- Cause: confirmed b792b6334efd2cbd2524536fdeffd8b92dbaf12bd58407035823ea02ea77f9f5
+- Cause: confirmed e0676ea45584ae0e379659ac2a23df96cb0a07c38f86736c707b53cfea7b6a20
 
 <details><summary>Raw observation</summary>
 
 ```
-confirmed b792b6334efd2cbd2524536fdeffd8b92dbaf12bd58407035823ea02ea77f9f5
+confirmed e0676ea45584ae0e379659ac2a23df96cb0a07c38f86736c707b53cfea7b6a20
 ```
 </details>
 
@@ -398,17 +512,17 @@ confirmed b792b6334efd2cbd2524536fdeffd8b92dbaf12bd58407035823ea02ea77f9f5
 <details><summary>Raw observation</summary>
 
 ```
-rejected at relay-vote: Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraConway\",\"error\":[\"ConwayUtxowFailure (UtxoFailure (OutsideValidityIntervalUTxO (ValidityInterval {invalidBefore = SJust (SlotNo 137483543), invalidHereafter =; rolledBack=true
+rejected at relay-vote: Blockfrost submission failed (400): {"error":"Bad Request","message":"{\"contents\":{\"contents\":{\"contents\":{\"era\":\"ShelleyBasedEraConway\",\"error\":[\"ConwayUtxowFailure (UtxoFailure (OutsideValidityIntervalUTxO (ValidityInterval {invalidBefore = SJust (SlotNo 137569072), invalidHereafter =; rolledBack=true
 ```
 </details>
 
 ### 7. Performance
 
-- ZK proof generation (Node, ms): min 1236 · median 1356 · max 4087
-- Full voter flow until submit (ms): min 3635 · median 3841 · max 7093
-- Submit → confirmed (s, incl. polling): min 17 · median 38 · max 70
-- Fee per vote (lovelace): min 1079587 · median 1085747 · max 1092171
-- Tx size (bytes): min 10480 · median 10620 · max 10766
+- ZK proof generation (Node, ms): min 1294 · median 1442 · max 2670
+- Full voter flow until submit (ms): min 20811 · median 24923 · max 59527
+- Submit → confirmed (s, incl. polling): min 1 · median 5 · max 5
+- Fee per vote (lovelace): min 1079587 · median 1085571 · max 1091995
+- Tx size (bytes): min 10480 · median 10616 · max 10762
 - Execution units declared per vote, semaphore spend (static budget, not measured usage; steps): min 5000000000 · median 5000000000 · max 5000000000
 
 ### 8. What is traceable on-chain
@@ -417,50 +531,48 @@ Decoded from chain data only (Blockfrost: tx inputs + redeemers), without using 
 
 | Paying wallet | Vote tx | Option (from `signal_message`) | Nullifier |
 |---|---|---|---|
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [5f58c0e119a6…](https://preprod.cexplorer.io/tx/5f58c0e119a6bc160f682f586ba3acb18997533931ab48abb81b41b2af89ffe2) | Option A ×1 | `3.506908418486…` |
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [d239347ede96…](https://preprod.cexplorer.io/tx/d239347ede96ea0d007e2844ee095bd899683953f1c8b8b5b8e2646b39f927e4) | Option A ×1 | `4.790077444229…` |
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [130cd866547e…](https://preprod.cexplorer.io/tx/130cd866547eae0980d1af2f87fca3abd680fa60fcdb942d3fdf2cdf001aed8e) | Option A ×1 | `1.751032942657…` |
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [76f4eb91b52b…](https://preprod.cexplorer.io/tx/76f4eb91b52b78ce1dd150a9621cf5653bd875fd84884293fd85664358e0d226) | Option A ×1 | `3.396922335913…` |
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [28db15d97693…](https://preprod.cexplorer.io/tx/28db15d97693d6bb8aaeabc4eeaeecf14739253d8424d8b415842c62a76a542d) | Option B ×1 | `3.181069581725…` |
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [9af15e33c689…](https://preprod.cexplorer.io/tx/9af15e33c6899b44bc9a9281112f547e27533507c2bf8837adf4df33ade99e73) | Option B ×1 | `2.575487507142…` |
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [9cdd5db8bf8a…](https://preprod.cexplorer.io/tx/9cdd5db8bf8af8e98499de040897a6ded3b36de25fba055661d210fb49c9b755) | Option B ×1 | `3.107901247378…` |
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [c1e466944855…](https://preprod.cexplorer.io/tx/c1e4669448555050d26f04e8c76f291877a21d3bf7ce984ff8e72ca10957a12b) | Option C ×1 | `1.839613389209…` |
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [87410cbd7213…](https://preprod.cexplorer.io/tx/87410cbd7213c32b8175f7ad3f02a3e441fae22313b813e37e3c8630752f9f57) | Option C ×1 | `3.976700639161…` |
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [b792b6334efd…](https://preprod.cexplorer.io/tx/b792b6334efd2cbd2524536fdeffd8b92dbaf12bd58407035823ea02ea77f9f5) | Option A ×1 | `1.282739417706…` |
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [c8c558afdd0f…](https://preprod.cexplorer.io/tx/c8c558afdd0fdd144026b426dc756d9ef91dbaac84babe9ba867541f83e1f726) | Option A ×1 | `4.185602172305…` |
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [fd50138a8391…](https://preprod.cexplorer.io/tx/fd50138a8391b0c5fdde1f0bf80000aed486e56415cf0eeec119877beddb7630) | Option B ×1 | `3.788241198822…` |
-| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [ff878e16de65…](https://preprod.cexplorer.io/tx/ff878e16de65e79b3fb529ff63eaac7dc8b4b17363135cc37b5fa175e783473a) | Option C ×1 | `1.447194860317…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [f57dc5f6b770…](https://preprod.cexplorer.io/tx/f57dc5f6b770a79fe4ce24fe110aebe02b912c940e9be326828c2c492e6835d0) | Option A ×1 | `2.109034144658…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [7938327342c5…](https://preprod.cexplorer.io/tx/7938327342c55e76ec3961662187cced817edb99e4e03f00f38b276b263dba9f) | Option A ×1 | `1.537747938068…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [9d928239623a…](https://preprod.cexplorer.io/tx/9d928239623ae629f1ef181acb1fb87995a4ab9d7b4b54a5bd26d13d970f3b21) | Option A ×1 | `4.841639156537…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [1ca12a1ac964…](https://preprod.cexplorer.io/tx/1ca12a1ac9643022f42c34e9acf2b62e00b87dca123e68d21c0a801d5b5f1af3) | Option A ×1 | `2.479421982451…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [6abe760ee815…](https://preprod.cexplorer.io/tx/6abe760ee81532c9fafc76aea268e8ec67e70023552ec98965ee146cd3899d1f) | Option B ×1 | `1.290985290100…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [b46655355d33…](https://preprod.cexplorer.io/tx/b46655355d3345399bbff38cfe86d401576679379d9d64cd137d89811ad0b6e4) | Option B ×1 | `4.672874747249…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [2993fc086018…](https://preprod.cexplorer.io/tx/2993fc08601816da6551e98916bd8108a8a892867a864e5b1ffd6261a6a0cf03) | Option B ×1 | `1.928816002357…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [3f313fb65e51…](https://preprod.cexplorer.io/tx/3f313fb65e518e5b72df3b47cb5fb57eb1a4a45ff6ec7102d0a7a967afb746a0) | Option C ×1 | `1.442208499227…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [2ef9f08432e0…](https://preprod.cexplorer.io/tx/2ef9f08432e0b7587b3cb2bb11d4cdcd18f3a7f7f503257156cb018acca5281a) | Option C ×1 | `8.102686520091…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [e0676ea45584…](https://preprod.cexplorer.io/tx/e0676ea45584ae0e379659ac2a23df96cb0a07c38f86736c707b53cfea7b6a20) | Option A ×1 | `4.926386978439…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [e1885755fe13…](https://preprod.cexplorer.io/tx/e1885755fe13b5751ea0f1b4e19d639a9c49e4bf7cb132cd816c088337e4881b) | Option A ×1 | `1.879684676864…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [a19cf051cc71…](https://preprod.cexplorer.io/tx/a19cf051cc713bc8c9b0a7e0387f1d307de57ee3eae1b90767b635e0d6a29c90) | Option B ×1 | `4.012072271349…` |
+| [addr_test1qz96ul4r…s4wlzl](https://preprod.cexplorer.io/address/addr_test1qz96ul4rmng67jekrhzcnx7h45vrl2s5lz5fcucnmc3c0mjv27pjkr0xdahhhl8y842vvks5zrumkqnypdmeq0ucgn8qs4wlzl) | [9fd3f7e1b4a9…](https://preprod.cexplorer.io/tx/9fd3f7e1b4a972ade011727da9ba266b07515a8fdf1aad410239f47771c7725b) | Option C ×1 | `1.797848806543…` |
 
 - **Linkable:** paying wallet → vote tx → chosen option (plaintext CBOR in the redeemer) → nullifier.
 - **Not linkable on-chain:** identity commitment → vote. Commitments never appear on-chain; only the group root does.
-- **Artefact of this simulation:** all wallets were funded from one distributor in [a44ad300de04…](https://preprod.cexplorer.io/tx/a44ad300de04dfb98035cebc76e8fb48dabad299259f4ff39652d5134e16b610), which links them
+- **Artefact of this simulation:** all wallets were funded from one distributor in [27fb646c5d09…](https://preprod.cexplorer.io/tx/27fb646c5d09e4438cbb9b5a4d2189b8653e523ccfbae68d358bca9a57821373), which links them
   to each other. Real voters funding their own wallets would not share this link — but each voter's own wallet history
   (exchange withdrawals, other dApps) links the vote to them instead.
 
 ### 9. What the backend operator can see
 
-*Note for the Milestone 4 build: the `POST nullifier` and `POST vote` columns are empty because those endpoints no longer exist. A single `POST relay-vote` request follows the Merkle-proof request from the same client, so the correlation described below (F5) remains possible for the operator.*
-
 Order of requests the backend receives per vote (from this run's request log):
 
 | Voter | `GET merkle-proof/:userId` | `POST nullifier` | `POST vote` | Gap merkle→nullifier |
 |---|---|---|---|---|
-| V01 | 05:53:29 `12` | — | — | — |
-| V02 | 05:53:51 `13` | — | — | — |
-| V03 | 05:55:06 `20` | — | — | — |
-| V04 | 05:55:29 `21` | — | — | — |
-| V05 | 05:56:43 `22` | — | — | — |
-| V06 | 05:57:26 `23` | — | — | — |
-| V07 | 05:58:08 `24` | — | — | — |
-| V08 | 05:58:56 `25` | — | — | — |
-| V09 | 05:59:39 `26` | — | — | — |
-| V12 | 06:01:01 `29` | — | — | — |
-| V11 | 06:01:42 `28` | — | — | — |
-| V13 | 06:02:54 `30` | — | — | — |
-| V10 | 06:03:41 `27` | — | — | — |
+| V01 | 05:38:22 `12` | — | — | — |
+| V02 | 05:39:15 `13` | — | — | — |
+| V03 | 05:40:16 `20` | — | — | — |
+| V04 | 05:40:55 `21` | — | — | — |
+| V05 | 05:42:04 `22` | — | — | — |
+| V06 | 05:43:08 `23` | — | — | — |
+| V07 | 05:44:12 `24` | — | — | — |
+| V08 | 05:44:46 `25` | — | — | — |
+| V09 | 05:45:50 `26` | — | — | — |
+| V12 | 05:46:39 `29` | — | — | — |
+| V11 | 05:47:02 `28` | — | — | — |
+| V13 | 05:47:31 `30` | — | — | — |
+| V10 | 05:48:07 `27` | — | — | — |
 
 The Merkle-proof request names the voter (`userId`); the nullifier and the signed tx follow seconds later from the
 same client. An operator logging request source and time can join userId → nullifier → vote tx → option.
 
-*(The findings list of this run is maintained with its current status in [M4_USER_FEEDBACK.md §4](M4_USER_FEEDBACK.md).)*
 
+</details>

@@ -12,7 +12,7 @@
 |---|---|
 | Hosted frontend | https://vote.trustlevel.io |
 | Hosted backend API | https://api.vote.trustlevel.io |
-| Source (this milestone) | https://github.com/TrustLevel/ZK-Voting-App/tree/preview |
+| Source (this milestone) | https://github.com/TrustLevel/ZK-Voting-App/tree/v1.0 (tag `v1.0` on `main`) |
 | Audit report | https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/audit/AUDIT.md |
 | User feedback | https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/M4_USER_FEEDBACK.md |
 | Test report | https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/M4_TEST_REPORT.md |
@@ -94,14 +94,44 @@ optimizations were made where the findings were — the on-chain verifier and th
 server-side** before it touches the nullifier trie, and the vote transaction is built and
 submitted by a relay wallet so that voters need neither a wallet nor test ADA.
 
+**Mainnet and Preprod side by side.** Since 2026-10-29 the organiser chooses the network when creating
+an event: **Cardano Mainnet** (real ADA) or **Preprod** (free test ADA). Every call for an event — Blockfrost,
+relay wallet, transaction builders, slot configuration, VKey reference UTxO, explorer links — follows the
+event's network. On Mainnet the organiser pays a **fee deposit** of 1.3 ADA per registered voter to the relay
+wallet before publishing; the backend verifies the deposit on-chain, books every vote's actual fee against it
+and refuses votes once the budget is spent (the deposit is the cost of the event, no refund). Mainnet
+one-offs: VKey reference UTxO
+[`59c31b4b…`](https://cardanoscan.io/transaction/59c31b4be362e2be94a17aa55bebfcc10826d97e64dfa8b0b52f9697bbe6ffb1)
+(verification key locked at the always-false script address) and a funded relay wallet.
+First Mainnet event: `4701350529` (two voters, fee deposit
+[`0ac21d61…`](https://cardanoscan.io/transaction/0ac21d61ac0298cd57954608df073104b7753281ab4e419e8ba61952386380be),
+mints [`b69b3036…`](https://cardanoscan.io/transaction/b69b3036c800e5b7ab9bd67ff495543413e2d883abcd06a5fd864bf49128e6ea)
+/ [`5896b155…`](https://cardanoscan.io/transaction/5896b1553e64dd910035d40bec7452a8f0577d5dfceff7e2e39f826ce57c2f88)).
+Scripted Mainnet smoke test the same day: event `7499048647`, fee deposit
+[`e262db98…`](https://cardanoscan.io/transaction/e262db987c34e816a381d3956c8a5b46c3a9bb5368bfe39a8f77b3cae52bd6e7),
+three relayed votes, tally via API = planned votes (3.25 ADA spent in total; details in the test report).
+Setup and costs: [`docs/operations/MAINNET_SETUP.md`](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/operations/MAINNET_SETUP.md).
+
+**No Blockfrost key in the browser (F8, closed).** The organiser's transactions (fee deposit, Group NFT mint,
+Semaphore + Voting NFT mint) are built by admin-guarded backend endpoints, signed in the organiser's CIP-30
+wallet and submitted by the backend, which only accepts transactions it built itself; confirmations are
+polled through the backend. The frontend bundle contains no Blockfrost credentials; the former browser keys
+were revoked.
+
+**Interface rework from the interviews.** Organiser and voter pages were restyled with a consistent design,
+info buttons explaining every step (identity file, publishing, network choice, fee deposit, why no wallet is
+needed, why results appear only after the end), a readiness checklist and Next buttons on the organiser
+dashboard, local times with time zone, and plain-language error messages that tell the voter to retry.
+
 **Application changes from feedback and testing.** The full list with status is in the feedback
 document (§3 and §4). Highlights:
 - Critical fix: a rolled-back vote detached the nullifier trie and broke every later vote (F0).
 - Security: public event API no longer exposes admin tokens or e-mail addresses (F1); nullifier
   writes are proof-gated and all admin endpoints require the admin token (F2).
-- Robustness: registrations are serialised per event (F7); votes are serialised per event and a
-  losing concurrent vote is rolled back automatically so the voter can retry (F6, mitigated — see
-  Known limits); event start no longer fails between the two mint transactions (F11).
+- Robustness: registrations are serialised per event (F7); votes are serialised per network and
+  the queue holds until the previous vote is on-chain and indexed at every address the next vote
+  reads, so concurrent voters no longer need a retry (F6, fixed and verified — see final testing);
+  event start no longer fails between the two mint transactions (F11).
 - UX from the interviews: organiser readiness checklist before publishing, explanation of the two
   wallet signatures, step-by-step status during the vote, interim results hidden until the end,
   actionable error messages.
@@ -112,6 +142,7 @@ document (§3 and §4). Highlights:
   - [`dcbb438`](https://github.com/TrustLevel/ZK-Voting-App/commit/dcbb438) F12 — 404/409 from the Merkle-proof endpoint instead of HTTP 500
   - [`936976b`](https://github.com/TrustLevel/ZK-Voting-App/commit/936976b) F2 (first step) — remove the public nullifier delete, server-side rollback
   - [`3767bbd`](https://github.com/TrustLevel/ZK-Voting-App/commit/3767bbd) F6 — serialise vote submission per event
+  - [`dabc150`](https://github.com/TrustLevel/ZK-Voting-App/commit/dabc150), [`69377fe`](https://github.com/TrustLevel/ZK-Voting-App/commit/69377fe), [`7914ac0`](https://github.com/TrustLevel/ZK-Voting-App/commit/7914ac0) F6 — serialise per network (the relay wallet is shared) and wait until the previous vote is indexed at the Semaphore, Voting and relay addresses
   - [`3e98a6a`](https://github.com/TrustLevel/ZK-Voting-App/commit/3e98a6a) F4/F5/F8 — relay vote design: the backend builds and submits the vote transaction
   - [`7f2b270`](https://github.com/TrustLevel/ZK-Voting-App/commit/7f2b270) F11 — exclude pre-mint UTxOs when building the second mint transaction
   - [`bf24963`](https://github.com/TrustLevel/ZK-Voting-App/commit/bf24963) F2 — admin-token guard on all organiser endpoints; Groth16 proof verified server-side before the nullifier trie is touched
@@ -126,10 +157,10 @@ After all fixes were deployed, the scripted system test was run again against th
 on Preprod, now including the scenario that previously broke the system (a rolled-back first
 vote) and attack scenarios against the hardened endpoints.
 
-**Run:** 2026-10-28, event `4988274691` on Preprod, backend `preview` @ `b2a86a6` as deployed on
-https://api.vote.trustlevel.io; voting window 05:52–07:07 UTC; 15 script-controlled voters (13
-registered before publishing, one late registrant, one no-show). All 26 verdicts passed. Full detail,
-timeline and on-chain state trace: test report
+**Run:** 2026-10-29, event `6321080341` on Preprod, backend/frontend `main` @ `79637ef` as deployed on
+https://api.vote.trustlevel.io; voting window 05:37–06:52 UTC; 15 script-controlled voters (14 registered
+before publishing, one late registrant, one no-show). **All 26 verdicts passed.** Summary table, key numbers and
+the full timeline: test report
 (https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/testing/M4_TEST_REPORT.md).
 
 | Scenario | Expected | Result |
@@ -156,23 +187,31 @@ Confirmed vote transactions (13; voter wallets never appear in them — the rela
 
 | Voter | Option | Transaction |
 |---|---|---|
-| V01 | A | [5f58c0e119a6…](https://preprod.cardanoscan.io/transaction/5f58c0e119a6bc160f682f586ba3acb18997533931ab48abb81b41b2af89ffe2) |
-| V02 | A | [d239347ede96…](https://preprod.cardanoscan.io/transaction/d239347ede96ea0d007e2844ee095bd899683953f1c8b8b5b8e2646b39f927e4) |
-| V03 | A | [130cd866547e…](https://preprod.cardanoscan.io/transaction/130cd866547eae0980d1af2f87fca3abd680fa60fcdb942d3fdf2cdf001aed8e) |
-| V04 | A | [76f4eb91b52b…](https://preprod.cardanoscan.io/transaction/76f4eb91b52b78ce1dd150a9621cf5653bd875fd84884293fd85664358e0d226) |
-| V05 | B | [28db15d97693…](https://preprod.cardanoscan.io/transaction/28db15d97693d6bb8aaeabc4eeaeecf14739253d8424d8b415842c62a76a542d) |
-| V06 | B | [9af15e33c689…](https://preprod.cardanoscan.io/transaction/9af15e33c6899b44bc9a9281112f547e27533507c2bf8837adf4df33ade99e73) |
-| V07 | B | [9cdd5db8bf8a…](https://preprod.cardanoscan.io/transaction/9cdd5db8bf8af8e98499de040897a6ded3b36de25fba055661d210fb49c9b755) |
-| V08 | C | [c1e466944855…](https://preprod.cardanoscan.io/transaction/c1e4669448555050d26f04e8c76f291877a21d3bf7ce984ff8e72ca10957a12b) |
-| V09 | C | [87410cbd7213…](https://preprod.cardanoscan.io/transaction/87410cbd7213c32b8175f7ad3f02a3e441fae22313b813e37e3c8630752f9f57) |
-| V12 | B | [fd50138a8391…](https://preprod.cardanoscan.io/transaction/fd50138a8391b0c5fdde1f0bf80000aed486e56415cf0eeec119877beddb7630) |
-| V11 | A | [c8c558afdd0f…](https://preprod.cardanoscan.io/transaction/c8c558afdd0fdd144026b426dc756d9ef91dbaac84babe9ba867541f83e1f726) |
-| V13 | C | [ff878e16de65…](https://preprod.cardanoscan.io/transaction/ff878e16de65e79b3fb529ff63eaac7dc8b4b17363135cc37b5fa175e783473a) |
-| V10 | A | [b792b6334efd…](https://preprod.cardanoscan.io/transaction/b792b6334efd2cbd2524536fdeffd8b92dbaf12bd58407035823ea02ea77f9f5) |
+| V01 | A | [f57dc5f6b770…](https://preprod.cardanoscan.io/transaction/f57dc5f6b770a79fe4ce24fe110aebe02b912c940e9be326828c2c492e6835d0) |
+| V02 | A | [7938327342c5…](https://preprod.cardanoscan.io/transaction/7938327342c55e76ec3961662187cced817edb99e4e03f00f38b276b263dba9f) |
+| V03 | A | [9d928239623a…](https://preprod.cardanoscan.io/transaction/9d928239623ae629f1ef181acb1fb87995a4ab9d7b4b54a5bd26d13d970f3b21) |
+| V04 | A | [1ca12a1ac964…](https://preprod.cardanoscan.io/transaction/1ca12a1ac9643022f42c34e9acf2b62e00b87dca123e68d21c0a801d5b5f1af3) |
+| V05 | B | [6abe760ee815…](https://preprod.cardanoscan.io/transaction/6abe760ee81532c9fafc76aea268e8ec67e70023552ec98965ee146cd3899d1f) |
+| V06 | B | [b46655355d33…](https://preprod.cardanoscan.io/transaction/b46655355d3345399bbff38cfe86d401576679379d9d64cd137d89811ad0b6e4) |
+| V07 | B | [2993fc086018…](https://preprod.cardanoscan.io/transaction/2993fc08601816da6551e98916bd8108a8a892867a864e5b1ffd6261a6a0cf03) |
+| V08 | C | [3f313fb65e51…](https://preprod.cardanoscan.io/transaction/3f313fb65e518e5b72df3b47cb5fb57eb1a4a45ff6ec7102d0a7a967afb746a0) |
+| V09 | C | [2ef9f08432e0…](https://preprod.cardanoscan.io/transaction/2ef9f08432e0b7587b3cb2bb11d4cdcd18f3a7f7f503257156cb018acca5281a) |
+| V10 | A | [e0676ea45584…](https://preprod.cardanoscan.io/transaction/e0676ea45584ae0e379659ac2a23df96cb0a07c38f86736c707b53cfea7b6a20) |
+| V11 | A | [e1885755fe13…](https://preprod.cardanoscan.io/transaction/e1885755fe13b5751ea0f1b4e19d639a9c49e4bf7cb132cd816c088337e4881b) |
+| V12 | B | [a19cf051cc71…](https://preprod.cardanoscan.io/transaction/a19cf051cc713bc8c9b0a7e0387f1d307de57ee3eae1b90767b635e0d6a29c90) |
+| V13 | C | [9fd3f7e1b4a9…](https://preprod.cardanoscan.io/transaction/9fd3f7e1b4a972ade011727da9ba266b07515a8fdf1aad410239f47771c7725b) |
 
 Compared with the 2026-10-05 run on the Milestone 3 build: C1 had to be skipped then (it would have
 broken the event, F0), R1 lost one registration (F7), a non-member got HTTP 500 (F12), and C7 showed
 that an unauthenticated nullifier insert or delete blocked legitimate votes (F2). All four now pass.
+
+**Concurrency after the run (F6, closed).** B1 above shows the state at `79637ef`: the losers of a
+concurrent submission were rolled back and had to retry. The same day the queue was changed to hold
+each vote until the previous one is on-chain and indexed at every address the next vote reads, and
+re-tested with three voters submitting within two seconds, 90 s after the start: first run (event
+`4317170796`) still lost one vote to the Voting state UTxO that was not yet indexed → `7914ac0`;
+second run (event `7599761867`) **3 of 3 confirmed on the first attempt**, tally correct. Both runs
+and the Mainnet smoke test are in the test report, Part C.
 
 ---
 
@@ -190,10 +229,11 @@ that an unauthenticated nullifier insert or delete blocked legitimate votes (F2)
 ## Known limits
 
 Stated in the feedback document, §5: the vote option is readable on-chain (anonymity, not ballot
-secrecy); the backend can correlate a voter's Merkle-path request with the vote; a vote submitted
-while another vote of the same event is still unconfirmed is rolled back and needs one retry (the
-per-event queue does not yet wait for on-chain confirmation); the organiser's mint flow still uses a
-browser-side Blockfrost key; the circuit was not changed in this milestone.
+secrecy); the backend can correlate a voter's Merkle-path request with the vote; the circuit was not
+changed in this milestone. Votes are processed one after another per network (the relay wallet is shared by
+all events of a network), so under load a vote waits 20–50 s for the one before it; a voter whose transaction
+is rejected by the node — for example because the chain has not yet produced a block past the event start —
+is told to retry in a few minutes.
 
 Events created before this milestone's deployment cannot receive votes any more: the contract
 script hashes changed with `cardano-semaphore` v0.9.5, so earlier events point at the old scripts.
