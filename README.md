@@ -104,7 +104,7 @@ Phase 1 design references: [SMART_CONTRACT_SPECIFICATION.md](docs/design/SMART_C
 | Submission (acceptance criteria → evidence) | [docs/milestones/MILESTONE4_SUBMISSION.md](docs/milestones/MILESTONE4_SUBMISSION.md) |
 | Smart-contract audit report | [docs/audit/AUDIT.md](docs/audit/AUDIT.md) · [Upstream Semaphore changes](docs/audit/UPSTREAM_SEMAPHORE_CHANGES.md) |
 | User feedback and resulting changes | [docs/testing/M4_USER_FEEDBACK.md](docs/testing/M4_USER_FEEDBACK.md) · questionnaires in [docs/testing/interviews](docs/testing/interviews) |
-| Test report (regression run of 2026-10-28 after the fixes) | [docs/testing/M4_TEST_REPORT.md](docs/testing/M4_TEST_REPORT.md) |
+| Test report (regression run of 2026-10-29 after the fixes) | [docs/testing/M4_TEST_REPORT.md](docs/testing/M4_TEST_REPORT.md) |
 | Relay vote design (voters need no wallet) | [docs/design/RELAY_VOTE_DESIGN.md](docs/design/RELAY_VOTE_DESIGN.md) |
 
 ---
@@ -196,6 +196,19 @@ For the full technical breakdown — transactions, API calls, on-chain validatio
 ```sh
 npm install
 ```
+
+`npm install` (or `npm ci`) runs the root `postinstall`, which compiles the `modp-semaphore-bls12381`
+dependency in place — `--ignore-scripts` leaves it unbuilt and the backend and tx tests fail with
+"Cannot find module". The lockfile resolves that dependency over `git+ssh://`; without an SSH key for
+GitHub, map it to HTTPS first:
+
+```sh
+git config --global url."https://github.com/".insteadOf "git@github.com:"
+```
+
+Test suites from a clean clone: `cd src/on-chain && aiken check` (contract tests), `cd src/tx && npm test`,
+`cd src/backend && npm test`. `src/tx`'s `npm run build` keeps the committed validator CBORs when the
+on-chain project has not been built locally.
 
 ### 2. Configure environment variables
 

@@ -69,6 +69,11 @@ commit `b2a86a6`; the feedback document (§4) gives the status as deployed for t
 
 ## Output 3 — Smart contracts and zk-SNARK pipeline optimized according to audit and feedback
 
+**The zk-SNARK circuit itself was not modified in this milestone.** Neither the audit nor any test
+run found a defect in it, and recompiling it would invalidate the 21-contributor trusted setup; the
+optimizations landed in the on-chain verifier, the signal handling and the proof pipeline around
+the circuit (details under "zk-SNARK pipeline" below).
+
 **Smart contracts.**
 - `voting.ak` (this repository): minimum of two options enforced at mint, stricter NFT destination
   check, index validation for weighted votes, silent-discard in weighted tallying removed.
@@ -87,8 +92,7 @@ commit `b2a86a6`; the feedback document (§4) gives the status as deployed for t
   - [`96fa4ed`](https://github.com/TrustLevel/ZK-Voting-App/commit/96fa4ed) `check_vote_indices` unit tests
   - [`b3275e0`](https://github.com/TrustLevel/ZK-Voting-App/commit/b3275e0) bump `cardano-semaphore` to v0.9.5, test quality fixes
 
-**zk-SNARK pipeline.** The circuit itself was left unchanged: neither the audit nor any test run
-found a defect in it, and recompiling would invalidate the 21-contributor trusted setup. The
+**zk-SNARK pipeline.** With the circuit unchanged (see above), the
 optimizations were made where the findings were — the on-chain verifier and the signal handling
 (see above) — and in how proofs are used: the backend now **verifies every vote proof
 server-side** before it touches the nullifier trie, and the vote transaction is built and
@@ -109,7 +113,7 @@ mints [`b69b3036…`](https://cardanoscan.io/transaction/b69b3036c800e5b7ab9bd67
 / [`5896b155…`](https://cardanoscan.io/transaction/5896b1553e64dd910035d40bec7452a8f0577d5dfceff7e2e39f826ce57c2f88)).
 Scripted Mainnet smoke test the same day: event `7499048647`, fee deposit
 [`e262db98…`](https://cardanoscan.io/transaction/e262db987c34e816a381d3956c8a5b46c3a9bb5368bfe39a8f77b3cae52bd6e7),
-three relayed votes, tally via API = planned votes (3.25 ADA spent in total; details in the test report).
+three relayed votes submitted within two seconds 37 s after the start — all three rejected on the first attempt (`OutsideValidityIntervalUTxO`: the node's tip was still before the start slot), all three confirmed on the retry a minute later; tally via API = planned votes (3.25 ADA spent in total; details in the test report, Part C).
 Setup and costs: [`docs/operations/MAINNET_SETUP.md`](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.0/docs/operations/MAINNET_SETUP.md).
 
 **No Blockfrost key in the browser (F8, closed).** The organiser's transactions (fee deposit, Group NFT mint,
@@ -157,7 +161,7 @@ After all fixes were deployed, the scripted system test was run again against th
 on Preprod, now including the scenario that previously broke the system (a rolled-back first
 vote) and attack scenarios against the hardened endpoints.
 
-**Run:** 2026-10-29, event `6321080341` on Preprod, backend/frontend `main` @ `79637ef` as deployed on
+**Run:** 2026-10-29, event `6321080341` on Preprod, backend/frontend `preview` @ `5b07ffb` (merged into `main` the same day) as deployed on
 https://api.vote.trustlevel.io; voting window 05:37–06:52 UTC; 15 script-controlled voters (14 registered
 before publishing, one late registrant, one no-show). **All 26 verdicts passed.** Summary table, key numbers and
 the full timeline: test report
@@ -167,7 +171,7 @@ the full timeline: test report
 |---|---|---|
 | R1 — three voters register at the same instant (F7) | all three in the group, backend root consistent | pass — 14 members, backend root consistent, nobody lost |
 | C1 — vote before the event starts, then normal votes (F0 regression) | rejected; backend trie root unchanged; later votes succeed | pass — rejected by the ledger (outside validity interval), trie unchanged, all nine wave-A votes confirmed afterwards |
-| A — nine sequential votes | all confirmed on-chain | pass — 9 of 9 confirmed |
+| A — nine sequential votes | all confirmed on-chain | pass — 9 of 9 confirmed, 4 of them (V05, V06, V07, V09) after one retry: the first attempt was rejected with HTTP 422/502 on a stale input — the same cause as B1, fixed later that day (see "Concurrency after the run") |
 | C2 — second vote by the same identity through the API | HTTP 409 | pass |
 | C3 — second vote by the same identity bypassing the backend (own MPF proof, direct submission) | rejected on-chain | pass — Plutus script failed (phase 2) |
 | C4 — replay of a voter's exact relay-vote request | HTTP 409, no transaction | pass |
@@ -230,10 +234,14 @@ and the Mainnet smoke test are in the test report, Part C.
 
 Stated in the feedback document, §5: the vote option is readable on-chain (anonymity, not ballot
 secrecy); the backend can correlate a voter's Merkle-path request with the vote; the circuit was not
-changed in this milestone. Votes are processed one after another per network (the relay wallet is shared by
-all events of a network), so under load a vote waits 20–50 s for the one before it; a voter whose transaction
-is rejected by the node — for example because the chain has not yet produced a block past the event start —
-is told to retry in a few minutes.
+changed in this milestone; the relay operator could delay or withhold a vote and sees the chosen option
+before it is on-chain; the backend and Blockfrost are a single point of availability for voting; the
+Merkle-path endpoint is public. Votes are processed one after another per network (the relay wallet is
+shared by all events of a network), so under load a vote waits 20–50 s for the one before it — a hundred
+voters need a window of well over an hour; a voter whose transaction is rejected by the node — for example
+because the chain has not yet produced a block past the event start — is told to retry in a few minutes.
+The scripted test harness is not published (it holds wallet secrets), so the scripted runs are reproducible
+by the maintainers, not by third parties; every cited transaction is on-chain.
 
 Events created before this milestone's deployment cannot receive votes any more: the contract
 script hashes changed with `cardano-semaphore` v0.9.5, so earlier events point at the old scripts.

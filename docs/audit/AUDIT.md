@@ -1227,9 +1227,9 @@ The M4 system test was a scripted end-to-end voting run on Cardano preprod again
 
 - **Dry run** — event `7361329530`, 2 voters. Identified F-APP-0.
 - **Main run** — event `3907417823`. Semaphore script `addr_test1wzedkt4d3jclzq363pl8rwpvngx9k7kktq4p842trsralcsfwuwjj`, Voting script `addr_test1wpdyadvg7f5fu3fc58yc09rv0uj9tu9rut0yqgrqje837dgfz3ugr`. 12 votes confirmed; final tally API = chain = expected (6/3/3). Double vote, replay, non-member, late registrant, and too-late vote were all correctly rejected. Identified F-APP-1 through F-APP-8, F-APP-11, F-APP-12.
-- **Dominik live test** — event `1869725828`, five independent users. Identified F-APP-6, F-APP-9, F-APP-10 from the user side.
+- **pinusch's live test** — event `1869725828`, five participants from the community. Identified F-APP-6, F-APP-9, F-APP-10 from the user side.
 
-Full report with timeline, state trace, and explorer links: [`docs/testing/M4_TEST_REPORT.md`](../testing/M4_TEST_REPORT.md) (Part A; Part C is the re-run after the fixes).
+Full report with timeline, state trace, and explorer links: [`docs/testing/M4_TEST_REPORT.md`](../testing/M4_TEST_REPORT.md) (Part C, the re-run after the fixes; the 2026-10-05 findings are in Talon's write-up, `docs/testing/interviews/VotingAppFeedback_Pumbiii.md`).
 
 ---
 
@@ -1621,7 +1621,7 @@ The browser vote path (where the frontend built and submitted the transaction) h
 
 **File:** `src/backend/src/voting-event/voting-event.service.ts`
 
-Added `withVoteLock` — a per-event async mutex — around the relay vote submission path. Vote requests for the same event are queued: the next MPF proof is only issued after the previous vote transaction confirms or times out. The browser vote path has been removed; all votes now go through the relay, so the serialisation covers the full vote flow.
+Added `withVoteLock` — an async mutex, per event at first and per network since `69377fe` (the relay wallet is shared by all events of a network) — around the relay vote submission path. Vote requests for the same event are queued: the next MPF proof is only issued after the previous vote transaction confirms or times out. The browser vote path has been removed; all votes now go through the relay, so the serialisation covers the full vote flow.
 
 #### [F-APP-7] Concurrent registrations silently lose members
 

@@ -108,6 +108,14 @@ async function main() {
   for (const [name, currentHash] of Object.entries(currentHashes)) {
     const storedHash = storedHashes[name];
 
+    if (currentHash === '') {
+      // The plutus.json of the cardano-semaphore dependency only exists after `aiken build` in
+      // src/on-chain (it lives under build/packages, which is not tracked). A fresh clone uses the
+      // committed validators.ts as is.
+      console.log(`ℹ️  ${name}: plutus.json not built locally, keeping the committed validator`);
+      continue;
+    }
+
     if (currentHash !== storedHash) {
       staleValidators.push(name);
     }

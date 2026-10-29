@@ -101,7 +101,7 @@ wallets and Semaphore identities, real invitations, real registrations and real 
 plus concurrency and attack scenarios. The run produced the application-level findings F0–F12;
 their status after the Milestone 4 fixes is kept in
 [M4_USER_FEEDBACK.md, section 4](../M4_USER_FEEDBACK.md). The project re-ran the same scenarios
-on 2026-10-28/29 against the fixed deployment; that regression run is the
+on 2026-10-29 against the fixed deployment; that regression run is the
 [test report](../M4_TEST_REPORT.md).
 
 How to read it: every API call the script makes is the call the frontend makes; every vote is a

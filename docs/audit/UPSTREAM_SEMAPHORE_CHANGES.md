@@ -4,7 +4,7 @@
 
 ## Context
 
-This document was produced during a security audit of a Cardano ZK voting application that uses `modulo-p/cardano-semaphore v0.9.4` as a dependency. The audit covered `voting.ak` (in-repo), `group.ak`, and `semaphore.ak` (upstream).
+This document was produced during a security audit of a Cardano ZK voting application that uses `modulo-p/cardano-semaphore` (v0.9.4 at audit time, v0.9.5 deployed) as a dependency. The audit covered `voting.ak` (in-repo), `group.ak`, and `semaphore.ak` (upstream).
 
 Fixes and tests for `voting.ak` were applied directly to the consuming repo. The changes listed here belong in `modulo-p/cardano-semaphore` and are intended to be ported as one or more PRs.
 

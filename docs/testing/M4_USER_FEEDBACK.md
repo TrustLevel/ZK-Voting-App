@@ -1,7 +1,7 @@
 # Milestone 4 — User feedback and what changed because of it
 
 **Project:** ZK Voting App (Catalyst project 1200252)
-**Period:** September – October 2026 · **Network:** Cardano Preprod
+**Period:** September – October 2026 · **Network:** Cardano Preprod (final runs also on Mainnet)
 **Companion documents:** [Audit report](../audit/AUDIT.md) · [Test report](M4_TEST_REPORT.md) · [Submission](../milestones/MILESTONE4_SUBMISSION.md)
 
 Milestone 4 asked for prototype testing and feedback from at least three test users, and for the
@@ -19,14 +19,12 @@ feedback we received, who it came from, and what we changed in response. Items t
 | 2 | Sebastián Pabón, Gimbalabs | Developer, runs blockchain projects | Organiser and voter, Eternl | [Questionnaire](interviews/VotingAppFeedback_Sebastián.md) |
 | 3 | Talon (GitHub: Pumbiii) | Developer | Scripted system test against the hosted backend: 15 script-controlled voters, real registrations and on-chain votes, concurrency and attack scenarios. Produced the findings F0–F12. | [Test write-up and questionnaire](interviews/VotingAppFeedback_Pumbiii.md) |
 | 4 | pinusch (GitHub: pinusch) | Community | Organised a live event with five participants who registered and voted from their browsers; 3 votes succeeded at first, 2 failed | [Test write-up and questionnaire](interviews/VotingAppFeedback_Pinusch.md) |
-| 5 | Independent reviewers (Catalyst milestone review of M3) | Milestone reviewers | Written review of the hosted application | — |
 
 All tests ran on 2026-10-05 against the Milestone 3 deployment, Rodrigo's and Sebastián's in the
 weeks around it. The testers' questionnaires and write-ups are in
-[`docs/testing/interviews/`](interviews/); Talon and pinusch add their questionnaire answers to
-their files themselves.
+[`docs/testing/interviews/`](interviews/); Talon and pinusch filled in their own files via pull request.
 
-After the fixes, the project re-ran Talon's scripted scenarios on 2026-10-28 against the
+After the fixes, the project re-ran Talon's scripted scenarios on 2026-10-29 against the
 Milestone 4 deployment. That regression run is the [test report](M4_TEST_REPORT.md); several
 status entries in section 4 cite it.
 
@@ -125,7 +123,7 @@ Milestone 4 deployment (`preview` @ `79637ef`, 2026-10-29). Three findings that 
 records as partial or acknowledged were closed afterwards: F2 (proof-gated nullifier, commit
 `bf24963`), F9 and F10 (commit `b2a86a6`). Numbering follows the tester's write-up; in the audit
 report F-APP-4 and F-APP-5 are swapped (F-APP-4 = backend correlation, F-APP-5 = on-chain wallet
-linkage). "Regression run" refers to the project's re-run of 2026-10-28 in the
+linkage). "Regression run" refers to the project's re-run of 2026-10-29 in the
 [test report](M4_TEST_REPORT.md).
 
 | ID | Finding | Severity | Status | Fix |
@@ -170,3 +168,16 @@ Talon's [write-up](interviews/VotingAppFeedback_Pumbiii.md); the evidence after 
   in the Semaphore circuit; the optimizations landed in the on-chain verifier and the signal
   handling (`cardano-semaphore` v0.9.3 → v0.9.5). Recompiling the circuit would invalidate the
   21-contributor trusted setup, which no finding justified.
+- **The relay is a trusted intermediary for delivery.** The relay operator can delay or withhold a
+  vote (censorship) and sees the chosen option before it is on-chain; it cannot forge or alter a vote
+  (the proof binds the signal). The backend and Blockfrost are a single point of availability for
+  voting. Mitigations: an independent submission path or a second relay — not in this milestone.
+- **Throughput is bounded.** Votes are serialised per network and each waits 20–50 s for the one
+  before it, so a hundred voters need a window of well over an hour. The create form's timing
+  guidance (ten minutes plus about a minute per simultaneous voter) is the technical minimum for a
+  small group, not a capacity statement.
+- **The Merkle-path endpoint is public.** `GET /voting-event/:id/merkle-proof/:userId` needs no
+  token; anyone who guesses a user id learns that the id is in the group (not who it is).
+- **The scripted test harness is not published.** It holds wallet secrets; the scripted runs are
+  reproducible by the maintainers, not by third parties. Every transaction the reports cite is
+  on-chain and linked.

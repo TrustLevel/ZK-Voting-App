@@ -143,14 +143,14 @@ const txHash     = await this.blockfrostSubmit(signedTx);
 return { txHash };
 ```
 
-**Concurrency (F6):** Wrap the relay wallet fetch + build + sign + submit in a per-event async mutex (same promise-chain pattern as `withRegistrationLock`). This prevents two concurrent vote submissions from selecting the same UTxOs.
+**Concurrency (F6):** Wrap the relay wallet fetch + build + sign + submit in a per-network async mutex (same promise-chain pattern as `withRegistrationLock`; the relay wallet is shared by all events of a network, so a per-event lock is not enough — learned in the 2026-10-29 tests). This prevents two concurrent vote submissions from selecting the same UTxOs.
 
 ```ts
 private readonly voteLocks = new Map<number, Promise<any>>();
 private withVoteLock<T>(eventId: number, fn: () => Promise<T>): Promise<T> { ... }
 ```
 
-The relay wallet's collateral UTxO is the first UTxO in `relayWalletUtxos` (as in the existing `buildVoteTransaction`). The per-event mutex ensures only one vote tx is in-flight per event at any time, so collateral is never double-spent.
+The relay wallet's collateral UTxO is the first UTxO in `relayWalletUtxos` (as in the existing `buildVoteTransaction`). The per-network mutex ensures only one vote tx is in-flight per event at any time, so collateral is never double-spent.
 
 ---
 
