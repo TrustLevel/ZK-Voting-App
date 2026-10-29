@@ -403,9 +403,6 @@ export default function CreateEventForm() {
                     />
                     <span>
                       <span className="block font-semibold text-ink">{NETWORK_LABEL[n]}</span>
-                      <span className="block text-sm text-muted">
-                        {n === 'mainnet' ? 'Real ADA — real costs' : 'Free test ADA'}
-                      </span>
                       {!enabled && networks !== null && (
                         <span className="mt-1 block text-xs text-muted">Not available on this server</span>
                       )}

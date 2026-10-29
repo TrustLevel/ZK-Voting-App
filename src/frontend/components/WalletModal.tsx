@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { Button } from './Button';
 
-const WALLETS = ['eternl', 'lace', 'yoroi'];
+const WALLETS = ['eternl', 'lace'];
 
 /**
  * Wallet picker shared by the create and manage pages. Calls `onSelect` with

@@ -33,7 +33,7 @@ export class EmailService {
     try {
       const magicLink = `${this.frontendUrl}/event/${eventId}?token=${token}`;
 
-      // Format dates
+      // Format dates — always UTC and labelled as such (the reader's zone is unknown here).
       const formatDate = (timestamp: number | undefined) => {
         if (!timestamp) return 'Not set';
         return new Date(timestamp * 1000).toLocaleString('en-US', {
@@ -43,6 +43,8 @@ export class EmailService {
           day: 'numeric',
           hour: '2-digit',
           minute: '2-digit',
+          timeZone: 'UTC',
+          timeZoneName: 'short',
         });
       };
 

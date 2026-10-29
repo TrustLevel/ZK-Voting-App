@@ -27,6 +27,7 @@ import { Identity } from 'modp-semaphore-bls12381/packages/typescript/src/identi
 import { encodeVoteSignal, generateVoteProof } from '@/lib/vote-helpers';
 import { asNetwork, explorerTxUrl } from '@/lib/network';
 import { NetworkBadge } from '@/components/NetworkBadge';
+import { formatLocalDateTime } from '@/lib/format';
 import { AppShell, PageIntro } from '@/components/AppShell';
 import { Button, buttonClass } from '@/components/Button';
 import { CardHeader, DataRow, Notice } from '@/components/Card';
@@ -906,17 +907,10 @@ export default function EventPage() {
   };
 
   /**
-   * Format POSIX timestamp in the voter's local time, with the time zone named
-   * so that nobody mistakes it for UTC (Dominik, 2026-10-29).
+   * POSIX timestamp in the voter's local time with the zone in brackets, so that
+   * nobody mistakes it for UTC (Dominik, 2026-10-29).
    */
-  const formatDate = (timestamp: number | null) => {
-    if (!timestamp) return 'Not set';
-    const date = new Date(timestamp * 1000);
-    return date.toLocaleString(undefined, {
-      year: 'numeric', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
-    });
-  };
+  const formatDate = (timestamp: number | null) => formatLocalDateTime(timestamp || null);
 
   // --------------------------------------------------------------------------
   // UI / RENDER
@@ -1126,13 +1120,6 @@ export default function EventPage() {
         {/* Vote Tab */}
         {activeTab === 'vote' && (
           <div>
-            {/* Blockchain not ready */}
-            {!event.semaphoreAddress && (
-              <Notice tone="neutral" icon={<ClockIcon size={20} />} title="Voting Not Yet Available" className="mb-6">
-                <p className="text-gray-700">The event organiser has not completed the blockchain setup.</p>
-              </Notice>
-            )}
-
             {/* Status Info Box */}
             {!isRegistered ? (
               // Not Registered - Show Registration Required

@@ -12,6 +12,7 @@ import { InfoButton } from '@/components/InfoButton';
 import { INFO } from '@/components/infoTexts';
 import { ResultRow } from '@/components/ResultRow';
 import { StatusPill } from '@/components/StatusPill';
+import { formatLocalDateTime } from '@/lib/format';
 
 const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3000';
 const AUTO_REFRESH_INTERVAL_MS = 30000;
@@ -127,7 +128,7 @@ export default function ResultsPage() {
       {data?.status === 'upcoming' && (
         <Notice tone="attention" title="Voting not started yet" className="mb-6">
           {data.startingDate && (
-            <p>Starts {new Date(data.startingDate * 1000).toLocaleString()}</p>
+            <p>Starts {formatLocalDateTime(data.startingDate)}</p>
           )}
         </Notice>
       )}
@@ -140,7 +141,7 @@ export default function ResultsPage() {
           action={<StatusPill tone="live" dot>Auto-refreshing</StatusPill>}
         >
           {data.endingDate && (
-            <p>Ends {new Date(data.endingDate * 1000).toLocaleString()}</p>
+            <p>Ends {formatLocalDateTime(data.endingDate)}</p>
           )}
         </Notice>
       )}
@@ -148,7 +149,7 @@ export default function ResultsPage() {
       {data?.status === 'ended' && (
         <Notice tone="success" title="Voting ended" className="mb-6">
           {data.endingDate && (
-            <p>Closed {new Date(data.endingDate * 1000).toLocaleString()}</p>
+            <p>Closed {formatLocalDateTime(data.endingDate)}</p>
           )}
         </Notice>
       )}

@@ -51,6 +51,7 @@ import {
   lovelaceToAda,
 } from '@/lib/network';
 import { NetworkBadge } from '@/components/NetworkBadge';
+import { formatLocalDateTime } from '@/lib/format';
 import { AppShell, PageIntro } from '@/components/AppShell';
 import { Button, LinkButton } from '@/components/Button';
 import { CardHeader, CodeBox, DataRow, Notice } from '@/components/Card';
@@ -1446,14 +1447,14 @@ export default function EventDashboard() {
                       <div>
                         <div className="mb-1 font-semibold text-muted">Starting Date</div>
                         <div className="rounded-lg border border-line bg-[#fafafa] px-3 py-2">
-                          <div className="font-medium">{new Date(publishedData.startingDate * 1000).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}</div>
+                          <div className="font-medium">{formatLocalDateTime(publishedData.startingDate)}</div>
                           <div className="mt-1 font-mono text-[10px] text-muted">POSIX: {publishedData.startingDate}</div>
                         </div>
                       </div>
                       <div>
                         <div className="mb-1 font-semibold text-muted">Ending Date</div>
                         <div className="rounded-lg border border-line bg-[#fafafa] px-3 py-2">
-                          <div className="font-medium">{new Date(publishedData.endingDate * 1000).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}</div>
+                          <div className="font-medium">{formatLocalDateTime(publishedData.endingDate)}</div>
                           <div className="mt-1 font-mono text-[10px] text-muted">POSIX: {publishedData.endingDate}</div>
                         </div>
                       </div>
@@ -1697,7 +1698,7 @@ export default function EventDashboard() {
             {createdEvent.endingDate && Date.now() < createdEvent.endingDate * 1000 ? (
               <Notice tone="attention" icon={<ClockIcon size={20} />} title={<>Voting in Progress <InfoButton text={INFO.turnout} /></>} className="mb-6">
                 <p>
-                  Results per option will be displayed once the voting period ends on {new Date(createdEvent.endingDate * 1000).toLocaleString()}.
+                  Results per option will be displayed once the voting period ends on {formatLocalDateTime(createdEvent.endingDate)}.
                 </p>
                 <p className="mt-3 font-semibold">
                   Turnout so far: {resultsMeta ? `${resultsMeta.totalVotes} of ${resultsMeta.registeredVoters} registered voters` : '—'}
@@ -1719,7 +1720,7 @@ export default function EventDashboard() {
                     <div className="rounded-xl border border-line bg-[#fafafa] px-4 py-3">
                       <div className="flex items-center gap-2 text-xs text-muted"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-600" />Voting ended</div>
                       <div className="mt-1 text-sm font-semibold text-ink">
-                        {createdEvent.endingDate ? new Date(createdEvent.endingDate * 1000).toLocaleString() : 'Not set'}
+                        {formatLocalDateTime(createdEvent.endingDate)}
                       </div>
                     </div>
                     <div className="rounded-xl border border-line bg-[#fafafa] px-4 py-3">

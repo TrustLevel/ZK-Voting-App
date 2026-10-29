@@ -103,14 +103,14 @@ export default function Home() {
           <h1 className="text-5xl font-bold leading-[1.05] tracking-[-0.025em] text-ink md:text-6xl">
             Anonymous, <span className="rounded-[10px] bg-brand px-2.5 text-ink [box-decoration-break:clone]">verifiable</span> voting on Cardano
           </h1>
-          <p className="max-w-[600px] text-lg leading-relaxed text-gray-600 md:text-xl">
+          <p className="max-w-[600px] text-lg leading-relaxed text-gray-700 md:text-xl">
             Run a vote where nobody — not even the organiser — can see who voted for what, every member votes exactly once, and the final tally is written to the blockchain for anyone to check.
           </p>
           <div className="mt-1 flex flex-wrap gap-3">
             <PrimaryLink href="/create" className="min-h-12 px-6 text-base">Create a voting event</PrimaryLink>
             <OutlineLink href="#how" className="min-h-12 px-6 text-base">See how it works</OutlineLink>
           </div>
-          <p className="text-sm text-muted">Voters need only their invitation link — no wallet, no crypto, no account.</p>
+          <p className="text-sm text-gray-700">Voters need only their invitation link — no wallet, no crypto, no account.</p>
         </div>
         <div className="grid min-w-0 flex-[1_1_380px] grid-cols-1 gap-3">
           {[
@@ -124,7 +124,7 @@ export default function Home() {
               </span>
               <div>
                 <div className="text-base font-semibold">{card.title}</div>
-                <div className="mt-1 text-sm leading-relaxed text-gray-600">{card.text}</div>
+                <div className="mt-1 text-sm leading-relaxed text-gray-700">{card.text}</div>
               </div>
             </div>
           ))}
@@ -136,14 +136,14 @@ export default function Home() {
         <div className="flex max-w-[720px] flex-col gap-2.5">
           <Eyebrow>HOW IT WORKS</Eyebrow>
           <h2 className="text-3xl font-bold tracking-[-0.015em] md:text-4xl">Four steps from invitation to result</h2>
-          <p className="text-[17px] leading-relaxed text-muted">The organiser needs a Cardano wallet; voters do not.</p>
+          <p className="text-[17px] leading-relaxed text-gray-700">The organiser needs a Cardano wallet; voters do not.</p>
         </div>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {steps.map(s => (
             <div key={s.n} className="flex flex-col gap-3 rounded-2xl border border-line border-t-4 border-t-brand bg-[#fafafa] p-6">
               <div className="text-[40px] font-bold leading-none tracking-[-0.03em] text-brand-dark">{s.n}</div>
               <div className="text-[17px] font-semibold">{s.title}</div>
-              <div className="text-sm leading-relaxed text-gray-600">{s.text}</div>
+              <div className="text-sm leading-relaxed text-gray-700">{s.text}</div>
             </div>
           ))}
         </div>
@@ -172,7 +172,7 @@ export default function Home() {
         </div>
         <div id="voters" className="flex flex-col gap-4 rounded-[20px] border border-line bg-white p-8 md:p-9">
           <h2 className="text-[28px] font-bold tracking-[-0.01em]">For voters</h2>
-          <p className="text-[15px] leading-relaxed text-muted">You were invited by e-mail? Everything happens in your browser.</p>
+          <p className="text-[15px] leading-relaxed text-gray-700">You were invited by e-mail? Everything happens in your browser.</p>
           <div className="mt-1.5 text-[13px] font-bold tracking-[0.06em]">WHAT YOU NEED</div>
           <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-gray-700">
             <li>Your invitation link (valid for seven days)</li>
@@ -195,7 +195,7 @@ export default function Home() {
         <div className="flex max-w-[760px] flex-col gap-2.5">
           <Eyebrow>SECURITY &amp; AUDIT</Eyebrow>
           <h2 className="text-3xl font-bold tracking-[-0.015em] md:text-4xl">What the system guarantees — and what it does not</h2>
-          <p className="text-[17px] leading-relaxed text-muted">Audited smart contracts, a public test report, and limits stated in plain words.</p>
+          <p className="text-[17px] leading-relaxed text-gray-700">Audited smart contracts, a public test report, and limits stated in plain words.</p>
         </div>
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <div className="flex flex-col gap-3.5 rounded-2xl border border-line bg-white p-6">
