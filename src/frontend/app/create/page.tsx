@@ -528,7 +528,7 @@ export default function CreateEventForm() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Start Date */}
             <div>
-              <FieldLabel htmlFor="start-date" hint="At least one day ahead, so everyone can register before you publish.">Start Date & Time</FieldLabel>
+              <FieldLabel htmlFor="start-date" hint="About 10 minutes ahead at the least: everyone must be registered before you publish, and publishing takes about 5 minutes.">Start Date & Time</FieldLabel>
               <input
                 id="start-date"
                 type="datetime-local"
@@ -540,7 +540,7 @@ export default function CreateEventForm() {
 
             {/* End Date */}
             <div>
-              <FieldLabel htmlFor="end-date" hint="At least one hour after the start; 24 hours is comfortable.">End Date & Time</FieldLabel>
+              <FieldLabel htmlFor="end-date" hint="At least 5 minutes after the start, plus about 2 minutes per voter voting at the same moment.">End Date & Time</FieldLabel>
               <input
                 id="end-date"
                 type="datetime-local"
