@@ -1395,7 +1395,7 @@ export default function EventDashboard() {
                 icon={<MailIcon size={20} />}
                 title="Invite Participants"
                 info={<InfoButton text={INFO.inviteValidity} />}
-                description="Enter an email address to invite a participant. Each participant will receive a unique voting link."
+                description={invitationsSent ? undefined : 'Enter an email address to invite a participant. Each participant will receive a unique voting link.'}
               />
               {/* Invitations go out once; after that the list cannot grow, so the input is hidden. */}
               {invitationsSent ? (
