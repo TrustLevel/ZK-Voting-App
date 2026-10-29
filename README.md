@@ -2,6 +2,8 @@
 
 A decentralised, privacy-preserving voting application built on the Cardano blockchain. Voters prove group membership and cast ballots anonymously using zero-knowledge cryptography, while all votes are recorded and tallied immutably on-chain.
 
+**Live on Cardano Mainnet and on the Preprod testnet** at [vote.trustlevel.io](https://vote.trustlevel.io). The organiser chooses the network when creating an event. Voters need no wallet and no ADA on either network; the voting service submits and pays their vote transactions. On Mainnet the organiser pays for publishing (about 15 ADA locked in the event contracts plus about 1.5 ADA fees) and prepays the voters' fees as a deposit of 1.3 ADA per registered voter; Preprod is free. Details: [Organiser guide](docs/guides/ORGANISER_GUIDE.md).
+
 ---
 
 ## What It Does
@@ -25,26 +27,34 @@ The system supports two voting modes:
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  User's Browser                                     │
-│                                                     │
-│  Next.js Frontend (port 3002)                       │
-│  ├─ @src/tx  — transaction builder                  │
-│  └─ @src/zk  — Groth16 prover · signal encoding     │
-│                                                     │
-└──────────────┬──────────────────────┬───────────────┘
-             ▲ │ REST API             │ TX submission
-             │ ▼                      ▼ (CIP-30 wallet)
-┌──────────────────────┐   ┌──────────────────────────┐
-│   NestJS Backend     │   │  Cardano Preprod Testnet │
-│   port 3000          │   │                          │
-│                      │   │  Voting validator        │
-│   SQLite             │   │  Semaphore validator     │
-│   LevelDB (MPF)      │   │  Group validator         │
-└──────────┬───────────┘   └──────────────────────────┘
-           │                          ▲
-           └──── Blockfrost API ──────┘
-                 chain queries · TX relay
+┌─────────────────────────────────────────────────────────────┐
+│  Browser                                                    │
+│                                                             │
+│  Next.js Frontend (port 3002)                               │
+│  ├─ @src/zk          — Groth16 prover · signal encoding     │
+│  │                     (voter's identity never leaves here) │
+│  └─ @src/tx/browser  — pure helpers only, no chain access   │
+│                                                             │
+│  CIP-30 wallet (Eternl, Lace): organiser only, signs the    │
+│  publish transactions; voters have no wallet                │
+└──────────────────────────────┬──────────────────────────────┘
+                             ▲ │ REST API (proofs, signed txs)
+                             │ ▼
+┌─────────────────────────────────────────────────────────────┐
+│  NestJS Backend (port 3000)                                 │
+│  ├─ @src/tx — builds every transaction (organiser mints,    │
+│  │            fee deposit, relayed votes)                    │
+│  ├─ relay wallet per network — pays and submits votes       │
+│  ├─ SQLite (events, participants, Merkle trees)             │
+│  └─ LevelDB (MPF nullifier tries)                           │
+└──────────────────────────────┬──────────────────────────────┘
+                               │ Blockfrost (one project per network)
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Cardano Mainnet  ·  Cardano Preprod testnet                │
+│  Voting validator · Semaphore validator · Group validator   │
+│  VKey reference UTxO (Groth16 verification key, per network)│
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -59,7 +69,7 @@ The system supports two voting modes:
 | Transaction builder | `src/tx/` | [DOCS.md](src/tx/DOCS.md) |
 | ZK proof module | `src/zk/` | [DOCS.md](src/zk/DOCS.md) |
 
-`@src/tx` and `@src/zk` are TypeScript packages compiled directly into the frontend bundle — they are not standalone services.
+`@src/zk` is compiled into the frontend bundle: the proof is generated in the voter's browser. `@src/tx` runs in the backend, which builds every transaction (organiser mints, fee deposit, relayed votes); the frontend imports only its pure helpers through `@src/tx/browser` and holds no Blockfrost key. Neither is a standalone service.
 
 ---
 
@@ -123,7 +133,7 @@ There are two roles: an **organiser** who sets up and manages the voting event, 
 ### The Organiser's Journey
 
 **1. Create the event**
-Connect a Cardano wallet (Preprod, with a little test ADA — the organiser pays for the two publishing transactions) and fill in the event details: a name, the list of options voters can choose from, the voting mode (simple — one vote per person — or weighted — each person distributes a fixed number of points across options), and the voting date (must be at least 15 min in the future).
+Fill in the event details: a name, the Cardano network (Mainnet with real ADA, or Preprod with free test ADA; fixed for the lifetime of the event), the list of options voters can choose from, the voting mode (simple: one vote per person; weighted: each person distributes a fixed number of points across options), and the voting window in your local time. Plan the start at least 10 minutes ahead and the window at least 10 minutes plus about one minute per voter; the form repeats these minimums. Then connect a Cardano wallet on that network; it identifies you as the organiser and later signs the publishing transactions.
 
 **2. Invite participants**
 Add participants by email. Each invited person receives a unique private link that is valid for seven days. Only invited participants can vote — the group is closed.
@@ -131,11 +141,11 @@ Add participants by email. Each invited person receives a unique private link th
 **3. Wait for participants to register**
 Each invitee visits their link and registers — no wallet needed. Their browser generates a random cryptographic identity and adds only a public commitment to the group. The *Before you publish* panel shows who has registered and who is still pending.
 
-**4. Deploy the event on-chain**
-Once the participant list is final, set the voting start and end dates and publish. Your wallet signs two transactions that anchor the voting contracts on the Cardano blockchain. From this point the event is live — options, dates, and group membership are immutable; participants who have not registered by then cannot vote.
+**4. Publish the event on-chain**
+Once the participant list is final, publish. On Mainnet the dashboard first asks for the fee deposit (1.3 ADA per registered voter, sent to the voting service; it is the cost of the event and an unused remainder is not refunded). Then your wallet signs two transactions, built and submitted by the backend, that anchor the voting contracts on the Cardano blockchain. From this point the event is live: options, dates and group membership are immutable; participants who have not registered by then cannot vote.
 
 **5. Results**
-While voting is open you see the turnout only. Once the voting window closes, the final tally is readable on-chain by anyone. The organiser cannot see who voted for what — only the totals are public.
+While voting is open you, the organiser, see the turnout only; voters and the public results page see nothing until the end. Once the voting window closes, the final tally is readable on-chain by anyone. The organiser cannot see who voted for what; only the totals are public.
 
 ---
 
@@ -148,7 +158,7 @@ The organiser sends a link with a unique invitation token, valid for seven days.
 Click *Generate Identity*. Your browser generates a random Semaphore identity — two secret values that stay on your device and are never sent to the server — and downloads it as `semaphore-identity-event-<id>.json`. Keep that file: it is your only way to vote from another browser or device. Then click *Register Commitment*; only the public commitment derived from the secrets is added to the group on the backend.
 
 **3. Wait for the voting window**
-The event has a fixed start and end time enforced by the blockchain. You can check the event page to see when voting opens.
+The event has a fixed start and end time enforced by the blockchain. The event page shows them in your local time, together with the voting type and the current status.
 
 **4. Cast your vote**
 During the voting window, open the event and select your choice. Before submitting, your browser silently:
@@ -159,7 +169,7 @@ During the voting window, open the event and select your choice. Before submitti
 No one — not the organiser, not the server, not the blockchain — can link your vote back to you. The known limits of this guarantee are listed in [docs/testing/M4_USER_FEEDBACK.md](docs/testing/M4_USER_FEEDBACK.md), section 5.
 
 **5. View results**
-While voting is open the page shows the turnout only. Once the event ends, the vote tally is publicly visible on-chain. Results are final and cannot be altered by anyone.
+While voting is open the page shows neither counts nor turnout, so that interim numbers influence nobody. Once the event ends, the vote tally is publicly visible on-chain. Results are final and cannot be altered by anyone.
 
 ---
 
@@ -174,8 +184,8 @@ For the full technical breakdown — transactions, API calls, on-chain validatio
 | Node.js | ≥ 20 | Backend, frontend, tx, zk |
 | npm | ≥ 10 | Package management |
 | Aiken | v1.1.19 | Smart contract compiler |
-| Cardano wallet | Eternl / Lace / Yoroi | CIP-30 wallet for browser |
-| Blockfrost account | — | Chain access (Preprod Testnet) |
+| Cardano wallet | Eternl / Lace | CIP-30 wallet in the organiser's browser |
+| Blockfrost account | — | Chain access, one project per network (Preprod, Mainnet) |
 
 ---
 
@@ -192,7 +202,8 @@ npm install
 ```sh
 # Backend
 cp src/backend/.env.example src/backend/.env
-# Fill in: BLOCKFROST_API_KEY, JWT_SECRET
+# Fill in: BLOCKFROST_API_KEY (Preprod), JWT_SECRET, RELAY_WALLET_MNEMONIC (a funded Preprod wallet
+# that pays the relayed votes); the Mainnet variables stay empty for local development
 
 # Frontend
 cp src/frontend/.env.example src/frontend/.env.local
@@ -230,28 +241,15 @@ npm run build:force     # re-extracts validator CBORs from plutus.json
 
 ## Deployment (Production)
 
-### Frontend — Vercel (recommended)
+The hosted instance runs as two Docker containers (backend and frontend) behind Caddy on one
+VPS, built from this repository with `deploy/docker-compose.yml`. The step-by-step procedure,
+including DNS, TLS, the `deploy/.env` file and updates, is in
+[docs/operations/DEPLOY.md](docs/operations/DEPLOY.md). Mainnet needs three one-off steps by
+the operator (VKey reference UTxO, relay wallet, keys): [docs/operations/MAINNET_SETUP.md](docs/operations/MAINNET_SETUP.md).
 
-1. Push the repository to GitHub.
-2. Import the project on [Vercel](https://vercel.com/) and set **Root Directory** to `src/frontend`.
-3. Add the following environment variables in the Vercel project settings:
-
-   | Variable | Value |
-   |---|---|
-   | `NEXT_PUBLIC_BACKEND_API_URL` | URL of the deployed backend, e.g. `https://api.yourdomain.com` |
-
-4. Deploy — Vercel detects Next.js automatically and handles the build.
-
-### Backend — Node.js host (fly.io, Render, EC2, DigitalOcean, …)
-
-```sh
-cd src/backend
-npm ci
-npm run build
-NODE_ENV=production node dist/main.js
-```
-
-Set the same variables as `.env.example`. For production, pay attention to:
+The frontend needs a single variable, `NEXT_PUBLIC_BACKEND_API_URL` (the public URL of the
+backend); it holds no Blockfrost key. The backend takes the variables of `.env.example`; for
+production, pay attention to:
 
 | Variable | Production note |
 |---|---|
@@ -261,9 +259,9 @@ Set the same variables as `.env.example`. For production, pay attention to:
 | `BLOCKFROST_API_KEY` / `BLOCKFROST_API_KEY_MAINNET` | One Blockfrost key per network; a network without key, relay wallet and VKey UTxO is not offered to organisers |
 | `RELAY_WALLET_MNEMONIC` / `RELAY_WALLET_MNEMONIC_MAINNET` | Relay wallet per network (Mainnet: separate hot wallet, see `docs/operations/MAINNET_SETUP.md`) |
 | `VKEY_REF_MAINNET` | `<txhash>#<index>` of the Mainnet VKey UTxO, deployed once |
+| `RESEND_API_KEY` / `RESEND_FROM_EMAIL` / `FRONTEND_URL` | E-mail sender for the invitations and the base URL of the links it sends |
 
 The network (Preprod or Mainnet) is chosen per event by the organiser; one backend serves both.
-Mainnet one-off steps: [docs/operations/MAINNET_SETUP.md](docs/operations/MAINNET_SETUP.md).
 
 **Persistent storage requirements**
 
