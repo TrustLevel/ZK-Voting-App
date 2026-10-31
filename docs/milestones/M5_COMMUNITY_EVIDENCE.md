@@ -6,33 +6,27 @@ the date given; screenshots are in `docs/milestones/evidence/` `[verify: add whe
 
 ## Social media (X)
 
-| # | Account | Link | Content | Views | Reposts | Replies | Counted on |
-|---|---|---|---|---|---|---|---|
-| 1 | @DominikTilman | https://x.com/DominikTilman/status/2115784194567893049 | `[verify]` | | | | |
-| 2 | @DominikTilman | https://x.com/DominikTilman/status/2115804420114153900 | `[verify]` | | | | |
-| 3 | @DominikTilman | https://x.com/DominikTilman/status/2116432836781908258 | `[verify]` | | | | |
-| 4 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115782609548796163 | `[verify]` | | | | |
-| 5 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115782760229224605 | `[verify]` | | | | |
-| 6 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115783764857303306 | `[verify]` | | | | |
-| 7 | @andamioseb (Sebastián Pabón, Gimbalabs) | https://x.com/andamioseb/status/2116164646759714859 | `[verify]` | | | | |
+| # | Account | Link | Content | Views | Counted on |
+|---|---|---|---|---|---|
+| 1 | @DominikTilman | https://x.com/DominikTilman/status/2115784194567893049 | `[verify]` | | |
+| 2 | @DominikTilman | https://x.com/DominikTilman/status/2115804420114153900 | `[verify]` | | |
+| 3 | @DominikTilman | https://x.com/DominikTilman/status/2116432836781908258 | `[verify]` | | |
+| 4 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115782609548796163 | `[verify]` | | |
+| 5 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115782760229224605 | `[verify]` | | |
+| 6 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115783764857303306 | `[verify]` | | |
+| 7 | @andamioseb (Sebastián Pabón, Gimbalabs) | https://x.com/andamioseb/status/2116164646759714859 | `[verify]` | | |
 
-## Cardano Forum
+## Cardano Forum (the campaign's article)
 
 | Thread | Author | Posted | Views | Replies | Counted on |
 |---|---|---|---|---|---|
 | [ZK voting on Cardano is available: open source, live on Mainnet and on the Preprod testnet](https://forum.cardano.org/t/from-the-great-builders-of-trustlevel-zk-voting-on-cardano-is-available-open-source-live-on-mainnet-and-on-the-preprod-testnet/157639) | Sebastian_Pabon (Gimbalabs) | 2026-10-30 | | | |
 
-## Article
-
-| Outlet | Link | Published | Views | Comments | Counted on |
-|---|---|---|---|---|---|
-| `[verify]` | `[verify]` | | | | |
-
 ## Videos
 
 | Video | Link | Views | Counted on |
 |---|---|---|---|
-| Tutorial (organiser and voter flow) | `[verify: YouTube link]` | | |
+| Walkthrough "Voting Anonymously in Cardano - zkVAPP" (organiser and voter flow) | https://www.youtube.com/watch?v=obI0ELOjlhs | | |
 | Close-out video | `[verify: YouTube link]` | | |
 
 ## GitHub
