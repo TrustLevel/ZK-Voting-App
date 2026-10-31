@@ -19,12 +19,6 @@ the date given.
 
 https://forum.cardano.org/t/from-the-great-builders-of-trustlevel-zk-voting-on-cardano-is-available-open-source-live-on-mainnet-and-on-the-preprod-testnet/157639
 
-## Videos
-
-| Video | Link | Views | Counted on |
-|---|---|---|---|
-| Walkthrough "Voting Anonymously in Cardano - zkVAPP" (organiser and voter flow) | https://www.youtube.com/watch?v=obI0ELOjlhs | | |
-
 ## GitHub
 
 | Date | Forks | Stars | Source |
