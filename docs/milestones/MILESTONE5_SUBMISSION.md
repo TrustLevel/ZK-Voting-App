@@ -17,6 +17,7 @@ Acceptance criteria: Published user guides on GitHub
 Evidence:
 - Organiser guide: https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/guides/ORGANISER_GUIDE.md
 - Voter guide: https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/guides/VOTER_GUIDE.md
+- Video Tutorial: https://www.youtube.com/watch?v=obI0ELOjlhs
 
 C. Output: Final close-out report
 
@@ -30,4 +31,4 @@ D. Output: Final close-out video
 Acceptance criteria: Final close-out video publicly available
 
 Evidence:
-- Close-out video: `[YouTube link]`
+- Close-out video: https://vimeo.com/1241673021

@@ -133,4 +133,4 @@ mistakes anonymity for ballot secrecy.
 
 ## 13. Link to Close-out video
 
-`[YouTube link]`
+https://vimeo.com/1241673021

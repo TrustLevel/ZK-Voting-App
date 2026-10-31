@@ -8,12 +8,11 @@ the date given.
 
 | # | Account | Link | Views | Counted on |
 |---|---|---|---|---|
-| 1 | @DominikTilman | https://x.com/DominikTilman/status/2115784194567893049 | | 2026-10-31 |
-| 2 | @DominikTilman | https://x.com/DominikTilman/status/2115804420114153900 | | 2026-10-31 |
-| 3 | @DominikTilman | https://x.com/DominikTilman/status/2116432836781908258 | | 2026-10-31 |
-| 4 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115782609548796163 | | 2026-10-31 |
-| 5 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115782760229224605 | | 2026-10-31 |
-| 6 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115783764857303306 | | 2026-10-31 |
+| 1 | @DominikTilman | https://x.com/DominikTilman/status/2115804420114153900 | | 2026-10-31 |
+| 2 | @DominikTilman | https://x.com/DominikTilman/status/2116432836781908258 | | 2026-10-31 |
+| 3 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115782609548796163 | | 2026-10-31 |
+| 4 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115782760229224605 | | 2026-10-31 |
+| 5 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115783764857303306 | | 2026-10-31 |
 
 ## Cardano Forum (the campaign's article)
 
@@ -32,7 +31,7 @@ All forks: https://github.com/TrustLevel/ZK-Voting-App/forks
 
 | Organisation | Contact | Details |
 |---|---|---|
-| Gimbalabs | Sebastián Pabón | Tested as organiser and voter (M4); posted the forum thread |
+| Gimbalabs | Sebastián Pabón | Collaborative learning and open-source development community within the Cardano ecosystem |
 | CHIL Stake Pool | Rodrigo Oyarzún | Tested as organiser and voter (M4) |
 | Mesh | Jingles | Community-driven developer team in Cardano  |
 | Photrek | Kenric Nelson | Pioneer in decentralized governance in Cardano and SingularityNet |
