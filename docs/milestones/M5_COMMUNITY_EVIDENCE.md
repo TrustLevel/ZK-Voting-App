@@ -8,8 +8,8 @@ the date given.
 
 | # | Account | Link | Views | Counted on |
 |---|---|---|---|---|
-| 1 | @DominikTilman | https://x.com/DominikTilman/status/2115804420114153900 | | 2026-10-31 |
-| 2 | @DominikTilman | https://x.com/DominikTilman/status/2116432836781908258 | | 2026-10-31 |
+| 1 | @DominikTilman | https://x.com/DominikTilman/status/2115804420114153900 | 30k | 2026-10-31 |
+| 2 | @DominikTilman | https://x.com/DominikTilman/status/2116432836781908258 | 6.6k | 2026-10-31 |
 | 3 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115782609548796163 | | 2026-10-31 |
 | 4 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115782760229224605 | | 2026-10-31 |
 | 5 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115783764857303306 | | 2026-10-31 |
