@@ -14,9 +14,12 @@ the date given.
 | 4 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115782760229224605 | | 2026-10-31 |
 | 5 | @TrustLevel_IO | https://x.com/TrustLevel_IO/status/2115783764857303306 | | 2026-10-31 |
 
-## Cardano Forum (the campaign's article)
+## Cardano Forum (the campaign's articles)
 
-https://forum.cardano.org/t/from-the-great-builders-of-trustlevel-zk-voting-on-cardano-is-available-open-source-live-on-mainnet-and-on-the-preprod-testnet/157639
+| Thread | Author | Posted |
+|---|---|---|
+| [ZK voting on Cardano is available: open source, live on Mainnet and on the Preprod testnet](https://forum.cardano.org/t/from-the-great-builders-of-trustlevel-zk-voting-on-cardano-is-available-open-source-live-on-mainnet-and-on-the-preprod-testnet/157639) | Sebastián Pabón, Gimbalabs | 2026-10-30 |
+| [How ZK voting on Cardano works: what the contracts guarantee, and where it stops](https://forum.cardano.org/t/how-zk-voting-on-cardano-works-what-the-contracts-guarantee-and-where-it-stops/157678) | Dominik Tilman, TrustLevel | 2026-11-03 |
 
 ## GitHub
 
