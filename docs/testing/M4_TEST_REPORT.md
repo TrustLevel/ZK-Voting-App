@@ -1,7 +1,7 @@
 # Milestone 4 — Test report
 
 **Project:** ZK Voting App (Catalyst project 1200252) · **Network:** Cardano Preprod
-**Generated:** 2026-10-29 from the local run logs (`scripts/sim-run`, kept out of the repository)
+**Generated:** 2026-10-29 from the local run logs (`scripts/sim-run`, kept out of the repository) · **Part D (weighted voting run) added 2026-11-04** after the reviewer feedback
 **Companion documents:** [User feedback](M4_USER_FEEDBACK.md) · [Audit report](../audit/AUDIT.md) · [Submission](../milestones/MILESTONE4_SUBMISSION.md)
 
 This report is the project's own regression run of 2026-10-29 against the Milestone 4
@@ -131,6 +131,63 @@ Three voters of event `7599761867` submit within two seconds, 90 s after the sta
 | T1 — tally via API equals the planned votes | pass | api=[1,2,0] expected=[1,2,0] (3 votes, resultsAvailable=true) |
 
 All three votes confirmed on their first attempt (the queue held the second and third vote for 51 s and 20 s respectively, until the previous vote was indexed) and the tally matches.
+
+## Part D — Weighted voting run, 2026-11-04 (after the F-VOTING-14 fix)
+
+A Catalyst reviewer of this milestone pointed out two gaps: the test runs above cover simple voting
+only, and the weighted path accepted negative counts (`check_weight` only summed the counts, so a
+weight-2 voter could submit `[(0, 102), (1, -100)]`). The fix is documented as
+[F-VOTING-14](../audit/AUDIT.md) in the audit report (PR [#26](https://github.com/TrustLevel/ZK-Voting-App/pull/26)).
+This run exercises weighted voting end to end on the hosted instance after that deploy, and tries
+every invalid weighted signal against the relay and the chain.
+
+Event `8739534777` on Cardano Preprod, **voting power 3**, options A / B / C, five voters with real
+Semaphore identities, invited and registered through the public API; publishing through the
+organiser endpoints with the test's organiser wallet (Group NFT mint
+[f05b16a6…](https://preprod.cardanoscan.io/transaction/f05b16a62cee09ae8a2870590aae0488eb5744135d4d276d4d0fdbdbbc019b11),
+Semaphore + Voting mint [32df096e…](https://preprod.cardanoscan.io/transaction/32df096eb63580068391756633402559537174d1ee3fb0d7fd83a761c2aac789));
+votes through the deployed relay exactly as the browser sends them. Voting window 02:53–03:21 UTC.
+**Result: 11 of 11 checks passed; 4 ballots with 12 points confirmed on-chain; the final tally
+3 / 4 / 5 matches on the API, on-chain and against the planned distributions; all six invalid
+signals were rejected by the relay without touching the nullifier trie, and the negative payload
+submitted directly to the chain was rejected by the voting validator.**
+
+| Test | What is tested | Expected | Observed | Result | On-chain |
+|---|---|---|---|---|---|
+| W1 | Spread: 1 point on each option, signal `[[0,1],[1,1],[2,1]]` | confirmed, tally 1/1/1 | confirmed afabcfe3…, tally [1,1,1] | pass | [tx](https://preprod.cardanoscan.io/transaction/afabcfe39048bc269364b040ecfa8e031069ec9098d8dab453435cec0185274f) |
+| W2 | Bundle: all 3 points on B, signal `[[1,3]]` | confirmed, tally 1/4/1 | confirmed a84bdfbe…, tally [1,4,1] | pass | [tx](https://preprod.cardanoscan.io/transaction/a84bdfbe82b5d335dab5c9f01e53d145c7cf84bb91eaed0ef35a224ac9d350c7) |
+| W3 | Split: 2 on A, 1 on C, signal `[[0,2],[2,1]]` | confirmed, tally 3/4/2 | confirmed 80b783ed…, tally [3,4,2] | pass | [tx](https://preprod.cardanoscan.io/transaction/80b783ed3255ee9e4c9e7380378cef6e1781e818912498888fa01ce3ad1e37ed) |
+| W-NEG | The reviewer's payload by a registered voter: `[[0,103],[1,-100]]` (sums to 3) via relay-vote | HTTP 400, backend trie root and on-chain tally unchanged | HTTP 400 "count for option 1 must be positive, got -100"; trie unchanged=true, tally unchanged=true | pass | |
+| W-ZERO | Zero count with a matching sum: `[[0,0],[1,3]]` | HTTP 400, trie and tally unchanged | HTTP 400 "count for option 0 must be positive, got 0"; unchanged | pass | |
+| W-SUM | Under-distribution: `[[0,1],[1,1]]` on a weight-3 ballot | HTTP 400, trie and tally unchanged | HTTP 400 "counts sum to 2, the event weight is 3"; unchanged | pass | |
+| W-OVER | Over-distribution: `[[0,2],[1,2]]` | HTTP 400, trie and tally unchanged | HTTP 400 "counts sum to 4, the event weight is 3"; unchanged | pass | |
+| W-DUP | Duplicate option: `[[1,1],[1,2]]` | HTTP 400, trie and tally unchanged | HTTP 400 "option 1 appears more than once"; unchanged | pass | |
+| W-IDX | Unknown option: `[[5,3]]` on a 3-option ballot | HTTP 400, trie and tally unchanged | HTTP 400 "option 5 does not exist"; unchanged | pass | |
+| W4 | The same voter votes legitimately after the six rejected attempts: `[[2,3]]` | confirmed (the rejected attempts consumed no nullifier), tally 3/4/5 | confirmed 79c202a4…, tally [3,4,5] | pass | [tx](https://preprod.cardanoscan.io/transaction/79c202a4231074a87d68fc0b325071d7ae84dc981e43e65834e666580e65c16a) |
+| W-CHAIN | A fifth registered voter builds the negative payload `[[0,103],[1,-100]]` into a transaction locally (own MPF proof, own wallet, valid ZK proof) and submits it straight to the node, bypassing the backend | rejected by the voting validator, tally unchanged | rejected at submission: `ValidationTagMismatch Phase2Valid … PlutusFailure`, failing script = the spending script of the Voting UTxO 79c202a4…#1 (datum weight 3, tally [3,4,5]); tally unchanged | pass | |
+| T2 | Final tally after the end: API vs chain vs expected | all three 3/4/5, 12 points from 4 ballots | api=[3,4,5] chain=[3,4,5] totalVotes=4 totalPoints=12 votingPower=3 | pass | |
+
+Notes on reading the run:
+
+- Each vote's signal is readable on-chain in the Semaphore redeemer (`[[0,1],[1,1],[2,1]]`,
+  `[[1,3]]`, `[[0,2],[2,1]]`, `[[2,3]]`), as stated in the known limits: anonymity, not ballot
+  secrecy. All four votes were paid by the relay wallet; fees 1.08 ADA each, tx size ~10.5 kB.
+- The six rejected signals produced no transaction and no trie change; the voter's identity was
+  still usable for the legitimate vote W4. The relay answers with the violated rule, which is what the
+  frontend shows the user.
+- W-CHAIN is the on-chain counterpart of W-NEG: the relay check is a convenience, the validator is
+  the security boundary. The script error names the Voting UTxO being spent, i.e. the voting
+  validator's `check_weight`.
+- Two intermediate tally reads (after W3 and after W4) first returned the previous Voting UTxO
+  because Blockfrost's address index lagged the transaction index by a few seconds; the next snapshot
+  (seconds later) showed the expected tally, and the run report records the reconciliation explicitly
+  rather than hiding the first read.
+- The run's harness is the scripted one of Part C extended for weighted signals; it stays
+  unpublished for the same reason (wallet secrets). Every cited transaction is on-chain.
+
+The earlier Mainnet event `4701350529` ("mainnet test", 2026-10-29, voting power 100, two voters,
+200 points) was also a weighted vote; its transactions are in the Mainnet smoke-test section above
+and in the feedback document.
 
 ## Appendix — full run report
 
