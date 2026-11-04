@@ -41,7 +41,7 @@ questionnaire names no date, device, event or transaction. Reconstructed from th
 instance's event records (events created with the tester's organiser wallet, invitations,
 registrations) and from the chain (every transaction at the events' script addresses on Cardano
 Preprod). Times are UTC. The wallet was Eternl (above); device and operating system are not
-recorded by the application and were requested from the tester.*
+recorded by the application.*
 
 **Test date:** 2026-10-08, 01:02–01:37 UTC, Milestone 3 deployment at vote.trustlevel.io. Nine
 events created, five published on-chain, one complete cycle (invite, register, publish, vote); the
