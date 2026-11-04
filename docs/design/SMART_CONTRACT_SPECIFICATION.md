@@ -624,19 +624,22 @@ pub fn weighted_vote(options: Options, target_options: Options) -> Options {
 }
 
 // voting_utilities.ak:93-96
+// Every count strictly positive (F-VOTING-14) and the counts sum to the weight.
 pub fn check_weight(target_options: Options, allowed_weight: Int) -> Bool {
+  let all_positive: Bool = list.all(target_options, fn(to) { to.2nd > 0 })
   let weight: Int = list.foldr(target_options, 0, fn(to, total) {
     to.2nd + total
   })
-  weight == allowed_weight
+  all_positive && weight == allowed_weight
 }
 ```
 
 **Rules**:
-1. Vote can contain multiple options
-2. Sum of all vote weights must equal `dat.weight`
-3. Each specified option incremented by its weight
-4. Unspecified options unchanged
+1. Vote can contain multiple options, each index at most once and present in `dat.options`
+2. Every count is strictly positive (a negative count would subtract points — F-VOTING-14)
+3. Sum of all vote weights must equal `dat.weight`
+4. Each specified option incremented by its weight
+5. Unspecified options unchanged
 
 **Example**:
 ```aiken

@@ -492,5 +492,46 @@ describe('VotingEventService', () => {
       await expect(call(['5', '7', signalHash, externalNullifier], 'zz')).rejects.toThrow('bad signal message');
       expect(spy).not.toHaveBeenCalled();
     });
+
+    // F-VOTING-14: the proof binds only the hash of the signal, so the content rules are
+    // enforced here before the chain is consulted.
+    describe('vote signal content (F-VOTING-14)', () => {
+      const hashOf = (msg: string) => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { blake2b } = require('@noble/hashes/blake2b');
+        const r = BigInt('52435875175126190479447740508185965837690552500527637822603658699938581184513');
+        const digest = Buffer.from(blake2b(Buffer.from(msg, 'hex'), { dkLen: 32 })).toString('hex');
+        return (BigInt('0x' + digest) % r).toString();
+      };
+      const weighted = {
+        eventId: 2, semaphoreNft, votingPower: 2,
+        options: JSON.stringify([{ index: 0, text: 'a' }, { index: 1, text: 'b' }, { index: 2, text: 'c' }]),
+      } as VotingEvent;
+      const callOn = (ev: VotingEvent, msg: string) =>
+        service.verifyRelayVoteProof(ev, { zkProof, publicSignals: ['5', '7', hashOf(msg), externalNullifier], signalMessage: msg });
+
+      it("rejects the reviewer's payload [(0,102),(1,-100)] although it sums to the weight", async () => {
+        const spy = jest.spyOn(service, 'getOnChainGroupRoot');
+        // CBOR (indefinite lists, as cbor.serialise in Aiken) of [[0, 102], [1, -100]]
+        await expect(callOn(weighted, '9f9f001866ff9f013863ffff')).rejects.toThrow('must be positive');
+        expect(spy).not.toHaveBeenCalled();
+      });
+
+      it('rejects a zero count, a wrong sum and an unknown option', async () => {
+        await expect(callOn(weighted, '9f9f0000ff9f0102ffff')).rejects.toThrow('must be positive'); // [[0,0],[1,2]]
+        await expect(callOn(weighted, '9f9f0001ffff')).rejects.toThrow('sum to 1'); // [[0,1]] on weight 2
+        await expect(callOn(weighted, '9f9f0501ff9f0101ffff')).rejects.toThrow('does not exist'); // [[5,1],[1,1]]
+        await expect(callOn(weighted, '9f9f0101ff9f0101ffff')).rejects.toThrow('more than once'); // [[1,1],[1,1]]
+      });
+
+      it('rejects more than one point in a simple vote', async () => {
+        await expect(callOn(event, '9f9f0102ffff')).rejects.toThrow('exactly one option'); // [[1,2]]
+      });
+
+      it('lets a well-formed weighted signal through to the chain check', async () => {
+        jest.spyOn(service, 'getOnChainGroupRoot').mockResolvedValue({ groupMerkleRoot: '42' });
+        await expect(callOn(weighted, '9f9f0001ff9f0101ffff')).rejects.toThrow('voter group'); // [[0,1],[1,1]]
+      });
+    });
   });
 });

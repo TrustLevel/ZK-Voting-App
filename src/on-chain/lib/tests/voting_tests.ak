@@ -315,8 +315,9 @@ test check_weight_3() {
     check_weight(target_options, allowed_weight)
 }
 
-// Test weight check with single non-zero value (0+0+1=1)
-test check_weight_4() {
+// Test weight check with zero entries - should fail: every entry must carry a positive count,
+// even though the sum matches (0+0+1=1). F-VOTING-14.
+test check_weight_4() fail {
     let target_options = [(0,0), (1,0), (2, 1)]
     let allowed_weight = 1
     check_weight(target_options, allowed_weight)
@@ -326,6 +327,35 @@ test check_weight_4() {
 test check_weight_5() fail {
     let target_options = [(0,0), (1,0), (2, 0)]
     let allowed_weight = 1
+    check_weight(target_options, allowed_weight)
+}
+
+// F-VOTING-14: a negative count must fail even when the sum matches the weight.
+// This is the reviewer's payload: weight 2, 102 points on option 0, -100 on option 1.
+test check_weight_6() fail {
+    let target_options = [(0,102), (1,-100)]
+    let allowed_weight = 2
+    check_weight(target_options, allowed_weight)
+}
+
+// F-VOTING-14: a single negative entry fails regardless of the sum.
+test check_weight_7() fail {
+    let target_options = [(0,-1)]
+    let allowed_weight = -1
+    check_weight(target_options, allowed_weight)
+}
+
+// F-VOTING-14: a negative entry hidden among valid ones fails (3+2-1=4).
+test check_weight_8() fail {
+    let target_options = [(0,3), (1,2), (2,-1)]
+    let allowed_weight = 4
+    check_weight(target_options, allowed_weight)
+}
+
+// All entries positive and the sum matches - passes (2+2=4).
+test check_weight_9() {
+    let target_options = [(0,2), (1,2)]
+    let allowed_weight = 4
     check_weight(target_options, allowed_weight)
 }
 
