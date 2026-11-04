@@ -271,12 +271,20 @@ tally identical on the API and on-chain. 11 of 11 checks.
 the hosted instance and the chain and added to their questionnaires as a "Test session record"
 ([Rodrigo](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/testing/interviews/VotingAppFeedback_Rodrigo.md),
 [Sebastián](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/testing/interviews/VotingAppFeedback_Sebasti%C3%A1n.md)).
-Device and operating system are not recorded by the application and were requested from the testers.
 
-**4. Audit by a team member.** Correct. The report names the auditor and was not presented as an
-independent audit; the proposal budget did not include one. The report remains the record of what
-was checked; the reviewer's finding is recorded separately (see 1).
+**4. Audit by a team member.** Correct: the audit was carried out by a member of the project team,
+and the report names him. An audit by a specialised third party would far exceed the budget of this
+milestone and was not planned; the milestone asks for an audit report, not an external audit. The
+internal audit was nevertheless substantial: a property-based review of every validator condition
+and of the test suite produced 29 findings, of which 27 were fixed and 2 acknowledged. In addition,
+a scripted system test against the hosted instance and the testers' live runs produced 13
+application-level findings. All of them are documented in the audit report.
 
-**5. Links from previous milestones.** Every link in the Milestone 3 and 4 submissions was checked
-on 2026-11-04 and resolves. For Milestones 1 and 2 we ask for the specific links that fail and will
-replace each with the current location of the same document.
+**5. Documents from previous milestones.** All reports and current documents are available.
+
+- Milestone 1 and 2 reports: the original Google Docs are no longer available because the company account no longer exists; the original reports are now in the repository. [Milestone 1 report](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/milestones/MILESTONE1_REPORT.md) · [Milestone 2 report](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/milestones/MILESTONE2_REPORT.md)
+- Milestone 1 specifications: these were superseded when the design moved to Semaphore and are not carried over; the current specifications are in the repository. [System design](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/design/SYSTEM_DESIGN.md) · [Smart-contract specification](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/design/SMART_CONTRACT_SPECIFICATION.md) · [ZK module](https://github.com/TrustLevel/ZK-Voting-App/blob/main/src/zk/DOCS.md)
+- Design documents: moved to docs/design during a repository restructuring. [System design](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/design/SYSTEM_DESIGN.md) · [Smart-contract specification](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/design/SMART_CONTRACT_SPECIFICATION.md)
+- TrustLevel documentation: moved from docs.trustlevel.io to trustlevel.gitbook.io, because a custom domain is a paid GitBook feature. [Knowledge base](https://trustlevel.gitbook.io/knowledge-base/)
+
+All links in the Milestone 3 and 4 submissions were checked on 2026-11-04.
