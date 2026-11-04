@@ -246,3 +246,62 @@ by the maintainers, not by third parties; every cited transaction is on-chain.
 Events created before this milestone's deployment cannot receive votes any more: the contract
 script hashes changed with `cardano-semaphore` v0.9.5, so earlier events point at the old scripts.
 This is expected for a testnet preview.
+
+---
+
+## Response to the reviewer comments (2026-11-04)
+
+The submission above is unchanged. Everything below was done after the review; the revised state
+is `main` after commit `5c05b83` ([PR #26](https://github.com/TrustLevel/ZK-Voting-App/pull/26)).
+
+**1. Negative quantity in weighted voting.** The finding is correct and was a real vulnerability
+that our audit missed: `check_weight` only summed the counts, so a weight-2 voter could submit
+`[(0, 102), (1, -100)]`. We reproduced it with a spending test on the submitted code, then fixed it
+on-chain (`check_weight` requires every count to be strictly positive; new unit and spending tests,
+370 checks pass), in the backend relay (the same rules are applied before the ZK proof is checked,
+so an invalid signal gets HTTP 400 and never consumes a nullifier) and in the frontend. The finding
+is recorded in the audit report as
+[F-VOTING-14](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/audit/AUDIT.md) (Critical,
+reported externally, fixed) with reproduction and fix. The fix is deployed; events created since use
+the fixed validator. Evidence that it holds on Preprod: the same payload sent to the relay by a
+registered voter is rejected (HTTP 400, trie and tally unchanged), and built into a transaction and
+submitted directly to the chain it fails at the voting validator — test run below, rows W-NEG and
+W-CHAIN.
+
+**2. End-to-end test of weighted voting.** Agreed, the submitted runs covered simple voting only. A
+weighted run was executed on 2026-11-04 on Cardano Preprod against the hosted instance after the
+fix: event `8739534777`, voting power 3, three options, five registered voters. Four ballots with
+different distributions (1-1-1, 0-3-0, 2-0-1, 0-0-3) confirmed on-chain with the tally traced after
+each vote; six invalid weighted signals (negative count, zero count, too few points, too many points,
+duplicate option, unknown option) rejected by the relay with the violated rule and no change to the
+nullifier trie; the negative payload submitted straight to the node rejected by the validator; final
+tally 3 / 4 / 5 identical on the API and on-chain. 11 of 11 checks passed. Report with every
+transaction:
+[Test report, Part D](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/testing/M4_TEST_REPORT.md#part-d--weighted-voting-run-2026-11-04-after-the-f-voting-14-fix).
+The Mainnet event `4701350529` of 2026-10-29 (voting power 100, two voters, 200 points) was a
+weighted vote as well.
+
+**3. Questionnaires.** Agreed that both questionnaires are thin on metadata. We reconstructed what
+the application and the chain record about the two testers and added it to the feedback document
+as [section 1.1](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/testing/M4_USER_FEEDBACK.md#11-tester-activity-on-the-hosted-app):
+every event they created (ids, UTC times, options, invited and registered voters), the mint
+transactions they signed and the vote transactions at their events, linked to the Preprod explorer.
+Sebastián Pabón: five events on 2026-09-28 and 2026-10-10, four published on-chain, no vote went
+through (his "didn't get too much success while casting the votes"; the causes were fixed in this
+milestone). Rodrigo Oyarzún: nine events on 2026-10-08, five published, one complete cycle with an
+on-chain vote. Device and operating system are not recorded by the application; both testers were
+asked to add them to their questionnaires.
+
+**4. Audit by a team member.** Correct: the audit was carried out by a member of the project team,
+and the report names him. We did not present it as an independent third-party audit; the proposal's
+budget did not include one, and we do not want to claim an audit that did not happen. What the
+document is: a property-based review of every validator condition, each security property stated
+first and then traced to the code and a test, plus a test review and a scripted system test, with 43
+findings documented and resolved, now including the one from this review, which is recorded there
+as an external report.
+
+**5. Links from previous milestones.** We checked every link in the Milestone 3 and Milestone 4
+submission documents on 2026-11-04; all GitHub, Gitbook, hosted-app and video links resolve. For
+the Milestone 1 and 2 evidence we would be grateful for the specific links that no longer open; we
+will replace each with a link to the current location of the same document in the repository or on
+the TrustLevel Gitbook.

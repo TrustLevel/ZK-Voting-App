@@ -1511,6 +1511,8 @@ Off-chain, `validateVoteSignal()` in `src/backend/src/voting-event/vote-signal.t
 
 Consequence: the compiled `voting` validator changed, which gives new voting policy IDs for events created after the deploy. Events already on-chain keep their validators; the backend check protects them off-chain.
 
+Verified on the hosted instance after the deploy (2026-11-04, Preprod event `8739534777`, voting power 3): the reviewer's payload sent to the relay by a registered voter is rejected with HTTP 400 and leaves the nullifier trie untouched; the same payload built into a transaction locally and submitted directly to the node fails Phase 2 at the voting validator; four legitimate weighted ballots tally correctly. See [M4_TEST_REPORT.md, Part D](../testing/M4_TEST_REPORT.md#part-d--weighted-voting-run-2026-11-04-after-the-f-voting-14-fix).
+
 ---
 
 ### [F-VOTING-2] Unresolved TODO comment on value preservation check
