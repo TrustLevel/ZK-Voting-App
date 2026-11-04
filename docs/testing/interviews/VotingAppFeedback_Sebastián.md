@@ -45,9 +45,9 @@ registrations) and from the chain (every transaction at the events' script addre
 Preprod). Times are UTC. The wallet was Eternl (above); device and operating system are not
 recorded by the application and were requested from the tester.*
 
-**Test dates:** 2026-09-28, 17:23–19:30 UTC, and 2026-10-10, 21:10–22:05 UTC, on the Milestone 3
-deployment at vote.trustlevel.io. Five events, four published on-chain, invitees were the tester
-and colleagues; no vote transaction reached any of the voting script addresses.
+**Test dates:** 2026-09-28, 17:23–19:30 UTC, and 2026-10-10, 21:10–22:05 UTC, Milestone 3
+deployment at vote.trustlevel.io. Five events, four published on-chain; no vote transaction reached
+any of the voting script addresses.
 
 | Event | Created (UTC) | Options | Invited / registered | Group NFT mint | Semaphore + Voting mint | Votes on-chain |
 |---|---|---|---|---|---|---|
@@ -56,12 +56,6 @@ and colleagues; no vote transaction reached any of the voting script addresses.
 | 4532824929 "Voting on dessert" | 2026-09-28 18:28 | Dessert 1 / Dessert 2 | 1 / 1 | [ba3eb975…](https://preprod.cardanoscan.io/transaction/ba3eb975e006e3c2f4682c663bfae51e002a0e275f2274689a969df80434e6b5) | [9b640e30…](https://preprod.cardanoscan.io/transaction/9b640e30d5320b4e90df46a22e30fe5d59d1a66a9edb4ca85a866860f1c01f52) | none |
 | 3068346463 "Approval of stock transfer to a private entity" | 2026-10-10 21:10 | Approved / Not approved | 4 / 1 | [4cccde38…](https://preprod.cardanoscan.io/transaction/4cccde38cb6d2d7ac7830bee3503c93e192a13590bba63a0ab3fd368e3143ac5) | [13c4268e…](https://preprod.cardanoscan.io/transaction/13c4268e5226df03966fd5f753a56c04b1529deb2726a4d070718a3c5d993179) | none |
 | 8129416114 "evento de voto ABC" | 2026-10-10 21:42 | si / no / no estoy seguro | 3 / 3 | [d8b2c428…](https://preprod.cardanoscan.io/transaction/d8b2c428065da1ef00324b5e0fb838a24aba60cc881349ef0b1fa17d4a92a603) | [a1d72000…](https://preprod.cardanoscan.io/transaction/a1d72000131134d93e5e20e7bf810f4c826374e79a20731cb9bfcdb0bf8a0163) | none |
-
-Both mint transactions of each published event were signed with the tester's wallet, but no vote
-went through — the "didn't get too much success while casting the votes" of Q2 below. The causes
-(F0, F6, F7 and the wallet-signed vote path of the Milestone 3 build) are listed in the
-[feedback document](../M4_USER_FEEDBACK.md), section 4, and were replaced by the relay design,
-under which voters need no wallet.
 
 ---
 

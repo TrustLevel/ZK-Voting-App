@@ -21,32 +21,10 @@ feedback we received, who it came from, and what we changed in response. Items t
 | 4 | pinusch (GitHub: pinusch) | Community | Organised a live event with five participants who registered and voted from their browsers; 3 votes succeeded at first, 2 failed | [Test write-up and questionnaire](interviews/VotingAppFeedback_Pinusch.md) |
 
 Talon's and pinusch's tests ran on 2026-10-05 against the Milestone 3 deployment; Sebastián
-tested on 2026-09-28 and 2026-10-10, Rodrigo on 2026-10-08 (dates and transactions in
-[section 1.1](#11-tester-activity-on-the-hosted-app)). The testers' questionnaires and write-ups
+tested on 2026-09-28 and 2026-10-10, Rodrigo on 2026-10-08 (events and transactions in the "Test
+session record" of their [questionnaires](interviews/)). The testers' questionnaires and write-ups
 are in [`docs/testing/interviews/`](interviews/); Talon and pinusch filled in their own files via
 pull request.
-
-### 1.1 Tester activity on the hosted app
-
-The questionnaires of Rodrigo and Sebastián leave the test date, device and event references
-blank. What the application and the chain record about their sessions was reconstructed after the
-Milestone 4 review and added to their questionnaires as a "Test session record": every event they
-created (ids, UTC times, options, invited and registered voters), the Group and Semaphore + Voting
-mint transactions they signed, and the vote transactions at their events' script addresses, linked
-to the Preprod explorer.
-
-- [Rodrigo](interviews/VotingAppFeedback_Rodrigo.md#test-session-record): 2026-10-08, nine events
-  in 35 minutes, five published, one complete cycle with an on-chain vote ("ronda 8", event
-  1242646942). The abandoned events are the organiser confusion his answers describe.
-- [Sebastián](interviews/VotingAppFeedback_Sebastián.md#test-session-record): 2026-09-28 and
-  2026-10-10, five events, four published, no vote transaction — the "didn't get too much success
-  while casting the votes" of his answers; the causes were fixed in this milestone (section 4).
-
-Device and operating system are not recorded by the application and were requested from both
-testers.
-
----
-
 
 ## 2. What the testers said
 

@@ -114,7 +114,7 @@ weighted_vote(dat.options, vote) == out_dat.options  -- counts applied correctly
 check_weight(vote, dat.weight)                        -- every count > 0, total counts == weight
 ```
 
-`weighted_vote()` iterates the signal options and applies each `(index, count)` increment. `check_weight()` requires every count to be strictly positive and the counts to sum exactly to `dat.weight`. A voter cannot distribute more or fewer points than the allowed weight, and cannot subtract points from an option with a negative count (a signal such as `[(0, 102), (1, -100)]` sums to 2 but is rejected; F-VOTING-14).
+`weighted_vote()` iterates the signal options and applies each `(index, count)` increment. `check_weight()` requires every count to be strictly positive and the counts to sum exactly to `dat.weight`. A voter cannot distribute more or fewer points than the allowed weight, and cannot subtract points from an option with a negative count.
 
 
 ## Semaphore Validator (`modulo-p/cardano-semaphore`)

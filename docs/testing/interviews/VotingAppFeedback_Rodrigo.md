@@ -43,9 +43,9 @@ registrations) and from the chain (every transaction at the events' script addre
 Preprod). Times are UTC. The wallet was Eternl (above); device and operating system are not
 recorded by the application and were requested from the tester.*
 
-**Test date:** 2026-10-08, 01:02–01:37 UTC, on the Milestone 3 deployment at vote.trustlevel.io.
-Nine events created in 35 minutes, five published on-chain, one complete cycle (invite, register,
-publish, vote). The tester was his own voter.
+**Test date:** 2026-10-08, 01:02–01:37 UTC, Milestone 3 deployment at vote.trustlevel.io. Nine
+events created, five published on-chain, one complete cycle (invite, register, publish, vote); the
+tester was his own voter.
 
 | Event | Created (UTC) | Options | Invited / registered | Group NFT mint | Semaphore + Voting mint | Votes on-chain |
 |---|---|---|---|---|---|---|
@@ -55,11 +55,6 @@ publish, vote). The tester was his own voter.
 | 8710622736 "ronda 6" | 01:18 | x / y | 1 / 1 | [7332af40…](https://preprod.cardanoscan.io/transaction/7332af4030cfe83b0ccc78aa2e2eb488897df6c62dcb5408677e8b297ab0dee7) | [8650bce0…](https://preprod.cardanoscan.io/transaction/8650bce0a9537a41e131c7472e2b453de72dcddc0b470a9036d0f44d727a7070) | none |
 | 2623397610 "ronda 7" | 01:23 | x / y | 1 / 0 | [743878a2…](https://preprod.cardanoscan.io/transaction/743878a2712385521503dac7146bcb519697f62a5e45e3f1120d8ec444f138eb) | [a57ad5f9…](https://preprod.cardanoscan.io/transaction/a57ad5f9041df313b142e4e9a44b81099ab313d7ca449d012ac7a28cbc0ca766) | none (published without a registered voter) |
 | 1242646942 "ronda 8" | 01:32 | x / y | 1 / 1 | [0784860f…](https://preprod.cardanoscan.io/transaction/0784860fcb8e66a36ad90223ed476ee768ea8eb757294b3d5ce60b49a79cf371) | [278ece50…](https://preprod.cardanoscan.io/transaction/278ece504c8f8532ad8397df5a4104ef6f561945721b47b4345a22160d9da086) | **1 vote**, option 0: [5dfdd59b…](https://preprod.cardanoscan.io/transaction/5dfdd59be3b83808e5103210f958d0ee4ef1866344f426e8e45ba6f5abe109f2) (tally after the vote: x = 1, y = 0) |
-
-The pattern of the run, several events abandoned before publishing because the voter had not
-registered yet and one published with nobody registered, is the organiser confusion described in
-Q2 and Q5 below. It led to the "Before you publish" box and the block on publishing with zero
-registrations (see the [feedback document](../M4_USER_FEEDBACK.md), section 3).
 
 ---
 

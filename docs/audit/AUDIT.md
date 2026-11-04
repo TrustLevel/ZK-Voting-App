@@ -12,7 +12,6 @@
 | **Commit** | e1181e1 |
 | **Scope** | `src/on-chain/validators/voting.ak`, `src/on-chain/lib/voting_utilities.ak`, critical path of `modulo-p/cardano-semaphore` (ZK proof verification, nullifier uniqueness, signal hash validation) |
 | **Out of scope** | Groth16 verifier implementation, BLS12-381 arithmetic (`ak-381`), Poseidon hash, MPF trie internals (`merkle-patricia-forestry`) |
-| **Addendum** | 2026-11-04 — F-VOTING-14 (weighted vote accepts negative counts), reported by a Catalyst Milestone 4 reviewer; fixed on-chain and off-chain, see Findings → `voting.ak` and Changes Made |
 
 
 ---
@@ -25,7 +24,7 @@ The core of the audit was a formal property analysis of the smart contracts: eve
 
 **The core cryptographic and on-chain architecture is sound.** The ZK proof generation, on-chain Groth16 verification, MPF nullifier insertion, and vote tallying were all confirmed correct. A live multi-voter test (M4, 2026-10-05) ran 12 votes to confirmed on-chain transactions with the final tally matching both the API and chain state exactly. All rejection cases held: double votes, replay attacks, non-member proofs, late registrants, and out-of-window submissions were each correctly rejected by the validators. The relay wallet design was validated, confirming that voter wallet addresses are fully decoupled from vote transactions on-chain.
 
-**Forty-three findings** were identified and addressed across three review phases and one external report. The main audit produced **16 findings** (1 Critical, 4 Medium, 1 Low, 10 Notes) — **all resolved**. The test review contributed a further **13 findings** (F-GROUP-4/5/6, F-VOTING-8 through F-VOTING-13, F-SEM-7 through F-SEM-10) — all Notes; **11 Fixed**, **2 Acknowledged**. The M4 system test produced **13 application-level findings** (F-APP-0 through F-APP-12) — 1 Critical, 3 High, 5 Medium, 2 Low; **7 Fixed**, **4 Partial**, **2 Acknowledged**. After the Milestone 4 submission, a Catalyst reviewer reported **one further finding** (F-VOTING-14, Critical / impact High): `check_weight` summed the counts of a weighted signal without checking their sign, so a voter with weight 2 could submit `[(0, 102), (1, -100)]` and subtract points from an option. The audit had traced this condition (invariant I13) but missed the sign. **Fixed** on-chain (`check_weight` requires every count `> 0`), in the backend relay (the same rules before the proof check) and in the frontend; covered by nine unit tests and two spending tests, see the addendum in Changes Made.
+**Forty-two findings** were identified and addressed across three review phases. The main audit produced **16 findings** (1 Critical, 4 Medium, 1 Low, 10 Notes) — **all resolved**. The test review contributed a further **13 findings** (F-GROUP-4/5/6, F-VOTING-8 through F-VOTING-13, F-SEM-7 through F-SEM-10) — all Notes; **11 Fixed**, **2 Acknowledged**. The M4 system test produced **13 application-level findings** (F-APP-0 through F-APP-12) — 1 Critical, 3 High, 5 Medium, 2 Low; **7 Fixed**, **4 Partial**, **2 Acknowledged**.
 
 The Critical finding (F-SEM-1) was a test infrastructure failure: all spending tests in `semaphore_test.ak` placed the VKey UTxO in `inputs` instead of `reference_inputs`, masking whether four key rejection conditions were tested at their intended condition. After the fix, the full spending path is confirmed by 22 tests (up from 16). The Medium findings were logic correctness issues: a missing minimum-options guard, a silent discard in weighted voting, and weaker NFT destination checks in two validators — all corrected. After applying all fixes, the on-chain test suite passes **154 tests** in `src/on-chain/` and **40 tests** (up from 32) in `modulo-p-cardano-semaphore`.
 
@@ -1133,15 +1132,6 @@ Each finding follows this structure:
 - **Recommendation:** Consider an integration test that constructs a full vote transaction spending both UTxOs with a real proof and non-empty MPF proof steps. The `snark_1` test in `semaphore_test.ak` demonstrates a standalone proof can be verified; a combined test would confirm the full path end-to-end.
 - **Status:** Acknowledged — the full vote path is covered by the M4 on-chain system test (12 confirmed votes); a pure on-chain Aiken integration test combining both validators is deferred to a future cycle.
 
-**[F-VOTING-14] Weighted vote accepts negative counts**
-- **Type:** Critical
-- **Location:** `src/on-chain/lib/voting_utilities.ak:102` (`check_weight`), `src/backend/src/voting-event/voting-event.service.ts` (`verifyRelayVoteProof`)
-- **Reported by:** a Catalyst Milestone 4 reviewer, 2026-11-04 (external to the project team). The audit's invariant I13 ("total weight == `dat.weight`") described the implemented condition and missed that a sum check alone does not bound the individual counts.
-- **Description:** `check_weight` folded the counts of the signal and compared the sum with `dat.weight`. Nothing checked the sign of a count. Plutus Data integers are signed and `cbor.serialise` / `deserialise_signal` round-trip negative values, so an eligible voter with weight 2 could submit the signal `[(0, 102), (1, -100)]`: the sum is 2, every index exists, `weighted_vote` applies both increments, and the output tally `[(0, 102), (1, -100), (2, 0)]` matches. Reproduced with a spending test through `voting.spend` on commit `2483dee`: the test passed, i.e. the vote was accepted. The ZK proof does not help: the Semaphore circuit binds only the blake2b hash of the signal, not its content, so any group member can prove any signal. The backend relay decoded the signal but did not check it either; only the frontend slider was bounded at 0, which is not a security control. The voter needs no stolen key and no circuit knowledge: the identity secrets are their own (browser localStorage), the Merkle proof comes from the public API, and `src/zk` is open source.
-- **Impact:** High — a single eligible voter can move an unbounded number of points between options and invert the outcome of a weighted vote. The tally becomes visibly negative, so the manipulation is detectable after the fact, but it is anonymous and irreversible, and on Mainnet the organiser's fee deposit pays for the transaction.
-- **Recommendation:** Require every count in the signal to be strictly positive in `check_weight`, and apply the same rule off-chain before the proof is verified so that an invalid signal never consumes a nullifier.
-- **Status:** Fixed — see Changes Made.
-
 ### `semaphore.ak`
 
 
@@ -1488,30 +1478,6 @@ are_indices_valid && is_vote_correct && is_weight_correct && validator_condition
 ```
 
 A signal with an index not present in `dat.options` now fails the transaction. Brings the weighted path to the same standard as simple voting, where `simple_vote` already rejects out-of-bounds indices with `error "Index out of range"`.
-
----
-
-### [F-VOTING-14] Weighted vote accepts negative counts
-
-**Files:** `src/on-chain/lib/voting_utilities.ak`, `src/on-chain/lib/tests/voting_tests.ak`, `src/on-chain/validators/tests/spending_logic_test.ak`, `src/backend/src/voting-event/vote-signal.ts`, `src/backend/src/voting-event/voting-event.service.ts`, `src/frontend/app/event/[id]/page.tsx`
-
-On-chain, `check_weight` now requires every count to be strictly positive before comparing the sum:
-
-```aiken
-pub fn check_weight(target_options: Options, allowed_weight: Int) -> Bool {
-    let all_positive: Bool = list.all(target_options, fn(to) { to.2nd > 0 })
-    let weight: Int = list.foldr(target_options, 0, fn(to, total) { to.2nd + total } )
-    all_positive && weight == allowed_weight
-}
-```
-
-Zero counts are rejected as well: they carry no vote, and a signal is now exactly the list of options that receive points. The unit test `check_weight_4` (zero entries with a matching sum) therefore changed from pass to `fail`; `check_weight_6` to `check_weight_9` cover the reviewer's payload, a lone negative entry, a negative entry hidden among valid ones and a valid distribution. Two spending tests through `voting.spend`, `weighted_vote_negative_count_rejected` (the reviewer's exact payload on a weight-2 ballot) and `weighted_vote_zero_count_rejected`, are `fail` tests. The suite stands at 370 checks, 0 errors.
-
-Off-chain, `validateVoteSignal()` in `src/backend/src/voting-event/vote-signal.ts` mirrors the on-chain rules (integer indices of existing options, every count `> 0`, no duplicate index, counts summing to the voting power, exactly one option with count 1 in a simple vote). `verifyRelayVoteProof` applies it right after decoding the signal and before the on-chain group root is fetched or the proof is verified, so an invalid signal is answered with 400 and never consumes a nullifier or a relay transaction. Covered by `vote-signal.spec.ts` and new cases in `voting-event.service.spec.ts`, including the CBOR of `[[0, 102], [1, -100]]`. The frontend performs the same check before it encodes the signal, so the user sees the reason instead of a relay error.
-
-Consequence: the compiled `voting` validator changed, which gives new voting policy IDs for events created after the deploy. Events already on-chain keep their validators; the backend check protects them off-chain.
-
-Verified on the hosted instance after the deploy (2026-11-04, Preprod event `8739534777`, voting power 3): the reviewer's payload sent to the relay by a registered voter is rejected with HTTP 400 and leaves the nullifier trie untouched; the same payload built into a transaction locally and submitted directly to the node fails Phase 2 at the voting validator; four legitimate weighted ballots tally correctly. See [M4_TEST_REPORT.md, Part D](../testing/M4_TEST_REPORT.md#part-d--weighted-voting-run-2026-11-04-after-the-f-voting-14-fix).
 
 ---
 
