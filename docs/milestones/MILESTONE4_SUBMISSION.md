@@ -282,10 +282,12 @@ The Mainnet event `4701350529` of 2026-10-29 (voting power 100, two voters, 200 
 weighted vote as well.
 
 **3. Questionnaires.** Agreed that both questionnaires are thin on metadata. We reconstructed what
-the application and the chain record about the two testers and added it to the feedback document
-as [section 1.1](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/testing/M4_USER_FEEDBACK.md#11-tester-activity-on-the-hosted-app):
-every event they created (ids, UTC times, options, invited and registered voters), the mint
-transactions they signed and the vote transactions at their events, linked to the Preprod explorer.
+the application and the chain record about the two testers and added it to their questionnaires as
+a "Test session record" ([Rodrigo](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/testing/interviews/VotingAppFeedback_Rodrigo.md#test-session-record),
+[Sebastián](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/testing/interviews/VotingAppFeedback_Sebasti%C3%A1n.md#test-session-record);
+summary in the feedback document, [section 1.1](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/testing/M4_USER_FEEDBACK.md#11-tester-activity-on-the-hosted-app)):
+test dates and times, every event they created (ids, options, invited and registered voters), the
+mint transactions they signed and the vote transactions at their events, linked to the Preprod explorer.
 Sebastián Pabón: five events on 2026-09-28 and 2026-10-10, four published on-chain, no vote went
 through (his "didn't get too much success while casting the votes"; the causes were fixed in this
 milestone). Rodrigo Oyarzún: nine events on 2026-10-08, five published, one complete cycle with an

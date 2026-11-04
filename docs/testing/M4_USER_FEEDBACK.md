@@ -29,51 +29,24 @@ pull request.
 ### 1.1 Tester activity on the hosted app
 
 The questionnaires of Rodrigo and Sebastián leave the test date, device and event references
-blank. The following tables reconstruct their activity from the hosted instance's event records
-(events created with their organiser wallets, invitations, registrations) and from the chain
-(every transaction at the events' script addresses on Cardano Preprod). Times are UTC. Both
-organisers used Eternl (questionnaire); device and operating system are not recorded by the
-application and were requested from the testers after the review.
+blank. What the application and the chain record about their sessions was reconstructed after the
+Milestone 4 review and added to their questionnaires as a "Test session record": every event they
+created (ids, UTC times, options, invited and registered voters), the Group and Semaphore + Voting
+mint transactions they signed, and the vote transactions at their events' script addresses, linked
+to the Preprod explorer.
 
-**Sebastián Pabón (Gimbalabs)** — five events on two days, invitees were himself and colleagues.
+- [Rodrigo](interviews/VotingAppFeedback_Rodrigo.md#test-session-record): 2026-10-08, nine events
+  in 35 minutes, five published, one complete cycle with an on-chain vote ("ronda 8", event
+  1242646942). The abandoned events are the organiser confusion his answers describe.
+- [Sebastián](interviews/VotingAppFeedback_Sebastián.md#test-session-record): 2026-09-28 and
+  2026-10-10, five events, four published, no vote transaction — the "didn't get too much success
+  while casting the votes" of his answers; the causes were fixed in this milestone (section 4).
 
-| Event | Created (UTC) | Options | Invited / registered | Group NFT mint | Semaphore + Voting mint | Votes on-chain |
-|---|---|---|---|---|---|---|
-| 7886895628 "Community Voting on last Landing Page design" | 2026-09-28 17:23 | Design 1 / Design 2 | 2 / 2 | not published | — | — |
-| 7115785363 "Voting on strategy selection" | 2026-09-28 17:44 | Strategy 1 / Strategy 2 | 2 / 2 | [57b77c3f…](https://preprod.cardanoscan.io/transaction/57b77c3fc956648634019f7b72dc67b84291f8ccd3c16d1978c93a9c68e0cf0e) | [2562806b…](https://preprod.cardanoscan.io/transaction/2562806bb566598691d2afd18f64f732e873d25c873ad749ef8c071158af6187) | none |
-| 4532824929 "Voting on dessert" | 2026-09-28 18:28 | Dessert 1 / Dessert 2 | 1 / 1 | [ba3eb975…](https://preprod.cardanoscan.io/transaction/ba3eb975e006e3c2f4682c663bfae51e002a0e275f2274689a969df80434e6b5) | [9b640e30…](https://preprod.cardanoscan.io/transaction/9b640e30d5320b4e90df46a22e30fe5d59d1a66a9edb4ca85a866860f1c01f52) | none |
-| 3068346463 "Approval of stock transfer to a private entity" | 2026-10-10 21:10 | Approved / Not approved | 4 / 1 | [4cccde38…](https://preprod.cardanoscan.io/transaction/4cccde38cb6d2d7ac7830bee3503c93e192a13590bba63a0ab3fd368e3143ac5) | [13c4268e…](https://preprod.cardanoscan.io/transaction/13c4268e5226df03966fd5f753a56c04b1529deb2726a4d070718a3c5d993179) | none |
-| 8129416114 "evento de voto ABC" | 2026-10-10 21:42 | si / no / no estoy seguro | 3 / 3 | [d8b2c428…](https://preprod.cardanoscan.io/transaction/d8b2c428065da1ef00324b5e0fb838a24aba60cc881349ef0b1fa17d4a92a603) | [a1d72000…](https://preprod.cardanoscan.io/transaction/a1d72000131134d93e5e20e7bf810f4c826374e79a20731cb9bfcdb0bf8a0163) | none |
-
-Four of Sebastián's five events were published on-chain (both mint transactions signed with his
-wallet), but no vote transaction reached any of the voting script addresses. This is the "didn't
-get too much success while casting the votes" of his questionnaire; the causes (F0, F6, F7 and
-the wallet-signed vote path of the Milestone 3 build) are addressed in section 4 and were replaced
-by the relay design, under which voters need no wallet.
-
-**Rodrigo Oyarzún (CHIL Stake Pool)** — nine events in 35 minutes, he was his own voter.
-
-| Event | Created (UTC) | Options | Invited / registered | Group NFT mint | Semaphore + Voting mint | Votes on-chain |
-|---|---|---|---|---|---|---|
-| 5543961983 "Tangananica o tanganana" | 2026-10-08 01:02 | Tangananica / tanganana | 1 / 1 | [a564dc3d…](https://preprod.cardanoscan.io/transaction/a564dc3d61cf57761e153355af7074ba2d5ca8ce407bbe735ce10cf0c38c89c2) | [07e8b72f…](https://preprod.cardanoscan.io/transaction/07e8b72fc19a0a49a2c1981df76aed9415c0ac6224ed272d0353832fdf0af1ea) | none |
-| 8834530701 "ronda 2", 1474308389 "ronda 3", 6791226673 / 1139782615 "ronda 4" | 2026-10-08 01:06–01:13 | tangananica / tanganana | 1 / 1, 1 / 0, 1 / 0, 1 / 0 | not published | — | — |
-| 1021364918 "ronda 5" | 2026-10-08 01:15 | x / y | 1 / 1 | [7a719fc5…](https://preprod.cardanoscan.io/transaction/7a719fc56489a9096b93ba0cffa08c60709dd209e2e424d056979454d511f2c5) | record points at the mint of 5543961983 (start failure between the two mints, F11) | none |
-| 8710622736 "ronda 6" | 2026-10-08 01:18 | x / y | 1 / 1 | [7332af40…](https://preprod.cardanoscan.io/transaction/7332af4030cfe83b0ccc78aa2e2eb488897df6c62dcb5408677e8b297ab0dee7) | [8650bce0…](https://preprod.cardanoscan.io/transaction/8650bce0a9537a41e131c7472e2b453de72dcddc0b470a9036d0f44d727a7070) | none |
-| 2623397610 "ronda 7" | 2026-10-08 01:23 | x / y | 1 / 0 | [743878a2…](https://preprod.cardanoscan.io/transaction/743878a2712385521503dac7146bcb519697f62a5e45e3f1120d8ec444f138eb) | [a57ad5f9…](https://preprod.cardanoscan.io/transaction/a57ad5f9041df313b142e4e9a44b81099ab313d7ca449d012ac7a28cbc0ca766) | none (published without a registered voter) |
-| 1242646942 "ronda 8" | 2026-10-08 01:32 | x / y | 1 / 1 | [0784860f…](https://preprod.cardanoscan.io/transaction/0784860fcb8e66a36ad90223ed476ee768ea8eb757294b3d5ce60b49a79cf371) | [278ece50…](https://preprod.cardanoscan.io/transaction/278ece504c8f8532ad8397df5a4104ef6f561945721b47b4345a22160d9da086) | **1 vote**, option 0: [5dfdd59b…](https://preprod.cardanoscan.io/transaction/5dfdd59be3b83808e5103210f958d0ee4ef1866344f426e8e45ba6f5abe109f2) (tally after the vote: x = 1, y = 0) |
-
-Rodrigo published five of his nine events and completed one full cycle (invite, register,
-publish, vote) on "ronda 8". The pattern of his run, several events abandoned before publishing
-because the voter had not registered yet, and one published with nobody registered, is exactly the
-organiser confusion his questionnaire describes ("it can't register the voting if the users aren't
-registered before"). It led to the "Before you publish" box and the block on publishing with zero
-registrations (section 3).
-
-After the fixes, the project re-ran Talon's scripted scenarios on 2026-10-29 against the
-Milestone 4 deployment. That regression run is the [test report](M4_TEST_REPORT.md); several
-status entries in section 4 cite it.
+Device and operating system are not recorded by the application and were requested from both
+testers.
 
 ---
+
 
 ## 2. What the testers said
 

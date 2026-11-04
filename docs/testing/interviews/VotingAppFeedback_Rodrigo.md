@@ -34,6 +34,35 @@
 
 ---
 
+### Test session record
+
+*Added by the project on 2026-11-04 after the Milestone 4 review, which noted that the
+questionnaire names no date, device, event or transaction. Reconstructed from the hosted
+instance's event records (events created with the tester's organiser wallet, invitations,
+registrations) and from the chain (every transaction at the events' script addresses on Cardano
+Preprod). Times are UTC. The wallet was Eternl (above); device and operating system are not
+recorded by the application and were requested from the tester.*
+
+**Test date:** 2026-10-08, 01:02–01:37 UTC, on the Milestone 3 deployment at vote.trustlevel.io.
+Nine events created in 35 minutes, five published on-chain, one complete cycle (invite, register,
+publish, vote). The tester was his own voter.
+
+| Event | Created (UTC) | Options | Invited / registered | Group NFT mint | Semaphore + Voting mint | Votes on-chain |
+|---|---|---|---|---|---|---|
+| 5543961983 "Tangananica o tanganana" | 01:02 | Tangananica / tanganana | 1 / 1 | [a564dc3d…](https://preprod.cardanoscan.io/transaction/a564dc3d61cf57761e153355af7074ba2d5ca8ce407bbe735ce10cf0c38c89c2) | [07e8b72f…](https://preprod.cardanoscan.io/transaction/07e8b72fc19a0a49a2c1981df76aed9415c0ac6224ed272d0353832fdf0af1ea) | none |
+| 8834530701 "ronda 2", 1474308389 "ronda 3", 6791226673 / 1139782615 "ronda 4" | 01:06–01:13 | tangananica / tanganana | 1 / 1, 1 / 0, 1 / 0, 1 / 0 | not published | — | — |
+| 1021364918 "ronda 5" | 01:15 | x / y | 1 / 1 | [7a719fc5…](https://preprod.cardanoscan.io/transaction/7a719fc56489a9096b93ba0cffa08c60709dd209e2e424d056979454d511f2c5) | record points at the mint of 5543961983 (start failure between the two mints, F11) | none |
+| 8710622736 "ronda 6" | 01:18 | x / y | 1 / 1 | [7332af40…](https://preprod.cardanoscan.io/transaction/7332af4030cfe83b0ccc78aa2e2eb488897df6c62dcb5408677e8b297ab0dee7) | [8650bce0…](https://preprod.cardanoscan.io/transaction/8650bce0a9537a41e131c7472e2b453de72dcddc0b470a9036d0f44d727a7070) | none |
+| 2623397610 "ronda 7" | 01:23 | x / y | 1 / 0 | [743878a2…](https://preprod.cardanoscan.io/transaction/743878a2712385521503dac7146bcb519697f62a5e45e3f1120d8ec444f138eb) | [a57ad5f9…](https://preprod.cardanoscan.io/transaction/a57ad5f9041df313b142e4e9a44b81099ab313d7ca449d012ac7a28cbc0ca766) | none (published without a registered voter) |
+| 1242646942 "ronda 8" | 01:32 | x / y | 1 / 1 | [0784860f…](https://preprod.cardanoscan.io/transaction/0784860fcb8e66a36ad90223ed476ee768ea8eb757294b3d5ce60b49a79cf371) | [278ece50…](https://preprod.cardanoscan.io/transaction/278ece504c8f8532ad8397df5a4104ef6f561945721b47b4345a22160d9da086) | **1 vote**, option 0: [5dfdd59b…](https://preprod.cardanoscan.io/transaction/5dfdd59be3b83808e5103210f958d0ee4ef1866344f426e8e45ba6f5abe109f2) (tally after the vote: x = 1, y = 0) |
+
+The pattern of the run, several events abandoned before publishing because the voter had not
+registered yet and one published with nobody registered, is the organiser confusion described in
+Q2 and Q5 below. It led to the "Before you publish" box and the block on publishing with zero
+registrations (see the [feedback document](../M4_USER_FEEDBACK.md), section 3).
+
+---
+
 ### Questions
 
 **Q1 — What aspects of the application are well executed?**
