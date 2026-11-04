@@ -113,8 +113,11 @@ Frontend (Next.js)
 - Simple voting (`weight <= 1`): `signal_message` must encode exactly one pair with count 1,
   e.g. `[[2, 1]]` — cast 1 vote for option 2. On-chain: `expect [vote_target] = vote`.
 - Weighted/power voting (`weight > 1`): `signal_message` can distribute votes across multiple
-  options, e.g. `[[1, 3], [2, 2]]` — but total counts must sum exactly to `weight`.
-  On-chain: enforced by `check_weight(vote, dat.weight)` in `voting_utilities.ak`.
+  options, e.g. `[[1, 3], [2, 2]]` — every count must be strictly positive and the counts must
+  sum exactly to `weight` (a negative count would subtract points: `[[0, 102], [1, -100]]` sums
+  to 2 and is rejected, F-VOTING-14). On-chain: `check_weight(vote, dat.weight)` in
+  `voting_utilities.ak`; off-chain mirror: `validateVoteSignal()` in
+  `src/backend/src/voting-event/vote-signal.ts`, applied in `relay-vote` before the proof check.
 
 **Dependencies** (aiken.toml):
 - `aiken-lang/stdlib v2.2.0`

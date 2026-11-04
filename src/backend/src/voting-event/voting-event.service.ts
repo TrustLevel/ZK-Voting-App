@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Like, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { VotingEvent } from './voting-event.entity';
+import { validateVoteSignal, optionIndicesOf, decodeVoteSignalHex } from './vote-signal';
 import { InvitationToken } from './invitation-token.entity';
 // @ts-ignore - types not exported from deep path, runtime resolves correctly
 import { Group } from 'modp-semaphore-bls12381/packages/typescript/lib/group';
@@ -688,17 +689,23 @@ export class VotingEventService {
     if ((BigInt('0x' + digest) % BLS12_381_R).toString() !== signalHashStr)
       throw invalid('signal hash does not match the signal message');
 
+    // F-VOTING-14: the proof binds only the hash of the signal, not its content. Decode the
+    // signal and apply the vote rules (positive counts, known indices, sum == weight) before
+    // anything touches the chain, the trie or the relay wallet.
+    let voteSignal: Array<[number, number]>;
+    try {
+      voteSignal = decodeVoteSignalHex(signalMessage);
+    } catch {
+      throw invalid('signal message is not a vote');
+    }
+    const signalProblem = validateVoteSignal(voteSignal, event.votingPower, optionIndicesOf(event.options));
+    if (signalProblem) throw invalid(signalProblem);
+
     const { groupMerkleRoot } = await this.getOnChainGroupRoot(event.eventId);
     if (merkleRoot !== groupMerkleRoot)
       throw invalid('proof is not for this event\'s voter group');
 
-    const { verifyVoteProof, decodeVoteSignal } = await import('@src/zk');
-    let voteSignal: Array<[number, number]>;
-    try {
-      voteSignal = await decodeVoteSignal(signalMessage);
-    } catch {
-      throw invalid('signal message is not a vote');
-    }
+    const { verifyVoteProof } = await import('@src/zk');
     let valid = false;
     try {
       valid = await verifyVoteProof(zkProof, publicSignals.map(String));

@@ -111,10 +111,10 @@ simple_vote(dat.options, vote_target.1st) == out_dat.options
 
 ```aiken
 weighted_vote(dat.options, vote) == out_dat.options  -- counts applied correctly
-check_weight(vote, dat.weight)                        -- total counts == weight
+check_weight(vote, dat.weight)                        -- every count > 0, total counts == weight
 ```
 
-`weighted_vote()` iterates the signal options and applies each `(index, count)` increment. `check_weight()` folds the counts and requires their sum to equal exactly `dat.weight`. A voter cannot distribute more or fewer points than the allowed weight.
+`weighted_vote()` iterates the signal options and applies each `(index, count)` increment. `check_weight()` requires every count to be strictly positive and the counts to sum exactly to `dat.weight`. A voter cannot distribute more or fewer points than the allowed weight, and cannot subtract points from an option with a negative count (a signal such as `[(0, 102), (1, -100)]` sums to 2 but is rejected; F-VOTING-14).
 
 
 ## Semaphore Validator (`modulo-p/cardano-semaphore`)
@@ -231,7 +231,7 @@ Key functions used by the Voting validator:
 | `update_option(options, index, quantity)` | Increments vote count at `index` by `quantity` |
 | `simple_vote(options, index)` | Adds 1 to the option at `index`; fails on empty options, negative index, or out-of-range |
 | `weighted_vote(options, target_options)` | Applies multiple `(index, count)` increments from the signal |
-| `check_weight(target_options, allowed_weight)` | Sums all counts in `target_options`; must equal `allowed_weight` |
+| `check_weight(target_options, allowed_weight)` | Every count in `target_options` must be `> 0` and the counts must sum to `allowed_weight` |
 | `deserialise_signal(message)` | CBOR-decodes the `signal_message` byte array into `Options` |
 | `is_interval_within(iv, time_pair)` | Checks the validity interval is entirely within `[start, end]` |
 | `is_policy_on_value(value, policy_id)` | Checks a policy ID is present in a UTxO value |

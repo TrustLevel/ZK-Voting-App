@@ -546,7 +546,25 @@ export default function EventPage() {
         pathIndices: merkleData.pathIndices as number[],
       };
 
-      // Step 3: Encode vote signal
+      // Step 3: Check and encode the vote signal. The same rules hold in the backend relay and
+      // on-chain (check_weight): integer indices of existing options, every count strictly
+      // positive, no option twice, counts summing to the voting power (one option with
+      // count 1 in a simple vote). F-VOTING-14.
+      const weight = (event.votingPower ?? 0) > 1 ? event.votingPower! : 1;
+      const knownIndices = new Set(options.map((o) => o.index));
+      const seenIndices = new Set<number>();
+      let totalCount = 0;
+      if (voteSignal.length === 0) throw new Error('Your vote is empty.');
+      for (const [index, count] of voteSignal) {
+        if (!Number.isInteger(index) || !knownIndices.has(index)) throw new Error(`Option ${index} does not exist.`);
+        if (!Number.isInteger(count) || count <= 0) throw new Error(`The points for an option must be a positive whole number (got ${count}).`);
+        if (seenIndices.has(index)) throw new Error(`Option ${index} appears more than once.`);
+        seenIndices.add(index);
+        totalCount += count;
+      }
+      if (weight <= 1 && (voteSignal.length !== 1 || voteSignal[0][1] !== 1)) throw new Error('A simple vote is exactly one option with one point.');
+      if (weight > 1 && totalCount !== weight) throw new Error(`Please distribute exactly ${weight} points (you distributed ${totalCount}).`);
+
       setVoteStep('Encoding vote signal...');
       const signalMessage = await encodeVoteSignal(voteSignal);
 

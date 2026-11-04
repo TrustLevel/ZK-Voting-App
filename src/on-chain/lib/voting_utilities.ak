@@ -98,10 +98,15 @@ pub fn check_vote_indices(options: Options, vote: Options) -> Bool {
   all_valid && no_duplicates
 }
 
-// The weight on the target_options must be equal to the weight allowed by the voting event.
+// Every count in the signal must be strictly positive, and the counts must sum exactly to
+// the weight allowed by the voting event. The sign check is essential: a signal such as
+// [(0, 102), (1, -100)] sums to 2 but would subtract 100 points from option 1
+// (F-VOTING-14, reported by a Catalyst reviewer on 2026-11-04). Zero counts carry no vote
+// and are rejected as well, so the signal is exactly the list of options that receive points.
 pub fn check_weight(target_options: Options, allowed_weight: Int) -> Bool {
+    let all_positive: Bool = list.all(target_options, fn(to) { to.2nd > 0 })
     let weight: Int = list.foldr(target_options, 0, fn(to, total) { to.2nd + total } )
-    weight == allowed_weight
+    all_positive && weight == allowed_weight
 }
 
 
