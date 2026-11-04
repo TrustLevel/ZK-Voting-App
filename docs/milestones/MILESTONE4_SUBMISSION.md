@@ -251,13 +251,13 @@ This is expected for a testnet preview.
 
 ## Response to the reviewer comments (2026-11-04)
 
-The submission above is unchanged. The revised code is `main` from commit `5c05b83`
+The submission above is unchanged. The revised state is tag `v1.1`, with the code fix in commit `5c05b83`
 ([PR #26](https://github.com/TrustLevel/ZK-Voting-App/pull/26)), deployed on 2026-11-04.
 
 **1. Negative quantity in weighted voting.** Confirmed and fixed. `check_weight` now requires every
 count to be strictly positive; the relay applies the same rule before the proof is checked (HTTP
 400, no nullifier consumed), the frontend too. Recorded as F-VOTING-14 in
-[POST_AUDIT_FINDINGS.md](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/audit/POST_AUDIT_FINDINGS.md);
+[POST_AUDIT_FINDINGS.md](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.1/docs/audit/POST_AUDIT_FINDINGS.md);
 the audit report itself is unchanged.
 
 **2. End-to-end test of weighted voting.** Run on Preprod on 2026-11-04 after the fix (event
@@ -265,12 +265,12 @@ the audit report itself is unchanged.
 the tally traced per vote, six invalid signals including the reviewer's payload rejected by the
 relay, the negative payload rejected by the validator when submitted directly to the node, final
 tally identical on the API and on-chain. 11 of 11 checks.
-[Test report, Part D](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/testing/M4_TEST_REPORT.md#part-d--weighted-voting-run-2026-11-04).
+[Test report, Part D](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.1/docs/testing/M4_TEST_REPORT.md#part-d--weighted-voting-run-2026-11-04).
 
 **3. Questionnaires.** Test dates, events and transactions of both testers were reconstructed from
 the hosted instance and the chain and added to their questionnaires as a "Test session record"
-([Rodrigo](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/testing/interviews/VotingAppFeedback_Rodrigo.md),
-[Sebastián](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/testing/interviews/VotingAppFeedback_Sebasti%C3%A1n.md)).
+([Rodrigo](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.1/docs/testing/interviews/VotingAppFeedback_Rodrigo.md),
+[Sebastián](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.1/docs/testing/interviews/VotingAppFeedback_Sebasti%C3%A1n.md)).
 
 **4. Audit by a team member.** Correct: the audit was carried out by a member of the project team,
 and the report names him. An audit by a specialised third party would far exceed the budget of this
@@ -282,9 +282,9 @@ application-level findings. All of them are documented in the audit report.
 
 **5. Documents from previous milestones.** All reports and current documents are available.
 
-- Milestone 1 and 2 reports: the original Google Docs are no longer available because the company account no longer exists; the original reports are now in the repository. [Milestone 1 report](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/milestones/MILESTONE1_REPORT.md) · [Milestone 2 report](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/milestones/MILESTONE2_REPORT.md)
-- Milestone 1 specifications: these were superseded when the design moved to Semaphore and are not carried over; the current specifications are in the repository. [System design](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/design/SYSTEM_DESIGN.md) · [Smart-contract specification](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/design/SMART_CONTRACT_SPECIFICATION.md) · [ZK module](https://github.com/TrustLevel/ZK-Voting-App/blob/main/src/zk/DOCS.md)
-- Design documents: moved to docs/design during a repository restructuring. [System design](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/design/SYSTEM_DESIGN.md) · [Smart-contract specification](https://github.com/TrustLevel/ZK-Voting-App/blob/main/docs/design/SMART_CONTRACT_SPECIFICATION.md)
+- Milestone 1 and 2 reports: the original Google Docs are no longer available because the company account no longer exists; the original reports are now in the repository. [Milestone 1 report](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.1/docs/milestones/MILESTONE1_REPORT.md) · [Milestone 2 report](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.1/docs/milestones/MILESTONE2_REPORT.md)
+- Milestone 1 specifications: these were superseded when the design moved to Semaphore and are not carried over; the current specifications are in the repository. [System design](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.1/docs/design/SYSTEM_DESIGN.md) · [Smart-contract specification](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.1/docs/design/SMART_CONTRACT_SPECIFICATION.md) · [ZK module](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.1/src/zk/DOCS.md)
+- Design documents: moved to docs/design during a repository restructuring. [System design](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.1/docs/design/SYSTEM_DESIGN.md) · [Smart-contract specification](https://github.com/TrustLevel/ZK-Voting-App/blob/v1.1/docs/design/SMART_CONTRACT_SPECIFICATION.md)
 - TrustLevel documentation: moved from docs.trustlevel.io to trustlevel.gitbook.io, because a custom domain is a paid GitBook feature. [Knowledge base](https://trustlevel.gitbook.io/knowledge-base/)
 
 All links in the Milestone 3 and 4 submissions were checked on 2026-11-04.
