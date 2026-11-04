@@ -132,12 +132,12 @@ Three voters of event `7599761867` submit within two seconds, 90 s after the sta
 
 All three votes confirmed on their first attempt (the queue held the second and third vote for 51 s and 20 s respectively, until the previous vote was indexed) and the tally matches.
 
-## Part D — Weighted voting run, 2026-11-04 (after the F-VOTING-14 fix)
+## Part D — Weighted voting run, 2026-11-04
 
 A Catalyst reviewer of this milestone pointed out two gaps: the test runs above cover simple voting
 only, and the weighted path accepted negative counts (`check_weight` only summed the counts, so a
-weight-2 voter could submit `[(0, 102), (1, -100)]`). The fix is documented as
-[F-VOTING-14](../audit/AUDIT.md) in the audit report (PR [#26](https://github.com/TrustLevel/ZK-Voting-App/pull/26)).
+weight-2 voter could submit `[(0, 102), (1, -100)]`; finding F-VOTING-14 in
+[POST_AUDIT_FINDINGS.md](../audit/POST_AUDIT_FINDINGS.md), fixed in PR [#26](https://github.com/TrustLevel/ZK-Voting-App/pull/26)).
 This run exercises weighted voting end to end on the hosted instance after that deploy, and tries
 every invalid weighted signal against the relay and the chain.
 
@@ -167,23 +167,12 @@ submitted directly to the chain was rejected by the voting validator.**
 | W-CHAIN | A fifth registered voter builds the negative payload `[[0,103],[1,-100]]` into a transaction locally (own MPF proof, own wallet, valid ZK proof) and submits it straight to the node, bypassing the backend | rejected by the voting validator, tally unchanged | rejected at submission: `ValidationTagMismatch Phase2Valid … PlutusFailure`, failing script = the spending script of the Voting UTxO 79c202a4…#1 (datum weight 3, tally [3,4,5]); tally unchanged | pass | |
 | T2 | Final tally after the end: API vs chain vs expected | all three 3/4/5, 12 points from 4 ballots | api=[3,4,5] chain=[3,4,5] totalVotes=4 totalPoints=12 votingPower=3 | pass | |
 
-Notes on reading the run:
-
-- Each vote's signal is readable on-chain in the Semaphore redeemer (`[[0,1],[1,1],[2,1]]`,
-  `[[1,3]]`, `[[0,2],[2,1]]`, `[[2,3]]`), as stated in the known limits: anonymity, not ballot
-  secrecy. All four votes were paid by the relay wallet; fees 1.08 ADA each, tx size ~10.5 kB.
-- The six rejected signals produced no transaction and no trie change; the voter's identity was
-  still usable for the legitimate vote W4. The relay answers with the violated rule, which is what the
-  frontend shows the user.
-- W-CHAIN is the on-chain counterpart of W-NEG: the relay check is a convenience, the validator is
-  the security boundary. The script error names the Voting UTxO being spent, i.e. the voting
-  validator's `check_weight`.
-- Two intermediate tally reads (after W3 and after W4) first returned the previous Voting UTxO
-  because Blockfrost's address index lagged the transaction index by a few seconds; the next snapshot
-  (seconds later) showed the expected tally, and the run report records the reconciliation explicitly
-  rather than hiding the first read.
-- The run's harness is the scripted one of Part C extended for weighted signals; it stays
-  unpublished for the same reason (wallet secrets). Every cited transaction is on-chain.
+Notes: each vote's signal is readable on-chain in the Semaphore redeemer (anonymity, not ballot
+secrecy, as in the known limits); all four votes were paid by the relay wallet, 1.08 ADA each. Two
+intermediate tally reads (after W3 and after W4) first returned the previous Voting UTxO because
+Blockfrost's address index lagged the transaction index by a few seconds; the next snapshot showed
+the expected tally and the run report records this explicitly. The harness is the scripted one of
+Part C extended for weighted signals and stays unpublished for the same reason (wallet secrets).
 
 The earlier Mainnet event `4701350529` ("mainnet test", 2026-10-29, voting power 100, two voters,
 200 points) was also a weighted vote; its transactions are in the Mainnet smoke-test section above
